@@ -48,6 +48,10 @@ from fluxtuner_ripper.models import (
     TrackCandidate,
     TrackWritePlan,
 )
+from fluxtuner_ripper.orchestrator import (
+    BoundaryResolution,
+    RippingOrchestrator,
+)
 from fluxtuner_ripper.output import (
     AacTrackFinalizer,
     EncodedTrackWriter,
@@ -63,6 +67,8 @@ from fluxtuner_ripper.ripping import RippingStreamIngestor
 __version__ = "0.1.0.dev0"
 
 __all__ = [
+    "BoundaryResolution",
+    "RippingOrchestrator",
     "AacTrackFinalizer",
     "AcousticBoundaryCandidate",
     "AcousticCandidateFinder",
