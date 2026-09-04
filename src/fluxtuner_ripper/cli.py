@@ -11,7 +11,16 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import BinaryIO
 
-from fluxtuner_ripper import RippingStreamIngestor
+from fluxtuner_ripper import (
+    AcousticWindowExtractor,
+    FfmpegAcousticDecoder,
+    MetadataSemanticTracker,
+    NearestBoundaryMatcher,
+    RippingOrchestrator,
+    RippingSession,
+    RippingStreamIngestor,
+    SessionOutputWriter,
+)
 
 _CHUNK_SIZE = 64 * 1024
 _CONTENT_TYPE_CODECS = {
@@ -149,23 +158,60 @@ def _run_stream(args: argparse.Namespace) -> int:
             codec=codec,
             ring_max_bytes=16 * 1024 * 1024,
         )
+        orchestrator = RippingOrchestrator(
+            window_extractor=AcousticWindowExtractor(
+                search_radius_seconds=args.search_radius,
+            ),
+            decoder=FfmpegAcousticDecoder(
+                ffmpeg_binary=args.ffmpeg,
+            ),
+            matcher=NearestBoundaryMatcher(
+                search_radius_seconds=args.search_radius,
+            ),
+        )
+        session = RippingSession(
+            ingestor=ingestor,
+            metadata_tracker=MetadataSemanticTracker(
+                transient_threshold_seconds=args.metadata_threshold,
+            ),
+            orchestrator=orchestrator,
+        )
+        output_writer = SessionOutputWriter(
+            ingestor=ingestor,
+            directory=args.output,
+            codec=codec,
+        )
 
         print(f"codec: {codec}")
         print(f"icy-metaint: {metaint}")
         print(f"output: {args.output}")
-        print("ingesting stream; press Ctrl+C to stop")
+        print("ripping stream; press Ctrl+C to stop")
 
-        while True:
-            chunk = stream.read(_CHUNK_SIZE)
-            if not chunk:
-                break
+        try:
+            while True:
+                chunk = stream.read(_CHUNK_SIZE)
+                if not chunk:
+                    break
 
-            result = ingestor.feed(chunk)
-            for event in result.timed_metadata_events:
+                result = session.feed(chunk)
+
+                for event in result.ingest.timed_metadata_events:
+                    print(
+                        f"[{event.audio_time_seconds:10.3f}s] {event.title}",
+                        flush=True,
+                    )
+
+                for transition in result.transitions:
+                    written = output_writer.write_transition(transition)
+                    print(f"written: {written.path}", flush=True)
+        except KeyboardInterrupt:
+            if session.current_track is not None:
                 print(
-                    f"[{event.audio_time_seconds:10.3f}s] {event.title}",
-                    flush=True,
+                    f"incomplete track not finalized: {session.current_track.title}",
+                    file=sys.stderr,
                 )
+            print("stopped", file=sys.stderr)
+            return 130
     finally:
         stream.close()
 
@@ -180,9 +226,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_stream(args)
     except CliError as exc:
         parser.error(str(exc))
-    except KeyboardInterrupt:
-        print("\nstopped", file=sys.stderr)
-        return 130
 
     return 2
 

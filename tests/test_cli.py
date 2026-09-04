@@ -93,3 +93,46 @@ def test_cli_requires_output_argument() -> None:
         main(["https://example.invalid/stream"])
 
     assert excinfo.value.code == 2
+
+
+def test_cli_reports_unfinished_track_on_keyboard_interrupt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import fluxtuner_ripper.cli as cli
+
+    class InterruptingStream(io.BytesIO):
+        def read(self, size: int = -1) -> bytes:
+            raise KeyboardInterrupt
+
+    class FakeTrack:
+        title = "Artist - Open Track"
+
+    class FakeSession:
+        current_track = FakeTrack()
+
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def feed(self, chunk: bytes) -> object:
+            raise AssertionError("feed should not be reached")
+
+    stream = InterruptingStream()
+    headers = {"Content-Type": "audio/mpeg", "icy-metaint": "417"}
+
+    monkeypatch.setattr(cli, "_open_stream", lambda url: (stream, headers))
+    monkeypatch.setattr(cli, "RippingSession", FakeSession)
+
+    result = main(
+        [
+            "https://example.invalid/stream",
+            "--output",
+            str(tmp_path / "tracks"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 130
+    assert "incomplete track not finalized: Artist - Open Track" in captured.err
+    assert "stopped" in captured.err
