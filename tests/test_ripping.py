@@ -1257,6 +1257,82 @@ def test_nearest_boundary_matcher_prefers_earlier_time_after_full_tie() -> None:
     assert match.acoustic.time_seconds == pytest.approx(99.0)
 
 
+def test_nearest_boundary_matcher_overrides_late_candidate_for_much_quieter_earlier_boundary() -> (
+    None
+):
+    from fluxtuner_ripper.ripping import NearestBoundaryMatcher
+
+    matcher = NearestBoundaryMatcher()
+    track = _track_candidate(start_time_seconds=100.0)
+
+    match = matcher.match(
+        track=track,
+        acoustic_candidates=(
+            _acoustic_candidate(time_seconds=98.5, rms=100.0),
+            _acoustic_candidate(time_seconds=100.25, rms=2000.0),
+        ),
+    )
+
+    assert match is not None
+    assert match.acoustic.time_seconds == pytest.approx(98.5)
+    assert match.acoustic.rms == pytest.approx(100.0)
+
+
+def test_nearest_boundary_matcher_keeps_late_candidate_when_quiet_ratio_is_too_small() -> None:
+    from fluxtuner_ripper.ripping import NearestBoundaryMatcher
+
+    matcher = NearestBoundaryMatcher()
+    track = _track_candidate(start_time_seconds=100.0)
+
+    match = matcher.match(
+        track=track,
+        acoustic_candidates=(
+            _acoustic_candidate(time_seconds=98.5, rms=100.0),
+            _acoustic_candidate(time_seconds=100.25, rms=500.0),
+        ),
+    )
+
+    assert match is not None
+    assert match.acoustic.time_seconds == pytest.approx(100.25)
+
+
+def test_nearest_boundary_matcher_does_not_override_candidate_already_before_metadata() -> None:
+    from fluxtuner_ripper.ripping import NearestBoundaryMatcher
+
+    matcher = NearestBoundaryMatcher()
+    track = _track_candidate(start_time_seconds=100.0)
+
+    match = matcher.match(
+        track=track,
+        acoustic_candidates=(
+            _acoustic_candidate(time_seconds=98.5, rms=1.0),
+            _acoustic_candidate(time_seconds=99.75, rms=1000.0),
+            _acoustic_candidate(time_seconds=101.0, rms=2000.0),
+        ),
+    )
+
+    assert match is not None
+    assert match.acoustic.time_seconds == pytest.approx(99.75)
+
+
+def test_nearest_boundary_matcher_ignores_quieter_boundary_outside_override_radius() -> None:
+    from fluxtuner_ripper.ripping import NearestBoundaryMatcher
+
+    matcher = NearestBoundaryMatcher()
+    track = _track_candidate(start_time_seconds=100.0)
+
+    match = matcher.match(
+        track=track,
+        acoustic_candidates=(
+            _acoustic_candidate(time_seconds=97.5, rms=0.1),
+            _acoustic_candidate(time_seconds=100.25, rms=2000.0),
+        ),
+    )
+
+    assert match is not None
+    assert match.acoustic.time_seconds == pytest.approx(100.25)
+
+
 def test_boundary_relation_classifier_marks_close_candidates_as_agreement() -> None:
     from fluxtuner_ripper.ripping import (
         BoundaryRelation,
@@ -1354,7 +1430,7 @@ def test_boundary_relation_classifier_rejects_negative_times() -> None:
         )
 
 
-def test_temporal_split_policy_uses_semantic_boundary_on_agreement() -> None:
+def test_temporal_split_policy_uses_acoustic_boundary_on_agreement() -> None:
     from fluxtuner_ripper.ripping import (
         BoundaryRelation,
         BoundaryRelationResult,
@@ -1367,6 +1443,28 @@ def test_temporal_split_policy_uses_semantic_boundary_on_agreement() -> None:
         semantic_time_seconds=100.0,
         acoustic_time_seconds=99.2,
         signed_delta_seconds=0.8,
+    )
+
+    decision = TemporalSplitPolicy().decide(relation)
+
+    assert decision.kind is TemporalSplitKind.HARD_CUT
+    assert decision.incoming_start_seconds == pytest.approx(99.2)
+    assert decision.outgoing_end_seconds == pytest.approx(99.2)
+
+
+def test_temporal_split_policy_uses_semantic_boundary_when_it_is_earlier() -> None:
+    from fluxtuner_ripper.ripping import (
+        BoundaryRelation,
+        BoundaryRelationResult,
+        TemporalSplitKind,
+        TemporalSplitPolicy,
+    )
+
+    relation = BoundaryRelationResult(
+        relation=BoundaryRelation.AGREEMENT,
+        semantic_time_seconds=100.0,
+        acoustic_time_seconds=100.8,
+        signed_delta_seconds=-0.8,
     )
 
     decision = TemporalSplitPolicy().decide(relation)

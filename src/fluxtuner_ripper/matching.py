@@ -18,10 +18,23 @@ from fluxtuner_ripper.models import (
 class NearestBoundaryMatcher:
     """Match a semantic track candidate to the nearest acoustic minimum."""
 
-    def __init__(self, search_radius_seconds: float = 8.0) -> None:
+    def __init__(
+        self,
+        search_radius_seconds: float = 8.0,
+        *,
+        quiet_override_radius_seconds: float = 2.0,
+        quiet_override_ratio: float = 10.0,
+    ) -> None:
         if search_radius_seconds <= 0:
             raise ValueError("search_radius_seconds must be greater than zero")
+        if quiet_override_radius_seconds <= 0:
+            raise ValueError("quiet_override_radius_seconds must be greater than zero")
+        if quiet_override_ratio <= 1:
+            raise ValueError("quiet_override_ratio must be greater than one")
+
         self._search_radius = search_radius_seconds
+        self._quiet_override_radius = quiet_override_radius_seconds
+        self._quiet_override_ratio = quiet_override_ratio
 
     @property
     def search_radius_seconds(self) -> float:
@@ -51,6 +64,33 @@ class NearestBoundaryMatcher:
                 candidate.time_seconds,
             ),
         )
+
+        if selected.time_seconds > track.start_time_seconds:
+            earlier = [
+                candidate
+                for candidate in eligible
+                if 0.0
+                < track.start_time_seconds - candidate.time_seconds
+                <= self._quiet_override_radius
+            ]
+
+            if earlier:
+                quietest = min(
+                    earlier,
+                    key=lambda candidate: (
+                        candidate.rms,
+                        abs(candidate.time_seconds - track.start_time_seconds),
+                        candidate.time_seconds,
+                    ),
+                )
+
+                if quietest.rms == 0.0:
+                    quiet_enough = selected.rms > 0.0
+                else:
+                    quiet_enough = selected.rms / quietest.rms >= self._quiet_override_ratio
+
+                if quiet_enough:
+                    selected = quietest
 
         return BoundaryMatch(
             track=track,
@@ -104,7 +144,10 @@ class TemporalSplitPolicy:
 
     def decide(self, relation: BoundaryRelationResult) -> TemporalSplitDecision:
         if relation.relation is BoundaryRelation.AGREEMENT:
-            boundary = relation.semantic_time_seconds
+            boundary = min(
+                relation.semantic_time_seconds,
+                relation.acoustic_time_seconds,
+            )
             return TemporalSplitDecision(
                 kind=TemporalSplitKind.HARD_CUT,
                 incoming_start_seconds=boundary,
