@@ -1,0 +1,336 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import StrEnum
+
+
+class ContentKind(StrEnum):
+    """Semantic content classification for one stream interval."""
+
+    MUSIC = "music"
+    ADVERTISEMENT = "advertisement"
+    JINGLE = "jingle"
+    STATION_ID = "station_id"
+    TALK = "talk"
+    UNKNOWN = "unknown"
+
+
+class SplitKind(StrEnum):
+    """Relationship between consecutive track candidates."""
+
+    NO_BOUNDARY = "no_boundary"
+    HARD_CUT = "hard_cut"
+    CROSSFADE = "crossfade"
+
+
+@dataclass(frozen=True)
+class MetadataEvent:
+    """One metadata observation anchored to an absolute encoded-byte offset."""
+
+    title: str
+    audio_offset: int
+
+    def __post_init__(self) -> None:
+        if self.audio_offset < 0:
+            raise ValueError("audio_offset must be non-negative")
+
+
+@dataclass(frozen=True)
+class SplitDecision:
+    """Resolved relationship between consecutive content items.
+
+    ``incoming_start`` and ``outgoing_end`` are absolute encoded-byte offsets.
+
+    A hard cut uses the same offset for both boundaries. A crossfade preserves
+    the shared audio interval by allowing the incoming item to start before the
+    outgoing item ends. NO_BOUNDARY intentionally carries no offsets.
+    """
+
+    kind: SplitKind
+    incoming_start: int | None = None
+    outgoing_end: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind is SplitKind.NO_BOUNDARY:
+            if self.incoming_start is not None or self.outgoing_end is not None:
+                raise ValueError("NO_BOUNDARY cannot carry boundary offsets")
+            return
+
+        if self.incoming_start is None or self.outgoing_end is None:
+            raise ValueError("split decisions require both boundary offsets")
+        if self.incoming_start < 0 or self.outgoing_end < 0:
+            raise ValueError("boundary offsets must be non-negative")
+
+        if self.kind is SplitKind.HARD_CUT:
+            if self.incoming_start != self.outgoing_end:
+                raise ValueError("HARD_CUT boundaries must be identical")
+            return
+
+        if self.kind is SplitKind.CROSSFADE:
+            if self.incoming_start >= self.outgoing_end:
+                raise ValueError("CROSSFADE requires incoming_start < outgoing_end")
+            return
+
+        raise ValueError(f"unsupported split kind: {self.kind}")
+
+
+@dataclass(frozen=True)
+class EncodedAudioFrame:
+    """One encoded audio frame placed on an exact accumulated audio timeline."""
+
+    codec: str
+    offset: int
+    length: int
+    sample_rate: int
+    samples: int
+    time_seconds: float
+
+    def __post_init__(self) -> None:
+        if self.offset < 0:
+            raise ValueError("frame offset must be non-negative")
+        if self.length <= 0:
+            raise ValueError("frame length must be greater than zero")
+        if self.sample_rate <= 0:
+            raise ValueError("sample_rate must be greater than zero")
+        if self.samples <= 0:
+            raise ValueError("samples must be greater than zero")
+        if self.time_seconds < 0:
+            raise ValueError("time_seconds must be non-negative")
+
+
+@dataclass(frozen=True)
+class TimedMetadataEvent:
+    """ICY metadata event resolved onto the encoded-audio frame timeline."""
+
+    title: str
+    audio_offset: int
+    audio_time_seconds: float
+
+
+@dataclass(frozen=True)
+class TrackCandidate:
+    """Durable metadata title eligible for later acoustic boundary matching."""
+
+    title: str
+    start_offset: int
+    start_time_seconds: float
+    confirmed_at_offset: int
+    confirmed_at_time_seconds: float
+
+
+@dataclass(frozen=True)
+class MetadataSemanticDecision:
+    """Semantic interpretation of one metadata title transition."""
+
+    title: str
+    kind: SplitKind
+    start_offset: int
+    start_time_seconds: float
+    lifetime_seconds: float
+
+
+@dataclass(frozen=True)
+class AcousticWindow:
+    """Frame-aligned encoded audio window prepared for acoustic analysis."""
+
+    start_offset: int
+    end_offset: int
+    start_time_seconds: float
+    end_time_seconds: float
+    data: bytes
+
+    def __post_init__(self) -> None:
+        if self.start_offset < 0:
+            raise ValueError("start_offset must be non-negative")
+        if self.end_offset <= self.start_offset:
+            raise ValueError("end_offset must be greater than start_offset")
+        if self.start_time_seconds < 0:
+            raise ValueError("start_time_seconds must be non-negative")
+        if self.end_time_seconds <= self.start_time_seconds:
+            raise ValueError("end_time_seconds must be greater than start_time_seconds")
+        if len(self.data) != self.end_offset - self.start_offset:
+            raise ValueError("data length must match offset span")
+
+
+@dataclass(frozen=True)
+class AcousticLevel:
+    """RMS energy measured over one PCM analysis window."""
+
+    start_time_seconds: float
+    end_time_seconds: float
+    rms: float
+
+    def __post_init__(self) -> None:
+        if self.start_time_seconds < 0:
+            raise ValueError("start_time_seconds must be non-negative")
+        if self.end_time_seconds <= self.start_time_seconds:
+            raise ValueError("end_time_seconds must be greater than start_time_seconds")
+        if self.rms < 0:
+            raise ValueError("rms must be non-negative")
+
+
+@dataclass(frozen=True)
+class AcousticProfile:
+    """Ordered RMS measurements derived from decoded PCM."""
+
+    levels: tuple[AcousticLevel, ...]
+
+    def __post_init__(self) -> None:
+        previous_end = -1.0
+        for level in self.levels:
+            if level.start_time_seconds < previous_end:
+                raise ValueError("levels must be ordered and non-overlapping")
+            previous_end = level.end_time_seconds
+
+    def minimum_level(self) -> AcousticLevel | None:
+        if not self.levels:
+            return None
+        return min(self.levels, key=lambda level: level.rms)
+
+
+@dataclass(frozen=True)
+class AcousticBoundaryCandidate:
+    """One local RMS minimum expressed on the absolute stream timeline."""
+
+    time_seconds: float
+    rms: float
+    relative_time_seconds: float
+
+    def __post_init__(self) -> None:
+        if self.time_seconds < 0:
+            raise ValueError("time_seconds must be non-negative")
+        if self.relative_time_seconds < 0:
+            raise ValueError("relative_time_seconds must be non-negative")
+        if self.rms < 0:
+            raise ValueError("rms must be non-negative")
+
+
+@dataclass(frozen=True)
+class BoundaryMatch:
+    """One acoustic candidate selected for a semantic track transition."""
+
+    track: TrackCandidate
+    acoustic: AcousticBoundaryCandidate
+    delta_seconds: float
+
+    def __post_init__(self) -> None:
+        if self.delta_seconds < 0:
+            raise ValueError("delta_seconds must be non-negative")
+
+
+class BoundaryRelation(StrEnum):
+    """Relative placement of semantic and broad acoustic boundary candidates."""
+
+    AGREEMENT = "agreement"
+    ACOUSTIC_EARLIER = "acoustic_earlier"
+    SEMANTIC_EARLIER = "semantic_earlier"
+
+
+@dataclass(frozen=True)
+class BoundaryRelationResult:
+    """Intermediate comparison between semantic and acoustic candidates."""
+
+    relation: BoundaryRelation
+    semantic_time_seconds: float
+    acoustic_time_seconds: float
+    signed_delta_seconds: float
+
+    def __post_init__(self) -> None:
+        if self.semantic_time_seconds < 0:
+            raise ValueError("semantic_time_seconds must be non-negative")
+        if self.acoustic_time_seconds < 0:
+            raise ValueError("acoustic_time_seconds must be non-negative")
+
+
+class TemporalSplitKind(StrEnum):
+    """Split policy expressed in absolute stream time before frame alignment."""
+
+    HARD_CUT = "hard_cut"
+    CROSSFADE = "crossfade"
+
+
+@dataclass(frozen=True)
+class TemporalSplitDecision:
+    """Intermediate split decision expressed only in absolute stream time."""
+
+    kind: TemporalSplitKind
+    incoming_start_seconds: float
+    outgoing_end_seconds: float
+
+    def __post_init__(self) -> None:
+        if self.incoming_start_seconds < 0:
+            raise ValueError("incoming_start_seconds must be non-negative")
+        if self.outgoing_end_seconds < 0:
+            raise ValueError("outgoing_end_seconds must be non-negative")
+
+        if self.kind is TemporalSplitKind.HARD_CUT:
+            if self.incoming_start_seconds != self.outgoing_end_seconds:
+                raise ValueError("HARD_CUT requires identical temporal boundaries")
+        elif (
+            self.kind is TemporalSplitKind.CROSSFADE
+            and self.incoming_start_seconds >= self.outgoing_end_seconds
+        ):
+            raise ValueError("CROSSFADE requires incoming_start_seconds < outgoing_end_seconds")
+
+
+@dataclass(frozen=True)
+class TrackByteRange:
+    """Absolute encoded-byte range to materialize for one track."""
+
+    start_offset: int
+    end_offset: int
+
+    def __post_init__(self) -> None:
+        if self.start_offset < 0:
+            raise ValueError("start_offset must be non-negative")
+        if self.end_offset <= self.start_offset:
+            raise ValueError("end_offset must be greater than start_offset")
+
+
+@dataclass(frozen=True)
+class TrackWritePlan:
+    """Encoded-byte ranges for the outgoing and incoming tracks."""
+
+    outgoing: TrackByteRange
+    incoming: TrackByteRange
+
+
+@dataclass(frozen=True)
+class IcyParseResult:
+    """Audio bytes and metadata events produced from one incremental feed."""
+
+    audio: bytes
+    events: tuple[MetadataEvent, ...]
+
+
+@dataclass(frozen=True)
+class RippingIngestResult:
+    """Result of feeding one raw ICY chunk into the ripping ingest pipeline."""
+
+    audio: bytes
+    metadata_events: tuple[MetadataEvent, ...]
+    timed_metadata_events: tuple[TimedMetadataEvent, ...]
+
+
+@dataclass(frozen=True)
+class DecodedPcm:
+    """Mono signed 16-bit little-endian PCM prepared for acoustic analysis."""
+
+    sample_rate: int
+    channels: int
+    sample_width_bytes: int
+    data: bytes
+
+    def __post_init__(self) -> None:
+        if self.sample_rate <= 0:
+            raise ValueError("sample_rate must be greater than zero")
+        if self.channels != 1:
+            raise ValueError("DecodedPcm must be mono")
+        if self.sample_width_bytes != 2:
+            raise ValueError("DecodedPcm must use 16-bit samples")
+        if len(self.data) % self.sample_width_bytes != 0:
+            raise ValueError("PCM byte length must align to sample width")
+
+    @property
+    def sample_count(self) -> int:
+        return len(self.data) // self.sample_width_bytes
