@@ -68,10 +68,18 @@ from fluxtuner_ripper.session import (
     SessionFeedResult,
     TrackTransition,
 )
+from fluxtuner_ripper.session_output import (
+    SessionOutputWriter,
+    WrittenTrack,
+    safe_track_stem,
+)
 
 __version__ = "0.1.0.dev0"
 
 __all__ = [
+    "SessionOutputWriter",
+    "WrittenTrack",
+    "safe_track_stem",
     "RippingSession",
     "SessionFeedResult",
     "TrackTransition",
