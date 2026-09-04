@@ -2255,3 +2255,40 @@ def test_track_output_service_rejects_evicted_range(tmp_path) -> None:
             stem="Track",
             codec="mp3",
         )
+
+
+def test_public_package_api_exports_expected_symbols() -> None:
+    import fluxtuner_ripper
+
+    expected = {
+        "AacTrackFinalizer",
+        "AcousticCandidateFinder",
+        "AcousticWindowExtractor",
+        "BoundaryRelationClassifier",
+        "EncodedAudioRingBuffer",
+        "FfmpegAcousticDecoder",
+        "IcyStreamParser",
+        "IncrementalFrameTimeline",
+        "MetadataSemanticTracker",
+        "Mp3TrackFinalizer",
+        "NearestBoundaryMatcher",
+        "RippingStreamIngestor",
+        "RmsAcousticAnalyzer",
+        "TemporalSplitAligner",
+        "TemporalSplitPolicy",
+        "TrackOutputService",
+        "TrackRangePlanner",
+        "parse_adts_frames",
+        "parse_mp3_frames",
+    }
+
+    assert expected <= set(fluxtuner_ripper.__all__)
+
+    for name in expected:
+        assert getattr(fluxtuner_ripper, name) is not None
+
+
+def test_public_package_api_version_matches_project_bootstrap() -> None:
+    import fluxtuner_ripper
+
+    assert fluxtuner_ripper.__version__ == "0.1.0.dev0"
