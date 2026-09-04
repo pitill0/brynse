@@ -63,10 +63,18 @@ from fluxtuner_ripper.output import (
     TrackRangePlanner,
 )
 from fluxtuner_ripper.ripping import RippingStreamIngestor
+from fluxtuner_ripper.session import (
+    RippingSession,
+    SessionFeedResult,
+    TrackTransition,
+)
 
 __version__ = "0.1.0.dev0"
 
 __all__ = [
+    "RippingSession",
+    "SessionFeedResult",
+    "TrackTransition",
     "BoundaryResolution",
     "RippingOrchestrator",
     "AacTrackFinalizer",
