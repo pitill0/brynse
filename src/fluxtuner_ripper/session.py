@@ -10,7 +10,11 @@ from fluxtuner_ripper.models import (
     RippingIngestResult,
     TrackCandidate,
 )
-from fluxtuner_ripper.orchestrator import BoundaryResolution, RippingOrchestrator
+from fluxtuner_ripper.orchestrator import (
+    BoundaryResolution,
+    BoundaryResolver,
+    RippingOrchestrator,
+)
 from fluxtuner_ripper.ripping import RippingStreamIngestor
 
 
@@ -41,7 +45,7 @@ class RippingSession:
         *,
         ingestor: RippingStreamIngestor,
         metadata_tracker: MetadataSemanticTracker | None = None,
-        orchestrator: RippingOrchestrator | None = None,
+        orchestrator: BoundaryResolver | None = None,
     ) -> None:
         self._ingestor = ingestor
         self._metadata_tracker = metadata_tracker or MetadataSemanticTracker()

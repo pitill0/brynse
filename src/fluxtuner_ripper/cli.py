@@ -21,6 +21,10 @@ from fluxtuner_ripper import (
     RippingStreamIngestor,
     SessionOutputWriter,
 )
+from fluxtuner_ripper.orchestrator import (
+    BoundaryResolver,
+    HybridRippingOrchestrator,
+)
 
 _CHUNK_SIZE = 64 * 1024
 _CONTENT_TYPE_CODECS = {
@@ -158,17 +162,29 @@ def _run_stream(args: argparse.Namespace) -> int:
             codec=codec,
             ring_max_bytes=16 * 1024 * 1024,
         )
-        orchestrator = RippingOrchestrator(
-            window_extractor=AcousticWindowExtractor(
-                search_radius_seconds=args.search_radius,
-            ),
-            decoder=FfmpegAcousticDecoder(
-                ffmpeg_binary=args.ffmpeg,
-            ),
-            matcher=NearestBoundaryMatcher(
-                search_radius_seconds=args.search_radius,
-            ),
-        )
+        orchestrator: BoundaryResolver
+
+        if codec == "aac":
+            orchestrator = HybridRippingOrchestrator(
+                window_extractor=AcousticWindowExtractor(
+                    search_radius_seconds=args.search_radius,
+                ),
+                decoder=FfmpegAcousticDecoder(
+                    ffmpeg_binary=args.ffmpeg,
+                ),
+            )
+        else:
+            orchestrator = RippingOrchestrator(
+                window_extractor=AcousticWindowExtractor(
+                    search_radius_seconds=args.search_radius,
+                ),
+                decoder=FfmpegAcousticDecoder(
+                    ffmpeg_binary=args.ffmpeg,
+                ),
+                matcher=NearestBoundaryMatcher(
+                    search_radius_seconds=args.search_radius,
+                ),
+            )
         session = RippingSession(
             ingestor=ingestor,
             metadata_tracker=MetadataSemanticTracker(
