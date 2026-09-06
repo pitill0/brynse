@@ -26,6 +26,7 @@ from fluxtuner_ripper.orchestrator import (
     BoundaryResolver,
     HybridRippingOrchestrator,
 )
+from fluxtuner_ripper.transient import ConservativeTransientExclusionPolicy
 
 _CHUNK_SIZE = 64 * 1024
 _CONTENT_TYPE_CODECS = {
@@ -76,6 +77,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=8.0,
         metavar="SECONDS",
         help="Acoustic boundary search radius (default: 8)",
+    )
+    parser.add_argument(
+        "--transient-exclusion",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Exclude short metadata intervals explicitly marked as ads/jingles (default: enabled)",
     )
     return parser
 
@@ -187,12 +194,16 @@ def _run_stream(args: argparse.Namespace) -> int:
                 ),
                 mp3_refiner=Mp3BoundaryRefiner(),
             )
+        transient_policy = (
+            ConservativeTransientExclusionPolicy() if args.transient_exclusion else None
+        )
         session = RippingSession(
             ingestor=ingestor,
             metadata_tracker=MetadataSemanticTracker(
                 transient_threshold_seconds=args.metadata_threshold,
             ),
             orchestrator=orchestrator,
+            transient_exclusion_policy=transient_policy,
         )
         output_writer = SessionOutputWriter(
             ingestor=ingestor,

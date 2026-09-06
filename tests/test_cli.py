@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from fluxtuner_ripper.cli import CliError, _resolve_codec, _resolve_metaint, main
+from fluxtuner_ripper.cli import (
+    CliError,
+    _build_parser,
+    _resolve_codec,
+    _resolve_metaint,
+    main,
+)
 
 
 def test_cli_resolves_mp3_codec_from_content_type() -> None:
@@ -136,3 +142,22 @@ def test_cli_reports_unfinished_track_on_keyboard_interrupt(
     assert result == 130
     assert "incomplete track not finalized: Artist - Open Track" in captured.err
     assert "stopped" in captured.err
+
+
+def test_cli_enables_transient_exclusion_by_default() -> None:
+    args = _build_parser().parse_args(["https://example.invalid/stream", "--output", "/tmp/tracks"])
+
+    assert args.transient_exclusion is True
+
+
+def test_cli_can_disable_transient_exclusion() -> None:
+    args = _build_parser().parse_args(
+        [
+            "https://example.invalid/stream",
+            "--output",
+            "/tmp/tracks",
+            "--no-transient-exclusion",
+        ]
+    )
+
+    assert args.transient_exclusion is False

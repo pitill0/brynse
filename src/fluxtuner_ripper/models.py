@@ -21,6 +21,7 @@ class SplitKind(StrEnum):
     NO_BOUNDARY = "no_boundary"
     HARD_CUT = "hard_cut"
     CROSSFADE = "crossfade"
+    EXCLUSION = "exclusion"
 
 
 @dataclass(frozen=True)
@@ -43,7 +44,9 @@ class SplitDecision:
 
     A hard cut uses the same offset for both boundaries. A crossfade preserves
     the shared audio interval by allowing the incoming item to start before the
-    outgoing item ends. NO_BOUNDARY intentionally carries no offsets.
+    outgoing item ends. An exclusion deliberately leaves an encoded interval
+    unassigned by ending the outgoing item before the incoming item starts.
+    NO_BOUNDARY intentionally carries no offsets.
     """
 
     kind: SplitKind
@@ -69,6 +72,11 @@ class SplitDecision:
         if self.kind is SplitKind.CROSSFADE:
             if self.incoming_start >= self.outgoing_end:
                 raise ValueError("CROSSFADE requires incoming_start < outgoing_end")
+            return
+
+        if self.kind is SplitKind.EXCLUSION:
+            if self.outgoing_end >= self.incoming_start:
+                raise ValueError("EXCLUSION requires outgoing_end < incoming_start")
             return
 
         raise ValueError(f"unsupported split kind: {self.kind}")
@@ -247,6 +255,7 @@ class TemporalSplitKind(StrEnum):
 
     HARD_CUT = "hard_cut"
     CROSSFADE = "crossfade"
+    EXCLUSION = "exclusion"
 
 
 @dataclass(frozen=True)
@@ -271,6 +280,11 @@ class TemporalSplitDecision:
             and self.incoming_start_seconds >= self.outgoing_end_seconds
         ):
             raise ValueError("CROSSFADE requires incoming_start_seconds < outgoing_end_seconds")
+        elif (
+            self.kind is TemporalSplitKind.EXCLUSION
+            and self.outgoing_end_seconds >= self.incoming_start_seconds
+        ):
+            raise ValueError("EXCLUSION requires outgoing_end_seconds < incoming_start_seconds")
 
 
 @dataclass(frozen=True)

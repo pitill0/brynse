@@ -76,9 +76,21 @@ class _MetadataTracker:
 class _Orchestrator:
     def __init__(self, resolutions: list[BoundaryResolution | None]) -> None:
         self._resolutions = list(resolutions)
+        self.calls: list[dict[str, object]] = []
 
     def resolve_boundary(self, **kwargs: object) -> BoundaryResolution | None:
+        self.calls.append(kwargs)
         return self._resolutions.pop(0)
+
+
+class _SplitAligner:
+    def __init__(self, decision: SplitDecision) -> None:
+        self.decision = decision
+        self.calls: list[dict[str, object]] = []
+
+    def align(self, **kwargs: object) -> SplitDecision:
+        self.calls.append(kwargs)
+        return self.decision
 
 
 def _track(title: str, start: int, time: float) -> TrackCandidate:
@@ -235,3 +247,99 @@ def test_session_exposes_semantic_decisions() -> None:
     result = session.feed(b"chunk")
 
     assert result.semantic_decisions == (decision,)
+
+
+def test_session_converts_authorized_transient_bridge_to_exclusion() -> None:
+    first = _track("Artist - First", 1000, 10.0)
+    second = _track("Artist - Second", 3000, 22.0)
+    transient = MetadataSemanticDecision(
+        title="Short break",
+        kind=SplitKind.NO_BOUNDARY,
+        start_offset=2000,
+        start_time_seconds=20.0,
+        lifetime_seconds=2.0,
+    )
+    aligned = SplitDecision(
+        kind=SplitKind.EXCLUSION,
+        outgoing_end=2000,
+        incoming_start=3000,
+    )
+
+    orchestrator = _Orchestrator([])
+    aligner = _SplitAligner(aligned)
+    session = RippingSession(
+        ingestor=_Ingestor(
+            [
+                _ingest_event(first.title, 1000, 10.0),
+                _ingest_event("Short break", 2000, 20.0),
+                _ingest_event(second.title, 3000, 22.0),
+            ]
+        ),
+        metadata_tracker=_MetadataTracker(
+            [
+                ((), (first,)),
+                ((transient,), ()),
+                ((), (second,)),
+            ]
+        ),
+        orchestrator=orchestrator,
+        transient_exclusion_policy=lambda decision: decision.title == "Short break",
+        split_aligner=aligner,
+    )
+
+    session.feed(b"one")
+    session.feed(b"two")
+    result = session.feed(b"three")
+
+    assert len(result.transitions) == 1
+    transition = result.transitions[0]
+    assert transition.outgoing == first
+    assert transition.incoming == second
+    assert transition.boundary.match is None
+    assert transition.boundary.relation is None
+    assert transition.boundary.temporal.kind is TemporalSplitKind.EXCLUSION
+    assert transition.boundary.temporal.outgoing_end_seconds == 20.0
+    assert transition.boundary.temporal.incoming_start_seconds == 22.0
+    assert transition.boundary.split == aligned
+    assert len(aligner.calls) == 1
+    assert orchestrator.calls == []
+
+
+def test_session_ignores_transient_bridge_without_exclusion_policy() -> None:
+    first = _track("Artist - First", 1000, 10.0)
+    second = _track("Artist - Second", 3000, 22.0)
+    transient = MetadataSemanticDecision(
+        title="Short break",
+        kind=SplitKind.NO_BOUNDARY,
+        start_offset=2000,
+        start_time_seconds=20.0,
+        lifetime_seconds=2.0,
+    )
+    regular = _boundary(second)
+    orchestrator = _Orchestrator([regular])
+
+    session = RippingSession(
+        ingestor=_Ingestor(
+            [
+                _ingest_event(first.title, 1000, 10.0),
+                _ingest_event("Short break", 2000, 20.0),
+                _ingest_event(second.title, 3000, 22.0),
+            ]
+        ),
+        metadata_tracker=_MetadataTracker(
+            [
+                ((), (first,)),
+                ((transient,), ()),
+                ((), (second,)),
+            ]
+        ),
+        orchestrator=orchestrator,
+    )
+
+    session.feed(b"one")
+    session.feed(b"two")
+    result = session.feed(b"three")
+
+    assert len(result.transitions) == 1
+    assert result.transitions[0].boundary == regular
+    assert len(orchestrator.calls) == 1

@@ -220,6 +220,18 @@ class TemporalSplitAligner:
                 outgoing_end=outgoing_frame.offset,
             )
 
+        if decision.kind is TemporalSplitKind.EXCLUSION:
+            if outgoing_frame.offset >= incoming_frame.offset:
+                raise SplitAlignmentError(
+                    "aligned exclusion boundaries must preserve outgoing < incoming"
+                )
+
+            return SplitDecision(
+                kind=SplitKind.EXCLUSION,
+                incoming_start=incoming_frame.offset,
+                outgoing_end=outgoing_frame.offset,
+            )
+
         raise RuntimeError(f"unsupported temporal split kind: {decision.kind}")
 
     @staticmethod

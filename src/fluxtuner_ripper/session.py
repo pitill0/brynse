@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
+from fluxtuner_ripper.matching import TemporalSplitAligner
 from fluxtuner_ripper.metadata import MetadataSemanticTracker
 from fluxtuner_ripper.models import (
     MetadataSemanticDecision,
     RippingIngestResult,
+    SplitKind,
+    TemporalSplitDecision,
+    TemporalSplitKind,
     TrackCandidate,
 )
 from fluxtuner_ripper.orchestrator import (
@@ -46,11 +51,16 @@ class RippingSession:
         ingestor: RippingStreamIngestor,
         metadata_tracker: MetadataSemanticTracker | None = None,
         orchestrator: BoundaryResolver | None = None,
+        transient_exclusion_policy: Callable[[MetadataSemanticDecision], bool] | None = None,
+        split_aligner: TemporalSplitAligner | None = None,
     ) -> None:
         self._ingestor = ingestor
         self._metadata_tracker = metadata_tracker or MetadataSemanticTracker()
         self._orchestrator = orchestrator or RippingOrchestrator()
+        self._transient_exclusion_policy = transient_exclusion_policy
+        self._split_aligner = split_aligner or TemporalSplitAligner()
         self._current_track: TrackCandidate | None = None
+        self._pending_exclusion: MetadataSemanticDecision | None = None
 
     @property
     def current_track(self) -> TrackCandidate | None:
@@ -65,11 +75,13 @@ class RippingSession:
             self._current_track = track
             return None
 
-        boundary = self._orchestrator.resolve_boundary(
-            track=track,
-            timeline=self._ingestor.timeline,
-            ring_buffer=self._ingestor.ring_buffer,
-        )
+        boundary = self._resolve_pending_exclusion(track)
+        if boundary is None:
+            boundary = self._orchestrator.resolve_boundary(
+                track=track,
+                timeline=self._ingestor.timeline,
+                ring_buffer=self._ingestor.ring_buffer,
+            )
         if boundary is None:
             return None
 
@@ -79,6 +91,50 @@ class RippingSession:
             incoming=track,
             boundary=boundary,
         )
+
+    def _resolve_pending_exclusion(
+        self,
+        track: TrackCandidate,
+    ) -> BoundaryResolution | None:
+        pending = self._pending_exclusion
+        if pending is None:
+            return None
+
+        self._pending_exclusion = None
+
+        exclusion_end = pending.start_time_seconds + pending.lifetime_seconds
+        if abs(exclusion_end - track.start_time_seconds) > 1e-6:
+            return None
+
+        temporal = TemporalSplitDecision(
+            kind=TemporalSplitKind.EXCLUSION,
+            outgoing_end_seconds=pending.start_time_seconds,
+            incoming_start_seconds=track.start_time_seconds,
+        )
+        split = self._split_aligner.align(
+            decision=temporal,
+            timeline=self._ingestor.timeline,
+        )
+
+        return BoundaryResolution(
+            track=track,
+            match=None,
+            relation=None,
+            temporal=temporal,
+            split=split,
+        )
+
+    def _remember_exclusion_candidates(
+        self,
+        decisions: tuple[MetadataSemanticDecision, ...],
+    ) -> None:
+        policy = self._transient_exclusion_policy
+        if policy is None:
+            return
+
+        for decision in decisions:
+            if decision.kind is SplitKind.NO_BOUNDARY and policy(decision):
+                self._pending_exclusion = decision
 
     def feed(self, chunk: bytes) -> SessionFeedResult:
         ingest = self._ingestor.feed(chunk)
@@ -91,6 +147,7 @@ class RippingSession:
             decisions, tracks = self._metadata_tracker.feed(event)
             semantic_decisions.extend(decisions)
             confirmed_tracks.extend(tracks)
+            self._remember_exclusion_candidates(decisions)
 
             for track in tracks:
                 transition = self._handle_confirmed_track(track)

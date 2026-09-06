@@ -73,6 +73,23 @@ def test_crossfade_requires_positive_overlap() -> None:
         )
 
 
+def test_exclusion_requires_positive_gap() -> None:
+    decision = SplitDecision(
+        kind=SplitKind.EXCLUSION,
+        incoming_start=140,
+        outgoing_end=100,
+    )
+
+    assert decision.incoming_start - decision.outgoing_end == 40
+
+    with pytest.raises(ValueError, match="outgoing_end < incoming_start"):
+        SplitDecision(
+            kind=SplitKind.EXCLUSION,
+            incoming_start=100,
+            outgoing_end=100,
+        )
+
+
 def test_ring_buffer_tracks_absolute_offsets() -> None:
     buffer = EncodedAudioRingBuffer(max_bytes=10)
 
@@ -1540,6 +1557,29 @@ def test_temporal_split_decision_rejects_invalid_crossfade() -> None:
         )
 
 
+def test_temporal_split_decision_accepts_exclusion_gap() -> None:
+    from fluxtuner_ripper.ripping import TemporalSplitDecision, TemporalSplitKind
+
+    decision = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        incoming_start_seconds=12.0,
+        outgoing_end_seconds=10.0,
+    )
+
+    assert decision.outgoing_end_seconds < decision.incoming_start_seconds
+
+
+def test_temporal_split_decision_rejects_collapsed_exclusion() -> None:
+    from fluxtuner_ripper.ripping import TemporalSplitDecision, TemporalSplitKind
+
+    with pytest.raises(ValueError, match="outgoing_end_seconds < incoming_start_seconds"):
+        TemporalSplitDecision(
+            kind=TemporalSplitKind.EXCLUSION,
+            incoming_start_seconds=10.0,
+            outgoing_end_seconds=10.0,
+        )
+
+
 def test_temporal_split_aligner_maps_hard_cut_to_single_frame_offset() -> None:
     from fluxtuner_ripper.ripping import (
         IncrementalFrameTimeline,
@@ -1596,6 +1636,35 @@ def test_temporal_split_aligner_maps_crossfade_edges_independently() -> None:
     assert aligned.kind is SplitKind.CROSSFADE
     assert aligned.incoming_start == timeline.frames[2].offset
     assert aligned.outgoing_end == timeline.frames[6].offset
+
+
+def test_temporal_split_aligner_maps_exclusion_edges_independently() -> None:
+    from fluxtuner_ripper.ripping import (
+        IncrementalFrameTimeline,
+        TemporalSplitAligner,
+        TemporalSplitDecision,
+        TemporalSplitKind,
+    )
+
+    frame = _adts_frame(frame_length=900)
+    timeline = IncrementalFrameTimeline("aac")
+    timeline.feed(frame * 8)
+
+    decision = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=timeline.frames[2].time_seconds + 0.001,
+        incoming_start_seconds=timeline.frames[6].time_seconds - 0.001,
+    )
+
+    aligned = TemporalSplitAligner().align(
+        decision=decision,
+        timeline=timeline,
+    )
+
+    assert aligned.kind is SplitKind.EXCLUSION
+    assert aligned.outgoing_end == timeline.frames[2].offset
+    assert aligned.incoming_start == timeline.frames[6].offset
+    assert aligned.outgoing_end < aligned.incoming_start
 
 
 def test_temporal_split_aligner_prefers_earlier_frame_on_exact_tie() -> None:
@@ -1709,6 +1778,34 @@ def test_temporal_split_aligner_rejects_collapsed_crossfade_after_alignment() ->
         )
 
 
+def test_temporal_split_aligner_rejects_collapsed_exclusion_after_alignment() -> None:
+    from fluxtuner_ripper.ripping import (
+        IncrementalFrameTimeline,
+        SplitAlignmentError,
+        TemporalSplitAligner,
+        TemporalSplitDecision,
+        TemporalSplitKind,
+    )
+
+    frame = _adts_frame(frame_length=900)
+    timeline = IncrementalFrameTimeline("aac")
+    timeline.feed(frame * 3)
+
+    base = timeline.frames[1].time_seconds
+
+    decision = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=base,
+        incoming_start_seconds=base + 0.001,
+    )
+
+    with pytest.raises(SplitAlignmentError):
+        TemporalSplitAligner().align(
+            decision=decision,
+            timeline=timeline,
+        )
+
+
 def test_track_range_planner_builds_hard_cut_ranges() -> None:
     from fluxtuner_ripper.ripping import SplitDecision, SplitKind, TrackRangePlanner
 
@@ -1752,6 +1849,28 @@ def test_track_range_planner_preserves_crossfade_overlap() -> None:
 
     overlap = plan.outgoing.end_offset - plan.incoming.start_offset
     assert overlap == 300
+
+
+def test_track_range_planner_preserves_exclusion_gap() -> None:
+    from fluxtuner_ripper.ripping import SplitDecision, SplitKind, TrackRangePlanner
+
+    decision = SplitDecision(
+        kind=SplitKind.EXCLUSION,
+        incoming_start=1200,
+        outgoing_end=900,
+    )
+
+    plan = TrackRangePlanner().plan(
+        previous_start_offset=100,
+        next_end_offset=2000,
+        decision=decision,
+    )
+
+    assert plan.outgoing.start_offset == 100
+    assert plan.outgoing.end_offset == 900
+    assert plan.incoming.start_offset == 1200
+    assert plan.incoming.end_offset == 2000
+    assert plan.incoming.start_offset - plan.outgoing.end_offset == 300
 
 
 def test_track_range_planner_rejects_no_boundary() -> None:
