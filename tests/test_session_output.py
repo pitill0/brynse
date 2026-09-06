@@ -166,6 +166,67 @@ def test_session_output_writer_plans_and_writes_outgoing_track(
     ]
 
 
+def test_session_output_writer_reuses_resolved_incoming_start_for_next_track(
+    tmp_path: Path,
+) -> None:
+    first_transition = _transition()
+    third_track = _track("Artist - Track Three", 9000, 30.0)
+    second_transition = TrackTransition(
+        outgoing=first_transition.incoming,
+        incoming=third_track,
+        boundary=BoundaryResolution(
+            track=third_track,
+            match=None,
+            relation=None,
+            temporal=TemporalSplitDecision(
+                kind=TemporalSplitKind.HARD_CUT,
+                incoming_start_seconds=30.0,
+                outgoing_end_seconds=30.0,
+            ),
+            split=SplitDecision(
+                kind=SplitKind.HARD_CUT,
+                incoming_start=9000,
+                outgoing_end=9000,
+            ),
+        ),
+    )
+
+    plans = [
+        TrackWritePlan(
+            outgoing=TrackByteRange(start_offset=1000, end_offset=5200),
+            incoming=TrackByteRange(start_offset=4800, end_offset=10000),
+        ),
+        TrackWritePlan(
+            outgoing=TrackByteRange(start_offset=4800, end_offset=9000),
+            incoming=TrackByteRange(start_offset=9000, end_offset=10000),
+        ),
+    ]
+
+    class _SequentialPlanner:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def plan(self, **kwargs: object) -> TrackWritePlan:
+            self.calls.append(kwargs)
+            return plans[len(self.calls) - 1]
+
+    planner = _SequentialPlanner()
+    output = _Output(tmp_path / "track.mp3")
+    writer = SessionOutputWriter(
+        ingestor=_Ingestor(),
+        directory=tmp_path,
+        codec="mp3",
+        range_planner=planner,
+        output_service=output,
+    )
+
+    writer.write_transition(first_transition)
+    writer.write_transition(second_transition)
+
+    assert planner.calls[0]["previous_start_offset"] == 1000
+    assert planner.calls[1]["previous_start_offset"] == 4800
+
+
 def test_session_output_writer_rejects_unknown_codec(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="codec must be"):
         SessionOutputWriter(

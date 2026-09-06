@@ -49,6 +49,7 @@ class SessionOutputWriter:
         self._codec = codec
         self._range_planner = range_planner or TrackRangePlanner()
         self._output_service = output_service or TrackOutputService()
+        self._current_start_offset: int | None = None
 
     def write_transition(self, transition: TrackTransition) -> WrittenTrack:
         frames = self._ingestor.timeline.frames
@@ -57,9 +58,14 @@ class SessionOutputWriter:
 
         last_frame = frames[-1]
         next_end_offset = last_frame.offset + last_frame.length
+        previous_start_offset = (
+            self._current_start_offset
+            if self._current_start_offset is not None
+            else transition.outgoing.start_offset
+        )
 
         plan = self._range_planner.plan(
-            previous_start_offset=transition.outgoing.start_offset,
+            previous_start_offset=previous_start_offset,
             next_end_offset=next_end_offset,
             decision=transition.boundary.split,
         )
@@ -71,6 +77,8 @@ class SessionOutputWriter:
             stem=safe_track_stem(transition.outgoing.title),
             codec=self._codec,
         )
+
+        self._current_start_offset = plan.incoming.start_offset
 
         return WrittenTrack(
             transition=transition,
