@@ -21,6 +21,7 @@ from fluxtuner_ripper import (
     RippingStreamIngestor,
     SessionOutputWriter,
 )
+from fluxtuner_ripper.mp3_refinement import Mp3BoundaryRefiner
 from fluxtuner_ripper.orchestrator import (
     BoundaryResolver,
     HybridRippingOrchestrator,
@@ -184,6 +185,7 @@ def _run_stream(args: argparse.Namespace) -> int:
                 matcher=NearestBoundaryMatcher(
                     search_radius_seconds=args.search_radius,
                 ),
+                mp3_refiner=Mp3BoundaryRefiner(),
             )
         session = RippingSession(
             ingestor=ingestor,

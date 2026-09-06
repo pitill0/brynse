@@ -25,8 +25,10 @@ from fluxtuner_ripper.models import (
     BoundaryRelationResult,
     SplitDecision,
     TemporalSplitDecision,
+    TemporalSplitKind,
     TrackCandidate,
 )
+from fluxtuner_ripper.mp3_refinement import Mp3BoundaryRefiner
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,8 @@ class RippingOrchestrator:
         relation_classifier: BoundaryRelationClassifier | None = None,
         split_policy: TemporalSplitPolicy | None = None,
         split_aligner: TemporalSplitAligner | None = None,
+        mp3_refiner: Mp3BoundaryRefiner | None = None,
+        refinement_analyzer: RmsAcousticAnalyzer | None = None,
     ) -> None:
         self._window_extractor = window_extractor or AcousticWindowExtractor()
         self._decoder = decoder or FfmpegAcousticDecoder()
@@ -75,6 +79,8 @@ class RippingOrchestrator:
         self._relation_classifier = relation_classifier or BoundaryRelationClassifier()
         self._split_policy = split_policy or TemporalSplitPolicy()
         self._split_aligner = split_aligner or TemporalSplitAligner()
+        self._mp3_refiner = mp3_refiner
+        self._refinement_analyzer = refinement_analyzer or RmsAcousticAnalyzer(window_seconds=0.05)
 
     def resolve_boundary(
         self,
@@ -110,6 +116,15 @@ class RippingOrchestrator:
             acoustic_time_seconds=match.acoustic.time_seconds,
         )
         temporal = self._split_policy.decide(relation)
+
+        if self._mp3_refiner is not None and temporal.kind is TemporalSplitKind.HARD_CUT:
+            refinement_profile = self._refinement_analyzer.analyze(pcm)
+            temporal = self._mp3_refiner.refine(
+                decision=temporal,
+                profile=refinement_profile,
+                window=window,
+            )
+
         split = self._split_aligner.align(
             decision=temporal,
             timeline=timeline,
