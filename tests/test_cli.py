@@ -108,27 +108,19 @@ def test_cli_reports_unfinished_track_on_keyboard_interrupt(
 ) -> None:
     import fluxtuner_ripper.cli as cli
 
-    class InterruptingStream(io.BytesIO):
-        def read(self, size: int = -1) -> bytes:
-            raise KeyboardInterrupt
+    class FakeRunner:
+        current_track_title = "Artist - Open Track"
 
-    class FakeTrack:
-        title = "Artist - Open Track"
-
-    class FakeSession:
-        current_track = FakeTrack()
-
-        def __init__(self, **kwargs: object) -> None:
+        def __init__(self, *args: object, **kwargs: object) -> None:
             pass
 
-        def feed(self, chunk: bytes) -> object:
-            raise AssertionError("feed should not be reached")
+        def run(self, **kwargs: object) -> object:
+            raise KeyboardInterrupt
 
-    stream = InterruptingStream()
-    headers = {"Content-Type": "audio/mpeg", "icy-metaint": "417"}
+        def stop(self) -> None:
+            pass
 
-    monkeypatch.setattr(cli, "_open_stream", lambda url: (stream, headers))
-    monkeypatch.setattr(cli, "RippingSession", FakeSession)
+    monkeypatch.setattr(cli, "RippingRunner", FakeRunner)
 
     result = main(
         [

@@ -1,0 +1,150 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from fluxtuner_ripper.runner import (
+    RippingRunConfig,
+    RippingRunError,
+    RippingRunner,
+    resolve_codec,
+    resolve_metaint,
+)
+
+
+def test_runner_rejects_non_positive_ring(tmp_path: Path) -> None:
+    runner = RippingRunner(
+        RippingRunConfig(
+            url="https://example.invalid/stream",
+            output_directory=tmp_path,
+            ring_max_bytes=0,
+        ),
+    )
+
+    with pytest.raises(RippingRunError, match="ring_max_bytes"):
+        runner.run()
+
+
+def test_runner_codec_resolution_matches_supported_content_types() -> None:
+    assert resolve_codec("auto", {"Content-Type": "audio/mpeg"}) == "mp3"
+    assert resolve_codec("auto", {"Content-Type": "audio/aacp"}) == "aac"
+
+
+def test_runner_rejects_missing_metaint() -> None:
+    with pytest.raises(RippingRunError, match="icy-metaint"):
+        resolve_metaint({})
+
+
+def test_runner_treats_read_failure_after_stop_as_clean_shutdown(
+    tmp_path: Path,
+) -> None:
+    class StopRaceStream:
+        def __init__(self) -> None:
+            self.runner: RippingRunner | None = None
+            self.closed = False
+
+        def read(self, size: int = -1) -> bytes:
+            assert self.runner is not None
+            self.runner.stop()
+            raise AttributeError("'NoneType' object has no attribute 'read'")
+
+        def close(self) -> None:
+            self.closed = True
+
+    stream = StopRaceStream()
+    runner = RippingRunner(
+        RippingRunConfig(
+            url="https://example.invalid/stream",
+            output_directory=tmp_path,
+            codec="mp3",
+        ),
+        stream_opener=lambda url: (
+            stream,
+            {"Content-Type": "audio/mpeg", "icy-metaint": "417"},
+        ),
+    )
+    stream.runner = runner
+
+    result = runner.run()
+
+    assert result.stopped is True
+    assert stream.closed is True
+
+
+def test_runner_propagates_read_failure_without_stop(
+    tmp_path: Path,
+) -> None:
+    class FailingStream:
+        def read(self, size: int = -1) -> bytes:
+            raise RuntimeError("network read failed")
+
+        def close(self) -> None:
+            pass
+
+    runner = RippingRunner(
+        RippingRunConfig(
+            url="https://example.invalid/stream",
+            output_directory=tmp_path,
+            codec="mp3",
+        ),
+        stream_opener=lambda url: (
+            FailingStream(),
+            {"Content-Type": "audio/mpeg", "icy-metaint": "417"},
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="network read failed"):
+        runner.run()
+
+
+def test_runner_shadow_callback_is_parallel_and_optional(tmp_path: Path) -> None:
+    frame_length = 417
+    frame = b"\xff\xfb\x90\x00" + bytes(frame_length - 4)
+
+    class FakeStream:
+        def __init__(self) -> None:
+            self._chunks = [frame + b"\x00", b""]
+            self.closed = False
+
+        def read(self, size: int = -1) -> bytes:
+            return self._chunks.pop(0)
+
+        def close(self) -> None:
+            self.closed = True
+
+    class FakeObserver:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def observe(self, **kwargs: object) -> tuple[object, ...]:
+            self.calls += 1
+            return ("shadow-analysis",)
+
+    observer = FakeObserver()
+    factory_calls: list[str] = []
+    callbacks: list[object] = []
+    stream = FakeStream()
+
+    runner = RippingRunner(
+        RippingRunConfig(
+            url="https://example.invalid/stream",
+            output_directory=tmp_path,
+            codec="mp3",
+        ),
+        stream_opener=lambda url: (
+            stream,
+            {"Content-Type": "audio/mpeg", "icy-metaint": str(frame_length)},
+        ),
+        shadow_observer_factory=lambda ffmpeg_binary: (
+            factory_calls.append(ffmpeg_binary) or observer
+        ),
+    )
+
+    result = runner.run(on_shadow_analysis=callbacks.append)
+
+    assert result.stopped is False
+    assert factory_calls == ["ffmpeg"]
+    assert observer.calls == 1
+    assert callbacks == ["shadow-analysis"]
+    assert stream.closed is True

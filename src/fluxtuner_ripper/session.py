@@ -136,6 +136,28 @@ class RippingSession:
             if decision.kind is SplitKind.NO_BOUNDARY and policy(decision):
                 self._pending_exclusion = decision
 
+    def _confirm_current_tracks(
+        self,
+    ) -> tuple[tuple[TrackCandidate, ...], tuple[TrackTransition, ...]]:
+        timeline = self._ingestor.timeline
+        frames = timeline.frames
+        if not frames:
+            return (), ()
+
+        frame = frames[-1]
+        tracks = self._metadata_tracker.confirm_current(
+            audio_offset=frame.offset + frame.length,
+            audio_time_seconds=(frame.time_seconds + frame.samples / frame.sample_rate),
+        )
+
+        transitions: list[TrackTransition] = []
+        for track in tracks:
+            transition = self._handle_confirmed_track(track)
+            if transition is not None:
+                transitions.append(transition)
+
+        return tracks, tuple(transitions)
+
     def feed(self, chunk: bytes) -> SessionFeedResult:
         ingest = self._ingestor.feed(chunk)
 
@@ -154,6 +176,10 @@ class RippingSession:
                 if transition is not None:
                     transitions.append(transition)
 
+        durable_tracks, durable_transitions = self._confirm_current_tracks()
+        confirmed_tracks.extend(durable_tracks)
+        transitions.extend(durable_transitions)
+
         return SessionFeedResult(
             ingest=ingest,
             semantic_decisions=tuple(semantic_decisions),
@@ -162,18 +188,5 @@ class RippingSession:
         )
 
     def confirm_current(self) -> tuple[TrackCandidate, ...]:
-        timeline = self._ingestor.timeline
-        frames = timeline.frames
-        if not frames:
-            return ()
-
-        frame = frames[-1]
-        tracks = self._metadata_tracker.confirm_current(
-            audio_offset=frame.offset + frame.length,
-            audio_time_seconds=(frame.time_seconds + frame.samples / frame.sample_rate),
-        )
-
-        for track in tracks:
-            self._handle_confirmed_track(track)
-
+        tracks, _transitions = self._confirm_current_tracks()
         return tracks

@@ -39,6 +39,7 @@ class Mp3BoundaryRefiner:
         min_jump_ratio: float = 2.5,
         min_persistence_ratio: float = 2.0,
         max_transition_span_seconds: float = 3.0,
+        max_pre_basin_span_seconds: float = 1.0,
         near_attack_seconds: float = 0.10,
         pre_basin_lead_seconds: float = 0.20,
         late_basin_start_seconds: float = 0.0,
@@ -62,6 +63,8 @@ class Mp3BoundaryRefiner:
             raise ValueError("min_persistence_ratio must be greater than one")
         if max_transition_span_seconds <= 0:
             raise ValueError("max_transition_span_seconds must be greater than zero")
+        if max_pre_basin_span_seconds <= 0:
+            raise ValueError("max_pre_basin_span_seconds must be greater than zero")
         if near_attack_seconds < 0:
             raise ValueError("near_attack_seconds must be non-negative")
         if pre_basin_lead_seconds < 0:
@@ -78,6 +81,7 @@ class Mp3BoundaryRefiner:
         self._min_jump = min_jump_ratio
         self._min_persistence = min_persistence_ratio
         self._max_transition_span = max_transition_span_seconds
+        self._max_pre_basin_span = max_pre_basin_span_seconds
         self._near_attack = near_attack_seconds
         self._pre_basin_lead = pre_basin_lead_seconds
         self._late_basin_start = late_basin_start_seconds
@@ -188,10 +192,13 @@ class Mp3BoundaryRefiner:
         if geometry.transition_span_seconds > self._max_transition_span:
             boundary = current
         elif attack_delta <= self._near_attack:
-            boundary = max(
-                window.start_time_seconds,
-                geometry.basin_start_seconds - self._pre_basin_lead,
-            )
+            if geometry.transition_span_seconds > self._max_pre_basin_span:
+                boundary = current
+            else:
+                boundary = max(
+                    window.start_time_seconds,
+                    geometry.basin_start_seconds - self._pre_basin_lead,
+                )
         elif basin_start_delta > self._late_basin_start and basin_mid_delta > self._late_basin_mid:
             boundary = current
         else:

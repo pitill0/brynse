@@ -65,6 +65,11 @@ def test_refiner_keeps_current_for_very_long_transition_span() -> None:
     assert refiner.refine(decision=_decision(), profile=_profile(), window=_window()) == _decision()
 
 
+def test_refiner_keeps_current_for_near_limit_basin_ending_at_current_boundary() -> None:
+    refiner = _GeometryRefiner(Mp3TransitionGeometry(7.15, 8.575, 10.0))
+    assert refiner.refine(decision=_decision(), profile=_profile(), window=_window()) == _decision()
+
+
 def test_refiner_keeps_current_when_detected_basin_is_too_late() -> None:
     refiner = _GeometryRefiner(Mp3TransitionGeometry(10.1, 10.35, 10.6))
     assert refiner.refine(decision=_decision(), profile=_profile(), window=_window()) == _decision()

@@ -7,6 +7,15 @@ from fluxtuner_ripper.acoustic import (
     FfmpegAcousticDecoder,
     RmsAcousticAnalyzer,
 )
+from fluxtuner_ripper.basin import AdaptiveBasinBoundaryDetector, Basin
+from fluxtuner_ripper.boundaries import (
+    BoundaryConfidence,
+    BoundaryEvidence,
+    BoundaryHypothesis,
+    BoundaryProposal,
+    BoundaryProposalSource,
+    BoundaryReconciler,
+)
 from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
 from fluxtuner_ripper.frames import (
     IncrementalFrameTimeline,
@@ -63,6 +72,12 @@ from fluxtuner_ripper.output import (
     TrackRangePlanner,
 )
 from fluxtuner_ripper.ripping import RippingStreamIngestor
+from fluxtuner_ripper.runner import (
+    RippingRunConfig,
+    RippingRunError,
+    RippingRunner,
+    RippingRunResult,
+)
 from fluxtuner_ripper.session import (
     RippingSession,
     SessionFeedResult,
@@ -72,6 +87,10 @@ from fluxtuner_ripper.session_output import (
     SessionOutputWriter,
     WrittenTrack,
     safe_track_stem,
+)
+from fluxtuner_ripper.structural import (
+    StructuralBoundaryDetector,
+    StructuralFeatureFrame,
 )
 
 __version__ = "0.1.0.dev0"
@@ -93,6 +112,14 @@ __all__ = [
     "AcousticProfile",
     "AcousticWindow",
     "AcousticWindowExtractor",
+    "AdaptiveBasinBoundaryDetector",
+    "Basin",
+    "BoundaryConfidence",
+    "BoundaryEvidence",
+    "BoundaryHypothesis",
+    "BoundaryProposal",
+    "BoundaryProposalSource",
+    "BoundaryReconciler",
     "BoundaryMatch",
     "BoundaryRelation",
     "BoundaryRelationClassifier",
@@ -113,10 +140,16 @@ __all__ = [
     "NearestBoundaryMatcher",
     "RippingIngestResult",
     "RippingStreamIngestor",
+    "RippingRunConfig",
+    "RippingRunError",
+    "RippingRunResult",
+    "RippingRunner",
     "RmsAcousticAnalyzer",
     "SplitAlignmentError",
     "SplitDecision",
     "SplitKind",
+    "StructuralBoundaryDetector",
+    "StructuralFeatureFrame",
     "TemporalSplitAligner",
     "TemporalSplitDecision",
     "TemporalSplitKind",

@@ -22,13 +22,24 @@ from fluxtuner_ripper.session import RippingSession
 
 @dataclass
 class _Frame:
-    end_offset: int
-    end_time_seconds: float
+    offset: int
+    length: int
+    time_seconds: float
+    samples: int
+    sample_rate: int
 
 
 class _Timeline:
     def __init__(self) -> None:
-        self.frames = (_Frame(end_offset=3000, end_time_seconds=30.0),)
+        self.frames = (
+            _Frame(
+                offset=2900,
+                length=100,
+                time_seconds=29.0,
+                samples=44100,
+                sample_rate=44100,
+            ),
+        )
 
 
 class _Ingestor:
@@ -51,9 +62,12 @@ class _MetadataTracker:
             ]
         ],
         confirm_tracks: tuple[TrackCandidate, ...] = (),
+        confirm_results: list[tuple[TrackCandidate, ...]] | None = None,
     ) -> None:
         self._results = list(results)
-        self._confirm_tracks = confirm_tracks
+        self._confirm_tracks = (
+            list(confirm_results) if confirm_results is not None else [confirm_tracks]
+        )
 
     def feed(
         self,
@@ -70,7 +84,9 @@ class _MetadataTracker:
         audio_offset: int,
         audio_time_seconds: float,
     ) -> tuple[TrackCandidate, ...]:
-        return self._confirm_tracks
+        if not self._confirm_tracks:
+            return ()
+        return self._confirm_tracks.pop(0)
 
 
 class _Orchestrator:
@@ -166,6 +182,63 @@ def test_session_sets_first_confirmed_track_without_transition() -> None:
     assert result.confirmed_tracks == (first,)
     assert result.transitions == ()
     assert session.current_track == first
+
+
+def test_session_auto_confirms_current_track_as_audio_advances() -> None:
+    first = _track("Artist - First", 1000, 10.0)
+    session = RippingSession(
+        ingestor=_Ingestor([_ingest_event(first.title, 1000, 10.0)]),
+        metadata_tracker=_MetadataTracker(
+            [((), ())],
+            confirm_tracks=(first,),
+        ),
+        orchestrator=_Orchestrator([]),
+    )
+
+    result = session.feed(b"chunk")
+
+    assert result.confirmed_tracks == (first,)
+    assert result.transitions == ()
+    assert session.current_track == first
+
+
+def test_session_returns_transition_created_by_automatic_confirmation() -> None:
+    first = _track("Artist - First", 1000, 10.0)
+    second = _track("Artist - Second", 2000, 20.0)
+    boundary = _boundary(second)
+
+    tracker = _MetadataTracker(
+        [
+            ((), (first,)),
+            ((), ()),
+        ],
+        confirm_results=[
+            (),
+            (second,),
+        ],
+    )
+    session = RippingSession(
+        ingestor=_Ingestor(
+            [
+                _ingest_event(first.title, 1000, 10.0),
+                _ingest_event(second.title, 2000, 20.0),
+            ]
+        ),
+        metadata_tracker=tracker,
+        orchestrator=_Orchestrator([boundary]),
+    )
+
+    first_result = session.feed(b"one")
+    second_result = session.feed(b"two")
+
+    assert first_result.transitions == ()
+    assert second_result.confirmed_tracks == (second,)
+    assert len(second_result.transitions) == 1
+    transition = second_result.transitions[0]
+    assert transition.outgoing == first
+    assert transition.incoming == second
+    assert transition.boundary == boundary
+    assert session.current_track == second
 
 
 def test_session_emits_transition_after_resolved_second_track() -> None:
