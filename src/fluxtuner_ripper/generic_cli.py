@@ -46,6 +46,13 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Write finalized segments to this directory",
     )
+    parser.add_argument(
+        "--min-tail",
+        type=float,
+        default=1.0,
+        metavar="SECONDS",
+        help="Merge a final tail shorter than this into the previous segment (default: 1.0)",
+    )
     return parser
 
 
@@ -76,6 +83,7 @@ def _run_generic_pipeline(
     codec: str,
     interval_seconds: float,
     output_directory: Path | None = None,
+    minimum_tail_seconds: float = 1.0,
 ) -> dict[str, object]:
     if not data:
         raise GenericCliError("input contains no encoded data")
@@ -120,6 +128,7 @@ def _run_generic_pipeline(
             ingestor=ingestor,
             directory=output_directory,
             codec=codec,
+            minimum_tail_seconds=minimum_tail_seconds,
         )
         segments = writer.write(result.resolutions)
 
@@ -148,6 +157,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             codec=args.codec,
             interval_seconds=args.interval,
             output_directory=args.output_dir,
+            minimum_tail_seconds=args.min_tail,
         )
     except GenericCliError as exc:
         parser.error(str(exc))

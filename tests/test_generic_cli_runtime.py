@@ -189,9 +189,11 @@ def test_run_generic_pipeline_materializes_segments_when_output_directory_is_set
             ingestor: object,
             directory: Path,
             codec: str,
+            minimum_tail_seconds: float,
         ) -> None:
             assert directory == tmp_path
             assert codec == "mp3"
+            assert minimum_tail_seconds == 1.0
 
         def write(self, resolutions: object) -> object:
             assert tuple(resolutions) == (resolution,)
