@@ -239,3 +239,90 @@ def test_run_generic_pipeline_materializes_segments_when_output_directory_is_set
             "path": str(tmp_path / "segment-0002.mp3"),
         },
     ]
+
+
+def test_run_generic_pipeline_uses_external_boundary_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+
+    import fluxtuner_ripper.generic_cli as generic_cli
+
+    boundary_file = tmp_path / "boundaries.json"
+
+    external_boundary = SimpleNamespace(
+        time_seconds=12.5,
+        source="agent",
+        reference_offset=None,
+    )
+
+    class _Ingestor:
+        def __init__(self, *, codec: str, ring_max_bytes: int) -> None:
+            self.codec = codec
+            self.ring_max_bytes = ring_max_bytes
+
+    class _ExternalProvider:
+        def __init__(self, *, boundaries: object) -> None:
+            assert tuple(boundaries) == (external_boundary,)
+
+    class _Resolver:
+        pass
+
+    class _Runner:
+        def __init__(
+            self,
+            *,
+            ingestor: object,
+            provider: object,
+            resolver: object,
+        ) -> None:
+            assert isinstance(provider, _ExternalProvider)
+
+        def run(self, chunks: object) -> object:
+            assert tuple(chunks) == (b"encoded-data",)
+
+            return SimpleNamespace(
+                bytes_ingested=12,
+                resolutions=(),
+            )
+
+    def _load_external_boundaries(path: Path) -> object:
+        assert path == boundary_file
+        return (external_boundary,)
+
+    monkeypatch.setattr(
+        generic_cli,
+        "load_external_boundaries",
+        _load_external_boundaries,
+    )
+    monkeypatch.setattr(
+        generic_cli,
+        "ExternalBoundaryProvider",
+        _ExternalProvider,
+    )
+    monkeypatch.setattr(
+        generic_cli,
+        "EncodedStreamIngestor",
+        _Ingestor,
+    )
+    monkeypatch.setattr(
+        generic_cli,
+        "RippingOrchestrator",
+        _Resolver,
+    )
+    monkeypatch.setattr(
+        generic_cli,
+        "GenericRunner",
+        _Runner,
+    )
+
+    payload = generic_cli._run_generic_pipeline(
+        data=b"encoded-data",
+        codec="mp3",
+        provider_name="external",
+        boundaries_file=boundary_file,
+    )
+
+    assert payload["provider"] == "external"
+    assert payload["boundaries"] == []

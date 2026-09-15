@@ -8,12 +8,17 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from fluxtuner_ripper.external_boundaries import (
+    ExternalBoundaryParseError,
+    load_external_boundaries,
+)
 from fluxtuner_ripper.generic_output import GenericSegmentWriter
 from fluxtuner_ripper.generic_runner import GenericRunner
 from fluxtuner_ripper.ingest import EncodedStreamIngestor
 from fluxtuner_ripper.orchestrator import RippingOrchestrator
 from fluxtuner_ripper.providers import (
     BoundaryProvider,
+    ExternalBoundaryProvider,
     FixedIntervalBoundaryProvider,
     ManualBoundaryProvider,
 )
@@ -40,7 +45,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--provider",
-        choices=("fixed", "manual"),
+        choices=("fixed", "manual", "external"),
         default="fixed",
         help="Boundary provider to use (default: fixed)",
     )
@@ -57,6 +62,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=[],
         metavar="SECONDS",
         help="Explicit manual boundary time; may be repeated",
+    )
+    parser.add_argument(
+        "--boundaries-file",
+        type=Path,
+        help="External boundary input in JSON or JSONL format",
     )
     parser.add_argument(
         "--output-dir",
@@ -86,6 +96,9 @@ def _validate_args(args: argparse.Namespace) -> None:
         if any(value < 0 for value in args.boundary):
             raise GenericCliError("--boundary values must be non-negative")
 
+    if args.provider == "external" and args.boundaries_file is None:
+        raise GenericCliError("--boundaries-file is required when --provider=external")
+
     if args.min_tail <= 0:
         raise GenericCliError("--min-tail must be greater than zero")
 
@@ -113,6 +126,7 @@ def _run_generic_pipeline(
     provider_name: str = "fixed",
     interval_seconds: float | None = None,
     boundary_times_seconds: tuple[float, ...] = (),
+    boundaries_file: Path | None = None,
     output_directory: Path | None = None,
     minimum_tail_seconds: float = 1.0,
 ) -> dict[str, object]:
@@ -137,6 +151,18 @@ def _run_generic_pipeline(
         provider = ManualBoundaryProvider(
             boundary_times_seconds=boundary_times_seconds,
         )
+    elif provider_name == "external":
+        if boundaries_file is None:
+            raise GenericCliError("--boundaries-file is required when --provider=external")
+
+        try:
+            external_boundaries = load_external_boundaries(boundaries_file)
+        except ExternalBoundaryParseError as exc:
+            raise GenericCliError(str(exc)) from exc
+
+        provider = ExternalBoundaryProvider(
+            boundaries=external_boundaries,
+        )
     else:
         raise GenericCliError(f"unsupported provider: {provider_name}")
     resolver = RippingOrchestrator()
@@ -152,7 +178,7 @@ def _run_generic_pipeline(
     payload: dict[str, object] = {
         "bytes_ingested": result.bytes_ingested,
         "codec": codec,
-        "provider": ("fixed_interval" if provider_name == "fixed" else "manual"),
+        "provider": ("fixed_interval" if provider_name == "fixed" else provider_name),
         "interval_seconds": interval_seconds,
         "boundaries": [
             {
@@ -202,6 +228,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             provider_name=args.provider,
             interval_seconds=args.interval,
             boundary_times_seconds=tuple(args.boundary),
+            boundaries_file=args.boundaries_file,
             output_directory=args.output_dir,
             minimum_tail_seconds=args.min_tail,
         )

@@ -80,3 +80,25 @@ def test_generic_cli_rejects_missing_file(tmp_path: Path) -> None:
         match="input file does not exist",
     ):
         _validate_args(args)
+
+
+def test_external_provider_requires_boundaries_file(
+    tmp_path: Path,
+) -> None:
+    parser = _build_parser()
+
+    args = parser.parse_args(
+        [
+            str(tmp_path / "input.mp3"),
+            "--codec",
+            "mp3",
+            "--provider",
+            "external",
+        ]
+    )
+
+    with pytest.raises(
+        GenericCliError,
+        match="--boundaries-file is required when --provider=external",
+    ):
+        _validate_args(args)
