@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fluxtuner_ripper.output import TrackOutputService, TrackRangePlanner
 from fluxtuner_ripper.ripping import RippingStreamIngestor
-from fluxtuner_ripper.session import TrackTransition
+from fluxtuner_ripper.session import SegmentTransition, TrackTransition
 
 _UNSAFE_STEM_CHARS = re.compile(r"[^A-Za-z0-9._ -]+")
 _MULTI_SPACE = re.compile(r"\s+")
@@ -19,6 +19,14 @@ def safe_track_stem(title: str) -> str:
     stem = _UNSAFE_STEM_CHARS.sub("_", title)
     stem = _MULTI_SPACE.sub(" ", stem).strip(" ._-")
     return stem or "track"
+
+
+@dataclass(frozen=True)
+class WrittenSegment:
+    """A finalized outgoing segment written from one resolved transition."""
+
+    transition: SegmentTransition
+    path: Path
 
 
 @dataclass(frozen=True)
@@ -51,10 +59,13 @@ class SessionOutputWriter:
         self._output_service = output_service or TrackOutputService()
         self._current_start_offset: int | None = None
 
-    def write_transition(self, transition: TrackTransition) -> WrittenTrack:
+    def write_segment_transition(
+        self,
+        transition: SegmentTransition,
+    ) -> WrittenSegment:
         frames = self._ingestor.timeline.frames
         if not frames:
-            raise RuntimeError("cannot write track without timeline frames")
+            raise RuntimeError("cannot write segment without timeline frames")
 
         last_frame = frames[-1]
         next_end_offset = last_frame.offset + last_frame.length
@@ -74,13 +85,23 @@ class SessionOutputWriter:
             source=self._ingestor.ring_buffer,
             byte_range=plan.outgoing,
             directory=self._directory,
-            stem=safe_track_stem(transition.outgoing.title),
+            stem=safe_track_stem(transition.outgoing.label or "segment"),
             codec=self._codec,
         )
 
         self._current_start_offset = plan.incoming.start_offset
 
-        return WrittenTrack(
+        return WrittenSegment(
             transition=transition,
             path=path,
+        )
+
+    def write_transition(self, transition: TrackTransition) -> WrittenTrack:
+        written = self.write_segment_transition(
+            transition.as_segment_transition(),
+        )
+
+        return WrittenTrack(
+            transition=transition,
+            path=written.path,
         )

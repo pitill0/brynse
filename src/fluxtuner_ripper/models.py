@@ -133,6 +133,21 @@ class BoundaryCandidate:
 
 
 @dataclass(frozen=True)
+class Segment:
+    """Source-agnostic logical segment anchored to the retained stream."""
+
+    start_offset: int
+    start_time_seconds: float
+    label: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.start_offset < 0:
+            raise ValueError("start_offset must be non-negative")
+        if self.start_time_seconds < 0:
+            raise ValueError("start_time_seconds must be non-negative")
+
+
+@dataclass(frozen=True)
 class TrackCandidate:
     """Durable metadata title eligible for later acoustic boundary matching."""
 
@@ -148,6 +163,14 @@ class TrackCandidate:
             time_seconds=self.start_time_seconds,
             source="metadata",
             reference_offset=self.start_offset,
+        )
+
+    def as_segment(self) -> Segment:
+        """Project this radio-specific track candidate onto the generic segment contract."""
+        return Segment(
+            start_offset=self.start_offset,
+            start_time_seconds=self.start_time_seconds,
+            label=self.title,
         )
 
 

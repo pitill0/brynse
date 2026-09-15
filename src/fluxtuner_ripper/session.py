@@ -10,6 +10,7 @@ from fluxtuner_ripper.metadata import MetadataSemanticTracker
 from fluxtuner_ripper.models import (
     MetadataSemanticDecision,
     RippingIngestResult,
+    Segment,
     SplitKind,
     TemporalSplitDecision,
     TemporalSplitKind,
@@ -24,12 +25,29 @@ from fluxtuner_ripper.ripping import RippingStreamIngestor
 
 
 @dataclass(frozen=True)
+class SegmentTransition:
+    """A resolved transition between two source-agnostic logical segments."""
+
+    outgoing: Segment
+    incoming: Segment
+    boundary: BoundaryResolution
+
+
+@dataclass(frozen=True)
 class TrackTransition:
     """A resolved transition from the current track to an incoming track."""
 
     outgoing: TrackCandidate
     incoming: TrackCandidate
     boundary: BoundaryResolution
+
+    def as_segment_transition(self) -> SegmentTransition:
+        """Project this radio-specific transition onto the generic segment contract."""
+        return SegmentTransition(
+            outgoing=self.outgoing.as_segment(),
+            incoming=self.incoming.as_segment(),
+            boundary=self.boundary,
+        )
 
 
 @dataclass(frozen=True)
