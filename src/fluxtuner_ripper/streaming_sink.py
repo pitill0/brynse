@@ -26,6 +26,7 @@ class StreamingSegmentSink:
         directory: Path,
         codec: str,
         spool: StreamingSpool | None = None,
+        initial_start_offset: int | None = None,
         range_planner: TrackRangePlanner | None = None,
         output_service: TrackOutputService | None = None,
     ) -> None:
@@ -37,6 +38,7 @@ class StreamingSegmentSink:
         self._source: EncodedByteSource = spool if spool is not None else ingestor.ring_buffer
         self._directory = directory
         self._codec = codec
+        self._initial_start_offset = initial_start_offset
         self._range_planner = range_planner or TrackRangePlanner()
         self._output_service = output_service or TrackOutputService()
 
@@ -62,7 +64,11 @@ class StreamingSegmentSink:
             raise RuntimeError("cannot write segment without timeline frames")
 
         if self._current_start_offset is None:
-            self._current_start_offset = frames[0].offset
+            self._current_start_offset = (
+                self._initial_start_offset
+                if self._initial_start_offset is not None
+                else frames[0].offset
+            )
 
         stream_end_offset = self._source.end_offset
 
@@ -94,7 +100,11 @@ class StreamingSegmentSink:
             return None
 
         if self._current_start_offset is None:
-            self._current_start_offset = frames[0].offset
+            self._current_start_offset = (
+                self._initial_start_offset
+                if self._initial_start_offset is not None
+                else frames[0].offset
+            )
 
         last_frame = frames[-1]
         stream_end_offset = last_frame.offset + last_frame.length

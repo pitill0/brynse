@@ -298,3 +298,31 @@ def test_streaming_segment_sink_spool_preserves_crossfade_overlap(
         assert spool.read(250, 300) == b"x" * 50
     finally:
         spool.close()
+
+
+def test_streaming_segment_sink_preserves_explicit_initial_start_offset(
+    tmp_path: Path,
+) -> None:
+    ingestor = _ingestor()
+    output_service = _OutputService()
+
+    # Simulate a timeline already pruned by bounded ring retention.
+    ingestor.timeline.frames = ingestor.timeline.frames[1:]
+
+    sink = StreamingSegmentSink(
+        ingestor=ingestor,  # type: ignore[arg-type]
+        directory=tmp_path,
+        codec="mp3",
+        initial_start_offset=100,
+        output_service=output_service,  # type: ignore[arg-type]
+    )
+
+    segment = sink.accept(
+        _resolution(
+            incoming_start=300,
+            outgoing_end=300,
+        )  # type: ignore[arg-type]
+    )
+
+    assert segment.start_offset == 100
+    assert segment.end_offset == 300
