@@ -22,17 +22,26 @@ from fluxtuner_ripper.matching import (
 )
 from fluxtuner_ripper.models import (
     AcousticBoundaryCandidate,
-    AcousticWindow,
     BoundaryCandidate,
     BoundaryMatch,
     BoundaryRelationResult,
-    DecodedPcm,
     SplitDecision,
     TemporalSplitDecision,
     TemporalSplitKind,
     TrackCandidate,
 )
 from fluxtuner_ripper.mp3_refinement import Mp3BoundaryRefiner
+
+
+@dataclass(frozen=True)
+class CandidateResolution:
+    """Resolved source-agnostic boundary candidate and its split decision."""
+
+    candidate: BoundaryCandidate
+    acoustic: AcousticBoundaryCandidate
+    relation: BoundaryRelationResult
+    temporal: TemporalSplitDecision
+    split: SplitDecision
 
 
 @dataclass(frozen=True)
@@ -92,8 +101,8 @@ class RippingOrchestrator:
         candidate: BoundaryCandidate,
         timeline: IncrementalFrameTimeline,
         ring_buffer: EncodedAudioRingBuffer,
-    ) -> tuple[AcousticWindow, DecodedPcm, AcousticBoundaryCandidate] | None:
-        """Resolve one generic boundary candidate to an acoustic candidate."""
+    ) -> CandidateResolution | None:
+        """Resolve one generic boundary candidate into a frame-aligned split."""
 
         window = self._window_extractor.extract(
             candidate_time_seconds=candidate.time_seconds,
@@ -117,7 +126,32 @@ class RippingOrchestrator:
         if selected is None:
             return None
 
-        return window, pcm, selected
+        relation = self._relation_classifier.classify(
+            semantic_time_seconds=candidate.time_seconds,
+            acoustic_time_seconds=selected.time_seconds,
+        )
+        temporal = self._split_policy.decide(relation)
+
+        if self._mp3_refiner is not None and temporal.kind is TemporalSplitKind.HARD_CUT:
+            refinement_profile = self._refinement_analyzer.analyze(pcm)
+            temporal = self._mp3_refiner.refine(
+                decision=temporal,
+                profile=refinement_profile,
+                window=window,
+            )
+
+        split = self._split_aligner.align(
+            decision=temporal,
+            timeline=timeline,
+        )
+
+        return CandidateResolution(
+            candidate=candidate,
+            acoustic=selected,
+            relation=relation,
+            temporal=temporal,
+            split=split,
+        )
 
     def resolve_boundary(
         self,
@@ -136,39 +170,18 @@ class RippingOrchestrator:
         if resolved is None:
             return None
 
-        window, pcm, selected = resolved
-
         match = BoundaryMatch(
             track=track,
-            acoustic=selected,
-            delta_seconds=abs(selected.time_seconds - track.start_time_seconds),
-        )
-
-        relation = self._relation_classifier.classify(
-            semantic_time_seconds=track.start_time_seconds,
-            acoustic_time_seconds=match.acoustic.time_seconds,
-        )
-        temporal = self._split_policy.decide(relation)
-
-        if self._mp3_refiner is not None and temporal.kind is TemporalSplitKind.HARD_CUT:
-            refinement_profile = self._refinement_analyzer.analyze(pcm)
-            temporal = self._mp3_refiner.refine(
-                decision=temporal,
-                profile=refinement_profile,
-                window=window,
-            )
-
-        split = self._split_aligner.align(
-            decision=temporal,
-            timeline=timeline,
+            acoustic=resolved.acoustic,
+            delta_seconds=abs(resolved.acoustic.time_seconds - track.start_time_seconds),
         )
 
         return BoundaryResolution(
             track=track,
             match=match,
-            relation=relation,
-            temporal=temporal,
-            split=split,
+            relation=resolved.relation,
+            temporal=resolved.temporal,
+            split=resolved.split,
         )
 
 
