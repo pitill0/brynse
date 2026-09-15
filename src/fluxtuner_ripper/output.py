@@ -14,6 +14,10 @@ from fluxtuner_ripper.models import (
 class EncodedByteSource(Protocol):
     """Readable encoded-byte source addressed by absolute offsets."""
 
+    @property
+    def end_offset(self) -> int:
+        """Absolute offset immediately after the newest available byte."""
+
     def contains(self, start: int, end: int) -> bool:
         """Return whether the complete half-open span is available."""
 

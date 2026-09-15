@@ -19,6 +19,7 @@ class SpoolingEncodedStreamIngestor:
     ) -> None:
         self._ingestor = ingestor
         self._spool = spool
+        self._first_frame_offset: int | None = None
 
     @property
     def timeline(self) -> IncrementalFrameTimeline:
@@ -31,6 +32,10 @@ class SpoolingEncodedStreamIngestor:
     @property
     def spool(self) -> StreamingSpool:
         return self._spool
+
+    @property
+    def first_frame_offset(self) -> int | None:
+        return self._first_frame_offset
 
     def feed(self, data: bytes) -> None:
         """Persist bytes and feed the normal encoded-stream parser."""
@@ -49,3 +54,8 @@ class SpoolingEncodedStreamIngestor:
             raise RuntimeError("streaming spool appended unexpected byte count")
 
         self._ingestor.feed(data)
+
+        if self._first_frame_offset is None:
+            frames = self._ingestor.timeline.frames
+            if frames:
+                self._first_frame_offset = frames[0].offset

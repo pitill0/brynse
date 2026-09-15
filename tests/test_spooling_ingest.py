@@ -100,3 +100,37 @@ def test_spooling_ingestor_keeps_full_spool_when_ring_evicts(
         assert spool.read(0, len(payload)) == payload
     finally:
         spool.close()
+
+
+def test_spooling_ingestor_preserves_first_frame_offset_after_ring_eviction(
+    tmp_path: Path,
+) -> None:
+    spool = StreamingSpool(directory=tmp_path)
+
+    try:
+        frame = _mp3_frame()
+
+        ingestor = EncodedStreamIngestor(
+            codec="mp3",
+            ring_max_bytes=len(frame) * 2,
+        )
+        spooling = SpoolingEncodedStreamIngestor(
+            ingestor=ingestor,
+            spool=spool,
+        )
+
+        spooling.feed(frame)
+
+        first_offset = spooling.first_frame_offset
+
+        assert first_offset == 0
+
+        spooling.feed(frame * 5)
+
+        assert ingestor.ring_buffer.start_offset > first_offset
+        assert ingestor.timeline.frames[0].offset > first_offset
+
+        # The timeline and ring may rotate, but the stream anchor must not.
+        assert spooling.first_frame_offset == first_offset
+    finally:
+        spool.close()
