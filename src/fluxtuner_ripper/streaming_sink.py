@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Protocol
 
 from fluxtuner_ripper.generic_output import MaterializedSegment
 from fluxtuner_ripper.ingest import EncodedStreamIngestor
@@ -16,6 +17,13 @@ from fluxtuner_ripper.output import (
 from fluxtuner_ripper.streaming_spool import StreamingSpool
 
 
+class InitialStartOffsetSource(Protocol):
+    """Source that can expose the first valid encoded-frame offset lazily."""
+
+    @property
+    def first_frame_offset(self) -> int | None: ...
+
+
 class StreamingSegmentSink:
     """Write completed segments while leaving the current tail open."""
 
@@ -27,6 +35,7 @@ class StreamingSegmentSink:
         codec: str,
         spool: StreamingSpool | None = None,
         initial_start_offset: int | None = None,
+        initial_start_source: InitialStartOffsetSource | None = None,
         range_planner: TrackRangePlanner | None = None,
         output_service: TrackOutputService | None = None,
     ) -> None:
@@ -39,6 +48,7 @@ class StreamingSegmentSink:
         self._directory = directory
         self._codec = codec
         self._initial_start_offset = initial_start_offset
+        self._initial_start_source = initial_start_source
         self._range_planner = range_planner or TrackRangePlanner()
         self._output_service = output_service or TrackOutputService()
 
@@ -49,6 +59,23 @@ class StreamingSegmentSink:
     @property
     def current_start_offset(self) -> int | None:
         return self._current_start_offset
+
+    def _ensure_current_start_offset(self) -> None:
+        if self._current_start_offset is not None:
+            return
+
+        start_offset = self._initial_start_offset
+
+        if start_offset is None and self._initial_start_source is not None:
+            start_offset = self._initial_start_source.first_frame_offset
+
+        if start_offset is None:
+            frames = self._ingestor.timeline.frames
+            if not frames:
+                raise RuntimeError("cannot determine segment start without timeline frames")
+            start_offset = frames[0].offset
+
+        self._current_start_offset = start_offset
 
     def accept(
         self,
@@ -63,17 +90,16 @@ class StreamingSegmentSink:
         if not frames:
             raise RuntimeError("cannot write segment without timeline frames")
 
-        if self._current_start_offset is None:
-            self._current_start_offset = (
-                self._initial_start_offset
-                if self._initial_start_offset is not None
-                else frames[0].offset
-            )
+        self._ensure_current_start_offset()
+
+        current_start_offset = self._current_start_offset
+        if current_start_offset is None:
+            raise RuntimeError("segment start offset was not initialized")
 
         stream_end_offset = self._source.end_offset
 
         plan = self._range_planner.plan(
-            previous_start_offset=self._current_start_offset,
+            previous_start_offset=current_start_offset,
             next_end_offset=stream_end_offset,
             decision=resolution.split,
         )
@@ -99,22 +125,21 @@ class StreamingSegmentSink:
         if not frames:
             return None
 
-        if self._current_start_offset is None:
-            self._current_start_offset = (
-                self._initial_start_offset
-                if self._initial_start_offset is not None
-                else frames[0].offset
-            )
+        self._ensure_current_start_offset()
+
+        current_start_offset = self._current_start_offset
+        if current_start_offset is None:
+            raise RuntimeError("segment start offset was not initialized")
 
         last_frame = frames[-1]
         stream_end_offset = last_frame.offset + last_frame.length
 
-        if self._current_start_offset >= stream_end_offset:
+        if current_start_offset >= stream_end_offset:
             return None
 
         return self._write_range(
             TrackByteRange(
-                start_offset=self._current_start_offset,
+                start_offset=current_start_offset,
                 end_offset=stream_end_offset,
             )
         )

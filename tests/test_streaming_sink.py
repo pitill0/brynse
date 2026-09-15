@@ -326,3 +326,36 @@ def test_streaming_segment_sink_preserves_explicit_initial_start_offset(
 
     assert segment.start_offset == 100
     assert segment.end_offset == 300
+
+
+def test_streaming_segment_sink_resolves_initial_start_offset_lazily(
+    tmp_path: Path,
+) -> None:
+    class _InitialStartSource:
+        first_frame_offset: int | None = None
+
+    ingestor = _ingestor()
+    output_service = _OutputService()
+    start_source = _InitialStartSource()
+
+    sink = StreamingSegmentSink(
+        ingestor=ingestor,  # type: ignore[arg-type]
+        directory=tmp_path,
+        codec="mp3",
+        initial_start_source=start_source,
+        output_service=output_service,  # type: ignore[arg-type]
+    )
+
+    # The sink already exists, but ingestion discovers the actual first
+    # encoded frame only afterwards.
+    start_source.first_frame_offset = 100
+
+    segment = sink.accept(
+        _resolution(
+            incoming_start=300,
+            outgoing_end=300,
+        )  # type: ignore[arg-type]
+    )
+
+    assert segment.start_offset == 100
+    assert segment.end_offset == 300
