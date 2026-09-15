@@ -30,15 +30,19 @@ class GenericSegmentWriter:
         ingestor: EncodedStreamIngestor,
         directory: Path,
         codec: str,
+        minimum_tail_seconds: float = 1.0,
         range_planner: TrackRangePlanner | None = None,
         output_service: TrackOutputService | None = None,
     ) -> None:
         if codec not in {"mp3", "aac"}:
             raise ValueError("codec must be 'mp3' or 'aac'")
+        if minimum_tail_seconds <= 0:
+            raise ValueError("minimum_tail_seconds must be greater than zero")
 
         self._ingestor = ingestor
         self._directory = directory
         self._codec = codec
+        self._minimum_tail_seconds = minimum_tail_seconds
         self._range_planner = range_planner or TrackRangePlanner()
         self._output_service = output_service or TrackOutputService()
 
@@ -57,40 +61,47 @@ class GenericSegmentWriter:
 
         current_start_offset = first_frame.offset
         stream_end_offset = last_frame.offset + last_frame.length
+        stream_end_time_seconds = (
+            last_frame.time_seconds + last_frame.samples / last_frame.sample_rate
+        )
 
         written: list[MaterializedSegment] = []
 
         for index, resolution in enumerate(resolutions, start=1):
             decision = resolution.split
+            is_last_resolution = index == len(resolutions)
 
-            if (
-                decision.incoming_start == stream_end_offset
-                and decision.outgoing_end == stream_end_offset
-            ):
-                final_range = TrackByteRange(
-                    start_offset=current_start_offset,
-                    end_offset=stream_end_offset,
+            if is_last_resolution:
+                tail_seconds = max(
+                    0.0,
+                    stream_end_time_seconds - resolution.temporal.incoming_start_seconds,
                 )
 
-                path = self._output_service.write_track(
-                    source=self._ingestor.ring_buffer,
-                    byte_range=final_range,
-                    directory=self._directory,
-                    stem=f"segment-{index:04d}",
-                    codec=self._codec,
-                )
-
-                written.append(
-                    MaterializedSegment(
-                        index=index,
-                        start_offset=final_range.start_offset,
-                        end_offset=final_range.end_offset,
-                        path=path,
+                if tail_seconds < self._minimum_tail_seconds:
+                    final_range = TrackByteRange(
+                        start_offset=current_start_offset,
+                        end_offset=stream_end_offset,
                     )
-                )
 
-                current_start_offset = stream_end_offset
-                break
+                    path = self._output_service.write_track(
+                        source=self._ingestor.ring_buffer,
+                        byte_range=final_range,
+                        directory=self._directory,
+                        stem=f"segment-{index:04d}",
+                        codec=self._codec,
+                    )
+
+                    written.append(
+                        MaterializedSegment(
+                            index=index,
+                            start_offset=final_range.start_offset,
+                            end_offset=final_range.end_offset,
+                            path=path,
+                        )
+                    )
+
+                    current_start_offset = stream_end_offset
+                    break
 
             plan = self._range_planner.plan(
                 previous_start_offset=current_start_offset,

@@ -8,6 +8,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from fluxtuner_ripper.generic_output import GenericSegmentWriter
 from fluxtuner_ripper.generic_runner import GenericRunner
 from fluxtuner_ripper.ingest import EncodedStreamIngestor
 from fluxtuner_ripper.orchestrator import RippingOrchestrator
@@ -40,6 +41,11 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="SECONDS",
         help="Fixed boundary interval in seconds",
     )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Write finalized segments to this directory",
+    )
     return parser
 
 
@@ -69,6 +75,7 @@ def _run_generic_pipeline(
     data: bytes,
     codec: str,
     interval_seconds: float,
+    output_directory: Path | None = None,
 ) -> dict[str, object]:
     if not data:
         raise GenericCliError("input contains no encoded data")
@@ -90,7 +97,7 @@ def _run_generic_pipeline(
 
     result = runner.run((data,))
 
-    return {
+    payload: dict[str, object] = {
         "bytes_ingested": result.bytes_ingested,
         "codec": codec,
         "provider": "fixed_interval",
@@ -108,6 +115,26 @@ def _run_generic_pipeline(
         ],
     }
 
+    if output_directory is not None:
+        writer = GenericSegmentWriter(
+            ingestor=ingestor,
+            directory=output_directory,
+            codec=codec,
+        )
+        segments = writer.write(result.resolutions)
+
+        payload["segments"] = [
+            {
+                "index": segment.index,
+                "start_offset": segment.start_offset,
+                "end_offset": segment.end_offset,
+                "path": str(segment.path),
+            }
+            for segment in segments
+        ]
+
+    return payload
+
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
@@ -120,6 +147,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             data=data,
             codec=args.codec,
             interval_seconds=args.interval,
+            output_directory=args.output_dir,
         )
     except GenericCliError as exc:
         parser.error(str(exc))

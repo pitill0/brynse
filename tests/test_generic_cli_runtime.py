@@ -134,3 +134,106 @@ def test_run_generic_pipeline_rejects_empty_input() -> None:
             codec="aac",
             interval_seconds=30.0,
         )
+
+
+def test_run_generic_pipeline_materializes_segments_when_output_directory_is_set(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+
+    import fluxtuner_ripper.generic_cli as generic_cli
+
+    class _Ingestor:
+        def __init__(self, *, codec: str, ring_max_bytes: int) -> None:
+            self.codec = codec
+            self.ring_max_bytes = ring_max_bytes
+
+    class _Provider:
+        def __init__(self, *, interval_seconds: float) -> None:
+            self.interval_seconds = interval_seconds
+
+    class _Resolver:
+        pass
+
+    resolution = SimpleNamespace(
+        candidate=SimpleNamespace(
+            time_seconds=30.0,
+            source="fixed_interval",
+        ),
+        temporal=SimpleNamespace(
+            incoming_start_seconds=30.0,
+        ),
+        split=SimpleNamespace(
+            incoming_start=1000,
+            outgoing_end=1000,
+            kind=SimpleNamespace(value="hard_cut"),
+        ),
+    )
+
+    class _Runner:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def run(self, chunks: object) -> object:
+            assert tuple(chunks) == (b"encoded-data",)
+            return SimpleNamespace(
+                bytes_ingested=12,
+                resolutions=(resolution,),
+            )
+
+    class _SegmentWriter:
+        def __init__(
+            self,
+            *,
+            ingestor: object,
+            directory: Path,
+            codec: str,
+        ) -> None:
+            assert directory == tmp_path
+            assert codec == "mp3"
+
+        def write(self, resolutions: object) -> object:
+            assert tuple(resolutions) == (resolution,)
+            return (
+                SimpleNamespace(
+                    index=1,
+                    start_offset=0,
+                    end_offset=1000,
+                    path=tmp_path / "segment-0001.mp3",
+                ),
+                SimpleNamespace(
+                    index=2,
+                    start_offset=1000,
+                    end_offset=2000,
+                    path=tmp_path / "segment-0002.mp3",
+                ),
+            )
+
+    monkeypatch.setattr(generic_cli, "EncodedStreamIngestor", _Ingestor)
+    monkeypatch.setattr(generic_cli, "FixedIntervalBoundaryProvider", _Provider)
+    monkeypatch.setattr(generic_cli, "RippingOrchestrator", _Resolver)
+    monkeypatch.setattr(generic_cli, "GenericRunner", _Runner)
+    monkeypatch.setattr(generic_cli, "GenericSegmentWriter", _SegmentWriter)
+
+    payload = generic_cli._run_generic_pipeline(
+        data=b"encoded-data",
+        codec="mp3",
+        interval_seconds=30.0,
+        output_directory=tmp_path,
+    )
+
+    assert payload["segments"] == [
+        {
+            "index": 1,
+            "start_offset": 0,
+            "end_offset": 1000,
+            "path": str(tmp_path / "segment-0001.mp3"),
+        },
+        {
+            "index": 2,
+            "start_offset": 1000,
+            "end_offset": 2000,
+            "path": str(tmp_path / "segment-0002.mp3"),
+        },
+    ]

@@ -32,10 +32,34 @@ class _OutputService:
 
 def _ingestor() -> object:
     frames = (
-        SimpleNamespace(offset=0, length=100),
-        SimpleNamespace(offset=100, length=100),
-        SimpleNamespace(offset=200, length=100),
-        SimpleNamespace(offset=300, length=100),
+        SimpleNamespace(
+            offset=0,
+            length=100,
+            time_seconds=0.0,
+            samples=1,
+            sample_rate=1,
+        ),
+        SimpleNamespace(
+            offset=100,
+            length=100,
+            time_seconds=1.0,
+            samples=1,
+            sample_rate=1,
+        ),
+        SimpleNamespace(
+            offset=200,
+            length=100,
+            time_seconds=2.0,
+            samples=1,
+            sample_rate=1,
+        ),
+        SimpleNamespace(
+            offset=300,
+            length=100,
+            time_seconds=3.0,
+            samples=1,
+            sample_rate=1,
+        ),
     )
 
     return SimpleNamespace(
@@ -50,11 +74,14 @@ def _resolution(
     outgoing_end: int,
 ) -> object:
     return SimpleNamespace(
+        temporal=SimpleNamespace(
+            incoming_start_seconds=incoming_start / 100,
+        ),
         split=SplitDecision(
             kind=SplitKind.HARD_CUT,
             incoming_start=incoming_start,
             outgoing_end=outgoing_end,
-        )
+        ),
     )
 
 
