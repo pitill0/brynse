@@ -56,3 +56,33 @@ class FixedIntervalBoundaryProvider:
             )
             for index in range(first_index, last_index + 1)
         )
+
+
+class ManualBoundaryProvider:
+    """Propose explicitly supplied boundary times."""
+
+    def __init__(self, boundary_times_seconds: tuple[float, ...]) -> None:
+        if any(value < 0 for value in boundary_times_seconds):
+            raise ValueError("boundary times must be non-negative")
+
+        self._boundary_times_seconds = tuple(sorted(set(boundary_times_seconds)))
+
+    def propose(
+        self,
+        *,
+        start_time_seconds: float,
+        end_time_seconds: float,
+    ) -> tuple[BoundaryCandidate, ...]:
+        if start_time_seconds < 0:
+            raise ValueError("start_time_seconds must be non-negative")
+        if end_time_seconds < start_time_seconds:
+            raise ValueError("end_time_seconds must be greater than or equal to start_time_seconds")
+
+        return tuple(
+            BoundaryCandidate(
+                time_seconds=time_seconds,
+                source="manual",
+            )
+            for time_seconds in self._boundary_times_seconds
+            if start_time_seconds < time_seconds <= end_time_seconds
+        )

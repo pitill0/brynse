@@ -76,3 +76,57 @@ def test_fixed_interval_provider_rejects_invalid_requested_range() -> None:
             start_time_seconds=20.0,
             end_time_seconds=10.0,
         )
+
+
+def test_manual_boundary_provider_returns_boundaries_in_requested_window() -> None:
+    from fluxtuner_ripper.providers import ManualBoundaryProvider
+
+    provider = ManualBoundaryProvider(
+        boundary_times_seconds=(30.0, 10.0, 20.0),
+    )
+
+    candidates = provider.propose(
+        start_time_seconds=10.0,
+        end_time_seconds=30.0,
+    )
+
+    assert [candidate.time_seconds for candidate in candidates] == [
+        20.0,
+        30.0,
+    ]
+    assert [candidate.source for candidate in candidates] == [
+        "manual",
+        "manual",
+    ]
+
+
+def test_manual_boundary_provider_deduplicates_times() -> None:
+    from fluxtuner_ripper.providers import ManualBoundaryProvider
+
+    provider = ManualBoundaryProvider(
+        boundary_times_seconds=(10.0, 10.0, 20.0),
+    )
+
+    candidates = provider.propose(
+        start_time_seconds=0.0,
+        end_time_seconds=30.0,
+    )
+
+    assert [candidate.time_seconds for candidate in candidates] == [
+        10.0,
+        20.0,
+    ]
+
+
+def test_manual_boundary_provider_rejects_negative_time() -> None:
+    import pytest
+
+    from fluxtuner_ripper.providers import ManualBoundaryProvider
+
+    with pytest.raises(
+        ValueError,
+        match="boundary times must be non-negative",
+    ):
+        ManualBoundaryProvider(
+            boundary_times_seconds=(-1.0,),
+        )

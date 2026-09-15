@@ -12,7 +12,11 @@ from fluxtuner_ripper.generic_output import GenericSegmentWriter
 from fluxtuner_ripper.generic_runner import GenericRunner
 from fluxtuner_ripper.ingest import EncodedStreamIngestor
 from fluxtuner_ripper.orchestrator import RippingOrchestrator
-from fluxtuner_ripper.providers import FixedIntervalBoundaryProvider
+from fluxtuner_ripper.providers import (
+    BoundaryProvider,
+    FixedIntervalBoundaryProvider,
+    ManualBoundaryProvider,
+)
 
 
 class GenericCliError(RuntimeError):
@@ -35,11 +39,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Encoded stream codec",
     )
     parser.add_argument(
+        "--provider",
+        choices=("fixed", "manual"),
+        default="fixed",
+        help="Boundary provider to use (default: fixed)",
+    )
+    parser.add_argument(
         "--interval",
         type=float,
-        required=True,
         metavar="SECONDS",
         help="Fixed boundary interval in seconds",
+    )
+    parser.add_argument(
+        "--boundary",
+        type=float,
+        action="append",
+        default=[],
+        metavar="SECONDS",
+        help="Explicit manual boundary time; may be repeated",
     )
     parser.add_argument(
         "--output-dir",
@@ -57,8 +74,20 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _validate_args(args: argparse.Namespace) -> None:
-    if args.interval <= 0:
-        raise GenericCliError("--interval must be greater than zero")
+    if args.provider == "fixed":
+        if args.interval is None:
+            raise GenericCliError("--interval is required when --provider=fixed")
+        if args.interval <= 0:
+            raise GenericCliError("--interval must be greater than zero")
+
+    if args.provider == "manual":
+        if not args.boundary:
+            raise GenericCliError("at least one --boundary is required when --provider=manual")
+        if any(value < 0 for value in args.boundary):
+            raise GenericCliError("--boundary values must be non-negative")
+
+    if args.min_tail <= 0:
+        raise GenericCliError("--min-tail must be greater than zero")
 
     if args.input != "-":
         path = Path(args.input)
@@ -81,7 +110,9 @@ def _run_generic_pipeline(
     *,
     data: bytes,
     codec: str,
-    interval_seconds: float,
+    provider_name: str = "fixed",
+    interval_seconds: float | None = None,
+    boundary_times_seconds: tuple[float, ...] = (),
     output_directory: Path | None = None,
     minimum_tail_seconds: float = 1.0,
 ) -> dict[str, object]:
@@ -92,9 +123,22 @@ def _run_generic_pipeline(
         codec=codec,
         ring_max_bytes=len(data),
     )
-    provider = FixedIntervalBoundaryProvider(
-        interval_seconds=interval_seconds,
-    )
+    provider: BoundaryProvider
+
+    if provider_name == "fixed":
+        if interval_seconds is None:
+            raise GenericCliError("--interval is required when --provider=fixed")
+        provider = FixedIntervalBoundaryProvider(
+            interval_seconds=interval_seconds,
+        )
+    elif provider_name == "manual":
+        if not boundary_times_seconds:
+            raise GenericCliError("at least one --boundary is required when --provider=manual")
+        provider = ManualBoundaryProvider(
+            boundary_times_seconds=boundary_times_seconds,
+        )
+    else:
+        raise GenericCliError(f"unsupported provider: {provider_name}")
     resolver = RippingOrchestrator()
 
     runner = GenericRunner(
@@ -108,7 +152,7 @@ def _run_generic_pipeline(
     payload: dict[str, object] = {
         "bytes_ingested": result.bytes_ingested,
         "codec": codec,
-        "provider": "fixed_interval",
+        "provider": ("fixed_interval" if provider_name == "fixed" else "manual"),
         "interval_seconds": interval_seconds,
         "boundaries": [
             {
@@ -155,7 +199,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = _run_generic_pipeline(
             data=data,
             codec=args.codec,
+            provider_name=args.provider,
             interval_seconds=args.interval,
+            boundary_times_seconds=tuple(args.boundary),
             output_directory=args.output_dir,
             minimum_tail_seconds=args.min_tail,
         )
