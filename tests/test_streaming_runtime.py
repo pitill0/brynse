@@ -181,3 +181,70 @@ def test_async_streaming_runtime_preserves_unmatured_candidate() -> None:
         assert resolver.calls == []
 
     asyncio.run(scenario())
+
+
+def test_async_streaming_runtime_materializes_resolved_segments() -> None:
+    async def scenario() -> None:
+        ingestor = _Ingestor()
+        resolver = _Resolver()
+
+        runner = StreamingGenericRunner(
+            ingestor=ingestor,  # type: ignore[arg-type]
+            resolver=resolver,  # type: ignore[arg-type]
+            settle_seconds=1.0,
+        )
+
+        materialized: list[object] = []
+
+        class _Sink:
+            def accept(self, resolution: object) -> object:
+                segment = SimpleNamespace(
+                    index=len(materialized) + 1,
+                    resolution=resolution,
+                )
+                materialized.append(segment)
+                return segment
+
+            def finalize(self) -> object:
+                segment = SimpleNamespace(
+                    index=len(materialized) + 1,
+                    tail=True,
+                )
+                materialized.append(segment)
+                return segment
+
+        runtime = AsyncStreamingRuntime(
+            runner=runner,
+            sink=_Sink(),  # type: ignore[arg-type]
+        )
+
+        async def audio_source():
+            yield b"20"
+
+        async def boundary_source():
+            yield BoundaryCandidate(
+                time_seconds=10.0,
+                source="agent",
+            )
+            yield BoundaryCandidate(
+                time_seconds=15.0,
+                source="vad",
+            )
+
+        result = await runtime.run(
+            audio_source=audio_source(),
+            boundary_source=boundary_source(),
+        )
+
+        assert len(result.completed) == 2
+        assert len(result.segments) == 3
+
+        assert result.segments[0].index == 1
+        assert result.segments[1].index == 2
+
+        assert result.segments[2].index == 3
+        assert result.segments[2].tail is True
+
+        assert result.pending == ()
+
+    asyncio.run(scenario())

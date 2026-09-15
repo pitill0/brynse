@@ -7,18 +7,21 @@ from collections.abc import AsyncIterable
 from dataclasses import dataclass
 from typing import TypeAlias
 
+from fluxtuner_ripper.generic_output import MaterializedSegment
 from fluxtuner_ripper.models import BoundaryCandidate
 from fluxtuner_ripper.streaming_runner import (
     StreamingCandidateResult,
     StreamingGenericRunner,
 )
+from fluxtuner_ripper.streaming_sink import StreamingSegmentSink
 
 
 @dataclass(frozen=True)
 class StreamingRuntimeResult:
-    """Completed and still-pending work after both producers finish."""
+    """Completed work, materialized segments, and pending candidates."""
 
     completed: tuple[StreamingCandidateResult, ...]
+    segments: tuple[MaterializedSegment, ...]
     pending: tuple[BoundaryCandidate, ...]
 
 
@@ -47,8 +50,10 @@ class AsyncStreamingRuntime:
         self,
         *,
         runner: StreamingGenericRunner,
+        sink: StreamingSegmentSink | None = None,
     ) -> None:
         self._runner = runner
+        self._sink = sink
 
     async def run(
         self,
@@ -76,6 +81,7 @@ class AsyncStreamingRuntime:
         boundary_task = asyncio.create_task(produce_boundaries())
 
         completed: list[StreamingCandidateResult] = []
+        segments: list[MaterializedSegment] = []
         finished: set[str] = set()
 
         try:
@@ -83,11 +89,15 @@ class AsyncStreamingRuntime:
                 event = await queue.get()
 
                 if isinstance(event, _AudioEvent):
-                    completed.extend(self._runner.feed(event.chunk))
+                    results = self._runner.feed(event.chunk)
+                    completed.extend(results)
+                    segments.extend(self._materialize(results))
                     continue
 
                 if isinstance(event, _BoundaryEvent):
-                    completed.extend(self._runner.submit_candidate(event.candidate))
+                    results = self._runner.submit_candidate(event.candidate)
+                    completed.extend(results)
+                    segments.extend(self._materialize(results))
                     continue
 
                 finished.add(event.producer)
@@ -104,7 +114,30 @@ class AsyncStreamingRuntime:
                 return_exceptions=True,
             )
 
+        if self._sink is not None:
+            tail = self._sink.finalize()
+            if tail is not None:
+                segments.append(tail)
+
         return StreamingRuntimeResult(
             completed=tuple(completed),
+            segments=tuple(segments),
             pending=self._runner.pending,
         )
+
+    def _materialize(
+        self,
+        results: tuple[StreamingCandidateResult, ...],
+    ) -> tuple[MaterializedSegment, ...]:
+        if self._sink is None:
+            return ()
+
+        segments: list[MaterializedSegment] = []
+
+        for result in results:
+            if result.resolution is None:
+                continue
+
+            segments.append(self._sink.accept(result.resolution))
+
+        return tuple(segments)
