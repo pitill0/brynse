@@ -115,3 +115,38 @@ def test_streaming_spool_close_removes_transient_file(
     assert not path.exists()
 
     spool.close()
+
+
+def test_streaming_spool_can_back_track_output_service(
+    tmp_path: Path,
+) -> None:
+    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.output import TrackOutputService
+
+    class _Finalizer:
+        def finalize(self, data: bytes) -> bytes:
+            return b"FINAL:" + data
+
+    spool = StreamingSpool(directory=tmp_path / "spool")
+
+    try:
+        spool.append(b"abcdefghijklmnop")
+
+        service = TrackOutputService(
+            mp3_finalizer=_Finalizer(),  # type: ignore[arg-type]
+        )
+
+        path = service.write_track(
+            source=spool,
+            byte_range=TrackByteRange(
+                start_offset=4,
+                end_offset=10,
+            ),
+            directory=tmp_path / "output",
+            stem="segment-0001",
+            codec="mp3",
+        )
+
+        assert path.read_bytes() == b"FINAL:efghij"
+    finally:
+        spool.close()

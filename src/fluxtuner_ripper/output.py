@@ -1,14 +1,24 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Protocol
 
-from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
 from fluxtuner_ripper.models import (
     SplitDecision,
     SplitKind,
     TrackByteRange,
     TrackWritePlan,
 )
+
+
+class EncodedByteSource(Protocol):
+    """Readable encoded-byte source addressed by absolute offsets."""
+
+    def contains(self, start: int, end: int) -> bool:
+        """Return whether the complete half-open span is available."""
+
+    def read(self, start: int, end: int) -> bytes:
+        """Return one absolute half-open byte range."""
 
 
 class TrackRangePlanner:
@@ -56,7 +66,7 @@ class EncodedTrackWriter:
     def write_range(
         self,
         *,
-        source: EncodedAudioRingBuffer,
+        source: EncodedByteSource,
         byte_range: TrackByteRange,
     ) -> bytes:
         if not source.contains(byte_range.start_offset, byte_range.end_offset):
@@ -269,7 +279,7 @@ class TrackOutputService:
     def write_track(
         self,
         *,
-        source: EncodedAudioRingBuffer,
+        source: EncodedByteSource,
         byte_range: TrackByteRange,
         directory: Path,
         stem: str,
