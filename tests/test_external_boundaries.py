@@ -108,3 +108,29 @@ def test_load_external_boundaries_rejects_unknown_extension(
         match=r"\.json or \.jsonl",
     ):
         load_external_boundaries(path)
+
+
+def test_load_external_boundaries_from_stdin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import io
+    import sys
+
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(
+            '{"time_seconds": 12.5, "source": "agent"}\n{"time_seconds": 30.0, "source": "vad"}\n'
+        ),
+    )
+
+    boundaries = load_external_boundaries(Path("-"))
+
+    assert [boundary.time_seconds for boundary in boundaries] == [
+        12.5,
+        30.0,
+    ]
+    assert [boundary.source for boundary in boundaries] == [
+        "agent",
+        "vad",
+    ]

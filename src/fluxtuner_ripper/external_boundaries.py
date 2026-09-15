@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -104,7 +105,10 @@ def parse_external_boundaries_jsonl(
 def load_external_boundaries(
     path: Path,
 ) -> tuple[ExternalBoundary, ...]:
-    """Load external boundaries from .json or .jsonl input."""
+    """Load external boundaries from .json, .jsonl, or stdin."""
+
+    if str(path) == "-":
+        return parse_external_boundaries_jsonl(sys.stdin.read())
 
     if not path.exists():
         raise ExternalBoundaryParseError(f"boundary file does not exist: {path}")
