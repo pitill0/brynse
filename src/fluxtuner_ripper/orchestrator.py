@@ -21,8 +21,12 @@ from fluxtuner_ripper.matching import (
     TemporalSplitPolicy,
 )
 from fluxtuner_ripper.models import (
+    AcousticBoundaryCandidate,
+    AcousticWindow,
+    BoundaryCandidate,
     BoundaryMatch,
     BoundaryRelationResult,
+    DecodedPcm,
     SplitDecision,
     TemporalSplitDecision,
     TemporalSplitKind,
@@ -82,15 +86,17 @@ class RippingOrchestrator:
         self._mp3_refiner = mp3_refiner
         self._refinement_analyzer = refinement_analyzer or RmsAcousticAnalyzer(window_seconds=0.05)
 
-    def resolve_boundary(
+    def resolve_candidate(
         self,
         *,
-        track: TrackCandidate,
+        candidate: BoundaryCandidate,
         timeline: IncrementalFrameTimeline,
         ring_buffer: EncodedAudioRingBuffer,
-    ) -> BoundaryResolution | None:
+    ) -> tuple[AcousticWindow, DecodedPcm, AcousticBoundaryCandidate] | None:
+        """Resolve one generic boundary candidate to an acoustic candidate."""
+
         window = self._window_extractor.extract(
-            candidate_time_seconds=track.start_time_seconds,
+            candidate_time_seconds=candidate.time_seconds,
             timeline=timeline,
             ring_buffer=ring_buffer,
         )
@@ -102,14 +108,41 @@ class RippingOrchestrator:
         candidates = self._candidate_finder.find(
             profile=profile,
             window=window,
-            center_time_seconds=track.start_time_seconds,
+            center_time_seconds=candidate.time_seconds,
         )
-        match = self._matcher.match(
-            track=track,
+        selected = self._matcher.match_candidate(
+            candidate=candidate,
             acoustic_candidates=candidates,
         )
-        if match is None:
+        if selected is None:
             return None
+
+        return window, pcm, selected
+
+    def resolve_boundary(
+        self,
+        *,
+        track: TrackCandidate,
+        timeline: IncrementalFrameTimeline,
+        ring_buffer: EncodedAudioRingBuffer,
+    ) -> BoundaryResolution | None:
+        generic_candidate = track.as_boundary_candidate()
+
+        resolved = self.resolve_candidate(
+            candidate=generic_candidate,
+            timeline=timeline,
+            ring_buffer=ring_buffer,
+        )
+        if resolved is None:
+            return None
+
+        window, pcm, selected = resolved
+
+        match = BoundaryMatch(
+            track=track,
+            acoustic=selected,
+            delta_seconds=abs(selected.time_seconds - track.start_time_seconds),
+        )
 
         relation = self._relation_classifier.classify(
             semantic_time_seconds=track.start_time_seconds,

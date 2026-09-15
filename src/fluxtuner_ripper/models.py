@@ -116,6 +116,23 @@ class TimedMetadataEvent:
 
 
 @dataclass(frozen=True)
+class BoundaryCandidate:
+    """Source-agnostic proposal for a logical boundary on the stream timeline."""
+
+    time_seconds: float
+    source: str
+    reference_offset: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.time_seconds < 0:
+            raise ValueError("time_seconds must be non-negative")
+        if not self.source.strip():
+            raise ValueError("source must not be empty")
+        if self.reference_offset is not None and self.reference_offset < 0:
+            raise ValueError("reference_offset must be non-negative")
+
+
+@dataclass(frozen=True)
 class TrackCandidate:
     """Durable metadata title eligible for later acoustic boundary matching."""
 
@@ -124,6 +141,14 @@ class TrackCandidate:
     start_time_seconds: float
     confirmed_at_offset: int
     confirmed_at_time_seconds: float
+
+    def as_boundary_candidate(self) -> BoundaryCandidate:
+        """Project this radio-specific track candidate onto the generic boundary contract."""
+        return BoundaryCandidate(
+            time_seconds=self.start_time_seconds,
+            source="metadata",
+            reference_offset=self.start_offset,
+        )
 
 
 @dataclass(frozen=True)

@@ -55,6 +55,11 @@ class _Matcher:
     def match(self, **kwargs: object) -> BoundaryMatch | None:
         return self.match_result
 
+    def match_candidate(self, **kwargs: object) -> AcousticBoundaryCandidate | None:
+        if self.match_result is None:
+            return None
+        return self.match_result.acoustic
+
 
 class _Classifier:
     def __init__(self, relation: BoundaryRelationResult) -> None:

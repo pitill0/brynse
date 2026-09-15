@@ -3,6 +3,7 @@ from __future__ import annotations
 from fluxtuner_ripper.frames import IncrementalFrameTimeline
 from fluxtuner_ripper.models import (
     AcousticBoundaryCandidate,
+    BoundaryCandidate,
     BoundaryMatch,
     BoundaryRelation,
     BoundaryRelationResult,
@@ -40,47 +41,47 @@ class NearestBoundaryMatcher:
     def search_radius_seconds(self) -> float:
         return self._search_radius
 
-    def match(
+    def match_candidate(
         self,
         *,
-        track: TrackCandidate,
+        candidate: BoundaryCandidate,
         acoustic_candidates: tuple[AcousticBoundaryCandidate, ...],
-    ) -> BoundaryMatch | None:
-        """Return the nearest acoustic candidate inside the configured radius."""
+    ) -> AcousticBoundaryCandidate | None:
+        """Return the acoustic candidate nearest to a generic boundary candidate."""
+
+        center_time_seconds = candidate.time_seconds
 
         eligible = [
-            candidate
-            for candidate in acoustic_candidates
-            if abs(candidate.time_seconds - track.start_time_seconds) <= self._search_radius
+            acoustic
+            for acoustic in acoustic_candidates
+            if abs(acoustic.time_seconds - center_time_seconds) <= self._search_radius
         ]
         if not eligible:
             return None
 
         selected = min(
             eligible,
-            key=lambda candidate: (
-                abs(candidate.time_seconds - track.start_time_seconds),
-                candidate.rms,
-                candidate.time_seconds,
+            key=lambda acoustic: (
+                abs(acoustic.time_seconds - center_time_seconds),
+                acoustic.rms,
+                acoustic.time_seconds,
             ),
         )
 
-        if selected.time_seconds > track.start_time_seconds:
+        if selected.time_seconds > center_time_seconds:
             earlier = [
-                candidate
-                for candidate in eligible
-                if 0.0
-                < track.start_time_seconds - candidate.time_seconds
-                <= self._quiet_override_radius
+                acoustic
+                for acoustic in eligible
+                if 0.0 < center_time_seconds - acoustic.time_seconds <= self._quiet_override_radius
             ]
 
             if earlier:
                 quietest = min(
                     earlier,
-                    key=lambda candidate: (
-                        candidate.rms,
-                        abs(candidate.time_seconds - track.start_time_seconds),
-                        candidate.time_seconds,
+                    key=lambda acoustic: (
+                        acoustic.rms,
+                        abs(acoustic.time_seconds - center_time_seconds),
+                        acoustic.time_seconds,
                     ),
                 )
 
@@ -91,6 +92,23 @@ class NearestBoundaryMatcher:
 
                 if quiet_enough:
                     selected = quietest
+
+        return selected
+
+    def match(
+        self,
+        *,
+        track: TrackCandidate,
+        acoustic_candidates: tuple[AcousticBoundaryCandidate, ...],
+    ) -> BoundaryMatch | None:
+        """Return the nearest acoustic candidate for a radio track candidate."""
+
+        selected = self.match_candidate(
+            candidate=track.as_boundary_candidate(),
+            acoustic_candidates=acoustic_candidates,
+        )
+        if selected is None:
+            return None
 
         return BoundaryMatch(
             track=track,
