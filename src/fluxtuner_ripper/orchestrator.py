@@ -55,6 +55,19 @@ class BoundaryResolution:
     split: SplitDecision
 
 
+class CandidateResolver(Protocol):
+    """Resolve source-agnostic boundary candidates into aligned split decisions."""
+
+    def resolve_candidate(
+        self,
+        *,
+        candidate: BoundaryCandidate,
+        timeline: IncrementalFrameTimeline,
+        ring_buffer: EncodedAudioRingBuffer,
+    ) -> CandidateResolution | None:
+        """Resolve one generic boundary candidate."""
+
+
 class BoundaryResolver(Protocol):
     """Common interface for boundary-resolution strategies."""
 

@@ -24,7 +24,12 @@ from fluxtuner_ripper.frames import (
     parse_adts_frames,
     parse_mp3_frames,
 )
+from fluxtuner_ripper.generic_runner import (
+    GenericRunner,
+    GenericRunResult,
+)
 from fluxtuner_ripper.icy import IcyStreamParser
+from fluxtuner_ripper.ingest import EncodedStreamIngestor
 from fluxtuner_ripper.matching import (
     BoundaryRelationClassifier,
     NearestBoundaryMatcher,
@@ -49,6 +54,7 @@ from fluxtuner_ripper.models import (
     MetadataEvent,
     MetadataSemanticDecision,
     RippingIngestResult,
+    Segment,
     SplitDecision,
     SplitKind,
     TemporalSplitDecision,
@@ -60,6 +66,8 @@ from fluxtuner_ripper.models import (
 )
 from fluxtuner_ripper.orchestrator import (
     BoundaryResolution,
+    CandidateResolution,
+    CandidateResolver,
     RippingOrchestrator,
 )
 from fluxtuner_ripper.output import (
@@ -72,6 +80,10 @@ from fluxtuner_ripper.output import (
     TrackOutputService,
     TrackRangePlanner,
 )
+from fluxtuner_ripper.providers import (
+    BoundaryProvider,
+    FixedIntervalBoundaryProvider,
+)
 from fluxtuner_ripper.ripping import RippingStreamIngestor
 from fluxtuner_ripper.runner import (
     RippingRunConfig,
@@ -81,11 +93,13 @@ from fluxtuner_ripper.runner import (
 )
 from fluxtuner_ripper.session import (
     RippingSession,
+    SegmentTransition,
     SessionFeedResult,
     TrackTransition,
 )
 from fluxtuner_ripper.session_output import (
     SessionOutputWriter,
+    WrittenSegment,
     WrittenTrack,
     safe_track_stem,
 )
@@ -98,12 +112,16 @@ __version__ = "0.1.0.dev0"
 
 __all__ = [
     "SessionOutputWriter",
+    "WrittenSegment",
     "WrittenTrack",
     "safe_track_stem",
     "RippingSession",
+    "SegmentTransition",
     "SessionFeedResult",
     "TrackTransition",
     "BoundaryResolution",
+    "CandidateResolution",
+    "CandidateResolver",
     "RippingOrchestrator",
     "AacTrackFinalizer",
     "AcousticBoundaryCandidate",
@@ -130,8 +148,11 @@ __all__ = [
     "DecodedPcm",
     "EncodedAudioFrame",
     "EncodedAudioRingBuffer",
+    "EncodedStreamIngestor",
     "EncodedTrackWriter",
     "FfmpegAcousticDecoder",
+    "GenericRunner",
+    "GenericRunResult",
     "IcyParseResult",
     "IcyStreamParser",
     "IncrementalFrameTimeline",
@@ -140,8 +161,11 @@ __all__ = [
     "MetadataSemanticTracker",
     "Mp3TrackFinalizer",
     "NearestBoundaryMatcher",
+    "BoundaryProvider",
+    "FixedIntervalBoundaryProvider",
     "RippingIngestResult",
     "RippingStreamIngestor",
+    "Segment",
     "RippingRunConfig",
     "RippingRunError",
     "RippingRunResult",
