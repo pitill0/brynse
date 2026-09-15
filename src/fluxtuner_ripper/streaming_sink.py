@@ -8,7 +8,12 @@ from fluxtuner_ripper.generic_output import MaterializedSegment
 from fluxtuner_ripper.ingest import EncodedStreamIngestor
 from fluxtuner_ripper.models import TrackByteRange
 from fluxtuner_ripper.orchestrator import CandidateResolution
-from fluxtuner_ripper.output import TrackOutputService, TrackRangePlanner
+from fluxtuner_ripper.output import (
+    EncodedByteSource,
+    TrackOutputService,
+    TrackRangePlanner,
+)
+from fluxtuner_ripper.streaming_spool import StreamingSpool
 
 
 class StreamingSegmentSink:
@@ -20,6 +25,7 @@ class StreamingSegmentSink:
         ingestor: EncodedStreamIngestor,
         directory: Path,
         codec: str,
+        spool: StreamingSpool | None = None,
         range_planner: TrackRangePlanner | None = None,
         output_service: TrackOutputService | None = None,
     ) -> None:
@@ -27,6 +33,8 @@ class StreamingSegmentSink:
             raise ValueError("codec must be 'mp3' or 'aac'")
 
         self._ingestor = ingestor
+        self._spool = spool
+        self._source: EncodedByteSource = spool if spool is not None else ingestor.ring_buffer
         self._directory = directory
         self._codec = codec
         self._range_planner = range_planner or TrackRangePlanner()
@@ -56,7 +64,7 @@ class StreamingSegmentSink:
         if self._current_start_offset is None:
             self._current_start_offset = frames[0].offset
 
-        stream_end_offset = self._ingestor.ring_buffer.end_offset
+        stream_end_offset = self._source.end_offset
 
         plan = self._range_planner.plan(
             previous_start_offset=self._current_start_offset,
@@ -67,6 +75,9 @@ class StreamingSegmentSink:
         segment = self._write_range(plan.outgoing)
 
         self._current_start_offset = plan.incoming.start_offset
+
+        if self._spool is not None:
+            self._spool.discard_before(self._current_start_offset)
 
         return segment
 
@@ -102,16 +113,16 @@ class StreamingSegmentSink:
         self,
         byte_range: TrackByteRange,
     ) -> MaterializedSegment:
-        if not self._ingestor.ring_buffer.contains(
+        if not self._source.contains(
             byte_range.start_offset,
             byte_range.end_offset,
         ):
-            raise RuntimeError("segment bytes are no longer retained in the encoded ring buffer")
+            raise RuntimeError("segment bytes are no longer retained in the encoded byte source")
 
         index = self._next_index
 
         path = self._output_service.write_track(
-            source=self._ingestor.ring_buffer,
+            source=self._source,
             byte_range=byte_range,
             directory=self._directory,
             stem=f"segment-{index:04d}",

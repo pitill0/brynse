@@ -211,3 +211,90 @@ def test_streaming_segment_sink_rejects_evicted_segment(
                 outgoing_end=300,
             )  # type: ignore[arg-type]
         )
+
+
+def test_streaming_segment_sink_uses_spool_and_compacts_after_boundary(
+    tmp_path: Path,
+) -> None:
+    from fluxtuner_ripper.streaming_spool import StreamingSpool
+
+    ingestor = _ingestor()
+    output_service = _OutputService()
+    spool = StreamingSpool(directory=tmp_path / "spool")
+
+    try:
+        spool.append(b"x" * 500)
+
+        # Simulate the analysis ring having already evicted the first
+        # part of the still-open segment.
+        ingestor.ring_buffer.start_offset = 250
+
+        sink = StreamingSegmentSink(
+            ingestor=ingestor,  # type: ignore[arg-type]
+            directory=tmp_path / "output",
+            codec="mp3",
+            spool=spool,
+            output_service=output_service,  # type: ignore[arg-type]
+        )
+
+        segment = sink.accept(
+            _resolution(
+                incoming_start=300,
+                outgoing_end=300,
+            )  # type: ignore[arg-type]
+        )
+
+        assert segment.start_offset == 100
+        assert segment.end_offset == 300
+
+        # The ring no longer had [100, 300), so successful output proves
+        # materialization came from the spool.
+        assert ingestor.ring_buffer.start_offset == 250
+
+        # The closed prefix has been discarded. The currently open segment
+        # begins exactly at the incoming boundary.
+        assert spool.start_offset == 300
+        assert spool.end_offset == 500
+        assert spool.retained_bytes == 200
+    finally:
+        spool.close()
+
+
+def test_streaming_segment_sink_spool_preserves_crossfade_overlap(
+    tmp_path: Path,
+) -> None:
+    from fluxtuner_ripper.streaming_spool import StreamingSpool
+
+    ingestor = _ingestor()
+    output_service = _OutputService()
+    spool = StreamingSpool(directory=tmp_path / "spool")
+
+    try:
+        spool.append(b"x" * 500)
+
+        sink = StreamingSegmentSink(
+            ingestor=ingestor,  # type: ignore[arg-type]
+            directory=tmp_path / "output",
+            codec="mp3",
+            spool=spool,
+            output_service=output_service,  # type: ignore[arg-type]
+        )
+
+        segment = sink.accept(
+            _resolution(
+                incoming_start=250,
+                outgoing_end=300,
+                kind=SplitKind.CROSSFADE,
+            )  # type: ignore[arg-type]
+        )
+
+        assert segment.start_offset == 100
+        assert segment.end_offset == 300
+
+        # [250, 300) belonged to the outgoing track but must remain
+        # available for the incoming track too.
+        assert spool.start_offset == 250
+        assert spool.end_offset == 500
+        assert spool.read(250, 300) == b"x" * 50
+    finally:
+        spool.close()
