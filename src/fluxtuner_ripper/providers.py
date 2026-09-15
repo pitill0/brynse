@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Protocol
 
 from fluxtuner_ripper.models import BoundaryCandidate
@@ -85,4 +86,58 @@ class ManualBoundaryProvider:
             )
             for time_seconds in self._boundary_times_seconds
             if start_time_seconds < time_seconds <= end_time_seconds
+        )
+
+
+@dataclass(frozen=True)
+class ExternalBoundary:
+    """Boundary supplied by an external producer."""
+
+    time_seconds: float
+    source: str = "external"
+    reference_offset: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.time_seconds < 0:
+            raise ValueError("time_seconds must be non-negative")
+        if not self.source.strip():
+            raise ValueError("source must not be empty")
+        if self.reference_offset is not None and self.reference_offset < 0:
+            raise ValueError("reference_offset must be non-negative")
+
+
+class ExternalBoundaryProvider:
+    """Expose externally supplied boundaries through the generic provider contract."""
+
+    def __init__(self, boundaries: tuple[ExternalBoundary, ...]) -> None:
+        self._boundaries = tuple(
+            sorted(
+                boundaries,
+                key=lambda boundary: (
+                    boundary.time_seconds,
+                    boundary.source,
+                    boundary.reference_offset if boundary.reference_offset is not None else -1,
+                ),
+            )
+        )
+
+    def propose(
+        self,
+        *,
+        start_time_seconds: float,
+        end_time_seconds: float,
+    ) -> tuple[BoundaryCandidate, ...]:
+        if start_time_seconds < 0:
+            raise ValueError("start_time_seconds must be non-negative")
+        if end_time_seconds < start_time_seconds:
+            raise ValueError("end_time_seconds must be greater than or equal to start_time_seconds")
+
+        return tuple(
+            BoundaryCandidate(
+                time_seconds=boundary.time_seconds,
+                source=boundary.source,
+                reference_offset=boundary.reference_offset,
+            )
+            for boundary in self._boundaries
+            if start_time_seconds < boundary.time_seconds <= end_time_seconds
         )

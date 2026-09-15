@@ -130,3 +130,83 @@ def test_manual_boundary_provider_rejects_negative_time() -> None:
         ManualBoundaryProvider(
             boundary_times_seconds=(-1.0,),
         )
+
+
+def test_external_boundary_provider_preserves_external_identity() -> None:
+    from fluxtuner_ripper.providers import (
+        ExternalBoundary,
+        ExternalBoundaryProvider,
+    )
+
+    provider = ExternalBoundaryProvider(
+        boundaries=(
+            ExternalBoundary(
+                time_seconds=30.0,
+                source="agent",
+                reference_offset=1234,
+            ),
+            ExternalBoundary(
+                time_seconds=10.0,
+                source="semantic_model",
+            ),
+        )
+    )
+
+    candidates = provider.propose(
+        start_time_seconds=0.0,
+        end_time_seconds=40.0,
+    )
+
+    assert [candidate.time_seconds for candidate in candidates] == [
+        10.0,
+        30.0,
+    ]
+    assert [candidate.source for candidate in candidates] == [
+        "semantic_model",
+        "agent",
+    ]
+    assert candidates[0].reference_offset is None
+    assert candidates[1].reference_offset == 1234
+
+
+def test_external_boundary_provider_filters_requested_window() -> None:
+    from fluxtuner_ripper.providers import (
+        ExternalBoundary,
+        ExternalBoundaryProvider,
+    )
+
+    provider = ExternalBoundaryProvider(
+        boundaries=(
+            ExternalBoundary(time_seconds=10.0),
+            ExternalBoundary(time_seconds=20.0),
+            ExternalBoundary(time_seconds=30.0),
+        )
+    )
+
+    candidates = provider.propose(
+        start_time_seconds=10.0,
+        end_time_seconds=20.0,
+    )
+
+    assert [candidate.time_seconds for candidate in candidates] == [20.0]
+
+
+def test_external_boundary_rejects_invalid_values() -> None:
+    import pytest
+
+    from fluxtuner_ripper.providers import ExternalBoundary
+
+    with pytest.raises(ValueError, match="time_seconds must be non-negative"):
+        ExternalBoundary(time_seconds=-1.0)
+
+    with pytest.raises(ValueError, match="source must not be empty"):
+        ExternalBoundary(
+            time_seconds=1.0,
+            source=" ",
+        )
+
+    with pytest.raises(ValueError, match="reference_offset must be non-negative"):
+        ExternalBoundary(
+            time_seconds=1.0,
+            reference_offset=-1,
+        )
