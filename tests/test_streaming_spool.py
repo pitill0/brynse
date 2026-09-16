@@ -325,3 +325,39 @@ def test_safe_streaming_spool_applies_runtime_retention_limit(
         assert spool._max_retained_bytes == 8 * 1024 * 1024 * 1024
     finally:
         spool.close()
+
+
+def test_streaming_spool_rejects_append_when_free_disk_space_is_too_low(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import shutil
+
+    class _DiskUsage:
+        total = 1_000_000
+        used = 950_000
+        free = 50_000
+
+    monkeypatch.setattr(
+        shutil,
+        "disk_usage",
+        lambda _: _DiskUsage(),
+    )
+
+    spool = StreamingSpool(
+        directory=tmp_path,
+        min_free_bytes=100_000,
+    )
+
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match="insufficient free disk space for streaming spool",
+        ):
+            spool.append(b"abcdef")
+
+        assert spool.start_offset == 0
+        assert spool.end_offset == 0
+        assert spool.retained_bytes == 0
+    finally:
+        spool.close()

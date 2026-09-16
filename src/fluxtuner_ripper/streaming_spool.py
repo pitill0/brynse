@@ -41,6 +41,7 @@ class StreamingSpool:
         storage_chunk_size: int = 1024 * 1024,
         copy_chunk_size: int = 64 * 1024,
         max_retained_bytes: int | None = None,
+        min_free_bytes: int | None = None,
     ) -> None:
         if storage_chunk_size <= 0:
             raise ValueError("storage_chunk_size must be greater than zero")
@@ -48,6 +49,8 @@ class StreamingSpool:
             raise ValueError("copy_chunk_size must be greater than zero")
         if max_retained_bytes is not None and max_retained_bytes <= 0:
             raise ValueError("max_retained_bytes must be greater than zero")
+        if min_free_bytes is not None and min_free_bytes < 0:
+            raise ValueError("min_free_bytes must not be negative")
 
         directory.mkdir(parents=True, exist_ok=True)
 
@@ -55,6 +58,7 @@ class StreamingSpool:
         self._storage_chunk_size = storage_chunk_size
         self._copy_chunk_size = copy_chunk_size
         self._max_retained_bytes = max_retained_bytes
+        self._min_free_bytes = min_free_bytes
         self._chunks: list[_StorageChunk] = []
         self._start_offset = 0
         self._end_offset = 0
@@ -100,6 +104,18 @@ class StreamingSpool:
                 f"{self.retained_bytes + len(data)} > "
                 f"{self._max_retained_bytes} bytes"
             )
+
+        if self._min_free_bytes is not None:
+            import shutil
+
+            free_bytes = shutil.disk_usage(self._directory).free
+            required_free_bytes = self._min_free_bytes + len(data)
+
+            if free_bytes < required_free_bytes:
+                raise RuntimeError(
+                    "insufficient free disk space for streaming spool: "
+                    f"{free_bytes} < {required_free_bytes} bytes"
+                )
 
         chunk_start = self._end_offset
         remaining = memoryview(data)
