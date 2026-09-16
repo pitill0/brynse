@@ -346,3 +346,53 @@ def test_iter_input_reads_file_incrementally(tmp_path: Path) -> None:
         b"efgh",
         b"ij",
     )
+
+
+def test_run_generic_pipeline_accepts_incremental_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    import fluxtuner_ripper.generic_cli as generic_cli
+
+    received_chunks: list[bytes] = []
+
+    class _Ingestor:
+        def __init__(self, *, codec: str, ring_max_bytes: int) -> None:
+            self.codec = codec
+            self.ring_max_bytes = ring_max_bytes
+
+    class _Provider:
+        def __init__(self, *, interval_seconds: float) -> None:
+            self.interval_seconds = interval_seconds
+
+    class _Resolver:
+        pass
+
+    class _Runner:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def run(self, chunks: object) -> object:
+            received_chunks.extend(chunks)
+            return SimpleNamespace(
+                bytes_ingested=sum(len(chunk) for chunk in received_chunks),
+                resolutions=(),
+            )
+
+    monkeypatch.setattr(generic_cli, "EncodedStreamIngestor", _Ingestor)
+    monkeypatch.setattr(generic_cli, "FixedIntervalBoundaryProvider", _Provider)
+    monkeypatch.setattr(generic_cli, "RippingOrchestrator", _Resolver)
+    monkeypatch.setattr(generic_cli, "GenericRunner", _Runner)
+
+    payload = generic_cli._run_generic_pipeline(
+        chunks=iter((b"encoded-", b"data")),
+        codec="aac",
+        interval_seconds=30.0,
+    )
+
+    assert received_chunks == [
+        b"encoded-",
+        b"data",
+    ]
+    assert payload["bytes_ingested"] == 12

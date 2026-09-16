@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 
 from fluxtuner_ripper.external_boundaries import (
@@ -22,6 +22,8 @@ from fluxtuner_ripper.providers import (
     FixedIntervalBoundaryProvider,
     ManualBoundaryProvider,
 )
+
+_STREAMING_RING_MAX_BYTES = 16 * 1024 * 1024
 
 
 class GenericCliError(RuntimeError):
@@ -148,7 +150,8 @@ def _read_input(input_name: str) -> bytes:
 
 def _run_generic_pipeline(
     *,
-    data: bytes,
+    data: bytes | None = None,
+    chunks: Iterable[bytes] | None = None,
     codec: str,
     provider_name: str = "fixed",
     interval_seconds: float | None = None,
@@ -157,12 +160,35 @@ def _run_generic_pipeline(
     output_directory: Path | None = None,
     minimum_tail_seconds: float = 1.0,
 ) -> dict[str, object]:
-    if not data:
+    if data is not None and chunks is not None:
+        raise GenericCliError("provide either data or chunks, not both")
+
+    if data is not None:
+        if not data:
+            raise GenericCliError("input contains no encoded data")
+        input_chunks: Iterable[bytes] = (data,)
+        ring_max_bytes = len(data)
+    elif chunks is not None:
+        iterator = iter(chunks)
+
+        for first_chunk in iterator:
+            if first_chunk:
+                break
+        else:
+            raise GenericCliError("input contains no encoded data")
+
+        def incremental_chunks() -> Iterator[bytes]:
+            yield first_chunk
+            yield from iterator
+
+        input_chunks = incremental_chunks()
+        ring_max_bytes = _STREAMING_RING_MAX_BYTES
+    else:
         raise GenericCliError("input contains no encoded data")
 
     ingestor = EncodedStreamIngestor(
         codec=codec,
-        ring_max_bytes=len(data),
+        ring_max_bytes=ring_max_bytes,
     )
     provider: BoundaryProvider
 
@@ -200,7 +226,7 @@ def _run_generic_pipeline(
         resolver=resolver,
     )
 
-    result = runner.run((data,))
+    result = runner.run(input_chunks)
 
     payload: dict[str, object] = {
         "bytes_ingested": result.bytes_ingested,
