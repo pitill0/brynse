@@ -3291,3 +3291,56 @@ raise SystemExit(1)
         )
 
     assert not output_path.exists()
+
+
+def test_aac_stream_finalizer_does_not_create_unbounded_stderr_tempfile(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import tempfile
+
+    from fluxtuner_ripper.output import AacTrackFinalizer, TrackFinalizeError
+
+    fake_ffmpeg = tmp_path / "fake-ffmpeg-aac-stderr"
+    fake_ffmpeg.write_text(
+        """#!/usr/bin/env python3
+import sys
+
+sys.stdin.buffer.read()
+sys.stderr.buffer.write(b"x" * (256 * 1024))
+sys.stderr.flush()
+raise SystemExit(1)
+""",
+        encoding="utf-8",
+    )
+    fake_ffmpeg.chmod(0o755)
+
+    real_named_temporary_file = tempfile.NamedTemporaryFile
+
+    def guarded_named_temporary_file(*args, **kwargs):
+        prefix = kwargs.get("prefix", "")
+        if prefix == ".fluxtuner-ffmpeg-stderr-":
+            raise AssertionError("stderr must not use an unbounded temporary file")
+        return real_named_temporary_file(*args, **kwargs)
+
+    monkeypatch.setattr(
+        tempfile,
+        "NamedTemporaryFile",
+        guarded_named_temporary_file,
+    )
+
+    output_path = tmp_path / "stderr.m4a"
+
+    with pytest.raises(
+        TrackFinalizeError,
+        match="AAC finalization failed",
+    ):
+        AacTrackFinalizer(
+            ffmpeg_binary=str(fake_ffmpeg),
+            timeout_seconds=2.0,
+        ).finalize_stream(
+            chunks=iter((b"abcd", b"efgh")),
+            output_path=output_path,
+        )
+
+    assert not output_path.exists()
