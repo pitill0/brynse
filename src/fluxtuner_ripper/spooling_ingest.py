@@ -2,10 +2,30 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
 from fluxtuner_ripper.ingest import EncodedStreamIngestor
 from fluxtuner_ripper.ripping import IncrementalFrameTimeline
-from fluxtuner_ripper.streaming_spool import StreamingSpool
+from fluxtuner_ripper.streaming_spool import (
+    StreamingSpool,
+    create_safe_streaming_spool,
+)
+
+
+def create_safe_spooling_ingestor(
+    *,
+    ingestor: EncodedStreamIngestor,
+    spool_directory: Path,
+) -> SpoolingEncodedStreamIngestor:
+    """Create a live fan-out ingestor using the runtime spool safety policy."""
+    spool = create_safe_streaming_spool(
+        directory=spool_directory,
+    )
+    return SpoolingEncodedStreamIngestor(
+        ingestor=ingestor,
+        spool=spool,
+    )
 
 
 class SpoolingEncodedStreamIngestor:

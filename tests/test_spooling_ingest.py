@@ -134,3 +134,24 @@ def test_spooling_ingestor_preserves_first_frame_offset_after_ring_eviction(
         assert spooling.first_frame_offset == first_offset
     finally:
         spool.close()
+
+
+def test_safe_spooling_ingestor_uses_runtime_spool_policy(
+    tmp_path: Path,
+) -> None:
+    from fluxtuner_ripper.spooling_ingest import create_safe_spooling_ingestor
+
+    ingestor = EncodedStreamIngestor(
+        codec="mp3",
+        ring_max_bytes=4096,
+    )
+
+    spooling = create_safe_spooling_ingestor(
+        ingestor=ingestor,
+        spool_directory=tmp_path,
+    )
+
+    try:
+        assert spooling.spool._max_retained_bytes == 8 * 1024 * 1024 * 1024
+    finally:
+        spooling.spool.close()
