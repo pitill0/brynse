@@ -3009,3 +3009,37 @@ def test_track_output_service_rejects_chunk_size_above_hard_limit(
         )
 
     assert not (tmp_path / "chunk-too-large.mp3").exists()
+
+
+def test_encoded_track_writer_rejects_source_returning_wrong_chunk_size() -> None:
+    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.output import EncodedTrackWriter
+
+    class _BrokenSource:
+        @property
+        def end_offset(self) -> int:
+            return 20
+
+        def contains(self, start: int, end: int) -> bool:
+            return True
+
+        def read(self, start: int, end: int) -> bytes:
+            requested = end - start
+            return b"x" * (requested + 1)
+
+    writer = EncodedTrackWriter()
+
+    with pytest.raises(
+        RuntimeError,
+        match="encoded byte source returned unexpected chunk size",
+    ):
+        tuple(
+            writer.iter_range(
+                source=_BrokenSource(),
+                byte_range=TrackByteRange(
+                    start_offset=0,
+                    end_offset=8,
+                ),
+                chunk_size=4,
+            )
+        )

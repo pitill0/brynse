@@ -93,7 +93,16 @@ class EncodedTrackWriter:
                 current + chunk_size,
                 byte_range.end_offset,
             )
-            yield source.read(current, chunk_end)
+            chunk = source.read(current, chunk_end)
+            expected_size = chunk_end - current
+
+            if len(chunk) != expected_size:
+                raise RuntimeError(
+                    "encoded byte source returned unexpected chunk size: "
+                    f"{len(chunk)} != {expected_size}"
+                )
+
+            yield chunk
             current = chunk_end
 
     def write_range(
