@@ -337,18 +337,34 @@ class Mp3TrackFinalizer:
                     if process.stdin is None:
                         raise TrackFinalizeError("FFmpeg MP3 finalization did not provide stdin")
 
-                    try:
-                        process.stdin.write(first_chunk)
+                    stdin_handle = process.stdin
 
-                        for chunk in iterator:
-                            if chunk:
-                                process.stdin.write(chunk)
-                    except BrokenPipeError:
-                        # FFmpeg may close stdin early when it detects invalid input.
-                        pass
-                    finally:
-                        with suppress(BrokenPipeError, OSError):
-                            process.stdin.close()
+                    import threading
+
+                    feeder_errors: list[BaseException] = []
+
+                    def feed_stdin() -> None:
+                        try:
+                            stdin_handle.write(first_chunk)
+
+                            for chunk in iterator:
+                                if chunk:
+                                    stdin_handle.write(chunk)
+                        except BrokenPipeError:
+                            # FFmpeg may close stdin early when it detects invalid input.
+                            pass
+                        except BaseException as exc:
+                            feeder_errors.append(exc)
+                        finally:
+                            with suppress(BrokenPipeError, OSError):
+                                stdin_handle.close()
+
+                    feeder = threading.Thread(
+                        target=feed_stdin,
+                        name="fluxtuner-mp3-ffmpeg-stdin",
+                        daemon=True,
+                    )
+                    feeder.start()
 
                     try:
                         returncode = process.wait(
@@ -365,7 +381,19 @@ class Mp3TrackFinalizer:
                                 process.kill()
                             process.wait()
 
+                        feeder.join(timeout=1)
+
                         raise TrackFinalizeError("FFmpeg MP3 finalization timed out") from exc
+
+                    feeder.join(timeout=1)
+
+                    if feeder.is_alive():
+                        raise TrackFinalizeError("FFmpeg MP3 stdin feeder did not terminate")
+
+                    if feeder_errors:
+                        raise TrackFinalizeError(
+                            "FFmpeg MP3 stdin feeding failed"
+                        ) from feeder_errors[0]
 
                     output_handle.flush()
                     os.fsync(output_handle.fileno())
