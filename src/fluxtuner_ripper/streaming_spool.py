@@ -16,6 +16,21 @@ class _StorageChunk:
     path: Path
 
 
+def create_safe_streaming_spool(
+    *,
+    directory: Path,
+    storage_chunk_size: int = 1024 * 1024,
+    copy_chunk_size: int = 64 * 1024,
+) -> StreamingSpool:
+    """Create a runtime spool with bounded retained storage."""
+    return StreamingSpool(
+        directory=directory,
+        storage_chunk_size=storage_chunk_size,
+        copy_chunk_size=copy_chunk_size,
+        max_retained_bytes=8 * 1024 * 1024 * 1024,
+    )
+
+
 class StreamingSpool:
     """Retain encoded stream bytes on disk using absolute byte offsets."""
 

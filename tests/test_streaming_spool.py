@@ -310,3 +310,18 @@ def test_streaming_spool_rejects_append_beyond_retained_byte_limit(
         assert spool.read(0, 6) == b"abcdef"
     finally:
         spool.close()
+
+
+def test_safe_streaming_spool_applies_runtime_retention_limit(
+    tmp_path: Path,
+) -> None:
+    from fluxtuner_ripper.streaming_spool import create_safe_streaming_spool
+
+    spool = create_safe_streaming_spool(
+        directory=tmp_path,
+    )
+
+    try:
+        assert spool._max_retained_bytes == 8 * 1024 * 1024 * 1024
+    finally:
+        spool.close()
