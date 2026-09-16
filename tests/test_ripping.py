@@ -3043,3 +3043,50 @@ def test_encoded_track_writer_rejects_source_returning_wrong_chunk_size() -> Non
                 chunk_size=4,
             )
         )
+
+
+@pytest.mark.parametrize(
+    "stem",
+    (
+        "../escape",
+        "nested/track",
+        r"nested\track",
+        ".",
+        "..",
+    ),
+)
+def test_track_output_service_rejects_unsafe_output_stem(
+    tmp_path: Path,
+    stem: str,
+) -> None:
+    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.output import TrackOutputService
+
+    class _SourceThatMustNotBeRead:
+        @property
+        def end_offset(self) -> int:
+            return 100
+
+        def contains(self, start: int, end: int) -> bool:
+            return True
+
+        def read(self, start: int, end: int) -> bytes:
+            raise AssertionError("unsafe output stem must be rejected before reading source bytes")
+
+    service = TrackOutputService()
+
+    with pytest.raises(
+        ValueError,
+        match="unsafe output stem",
+    ):
+        service.write_track(
+            source=_SourceThatMustNotBeRead(),
+            byte_range=TrackByteRange(
+                start_offset=0,
+                end_offset=10,
+            ),
+            directory=tmp_path,
+            stem=stem,
+            codec="mp3",
+            chunk_size=4,
+        )

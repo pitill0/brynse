@@ -652,6 +652,9 @@ class TrackOutputService:
         if not stem or not stem.strip():
             raise ValueError("stem must not be empty")
 
+        if stem in {".", ".."} or "/" in stem or "\\" in stem:
+            raise ValueError(f"unsafe output stem: {stem!r}")
+
         segment_bytes = byte_range.end_offset - byte_range.start_offset
         if self._max_segment_bytes is not None and segment_bytes > self._max_segment_bytes:
             raise ValueError(
