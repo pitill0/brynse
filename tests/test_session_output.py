@@ -326,3 +326,31 @@ def test_session_output_writer_requires_timeline_frames(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="without timeline frames"):
         writer.write_transition(_transition())
+
+
+def test_session_output_writer_uses_explicit_encoded_source(
+    tmp_path: Path,
+) -> None:
+    transition = _transition()
+    plan = TrackWritePlan(
+        outgoing=TrackByteRange(start_offset=1000, end_offset=5000),
+        incoming=TrackByteRange(start_offset=5000, end_offset=10000),
+    )
+    planner = _Planner(plan)
+    output = _Output(tmp_path / "track.mp3")
+    ingestor = _Ingestor()
+    retained_source = object()
+
+    writer = SessionOutputWriter(
+        ingestor=ingestor,
+        directory=tmp_path,
+        codec="mp3",
+        range_planner=planner,
+        output_service=output,
+        source=retained_source,
+    )
+
+    writer.write_transition(transition)
+
+    assert output.calls[0]["source"] is retained_source
+    assert output.calls[0]["source"] is not ingestor.ring_buffer

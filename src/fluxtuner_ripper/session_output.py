@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fluxtuner_ripper.output import (
+    EncodedByteSource,
     TrackOutputService,
     TrackRangePlanner,
     create_safe_track_output_service,
@@ -52,11 +53,13 @@ class SessionOutputWriter:
         codec: str,
         range_planner: TrackRangePlanner | None = None,
         output_service: TrackOutputService | None = None,
+        source: EncodedByteSource | None = None,
     ) -> None:
         if codec not in {"mp3", "aac"}:
             raise ValueError("codec must be 'mp3' or 'aac'")
 
         self._ingestor = ingestor
+        self._source = source
         self._directory = directory
         self._codec = codec
         self._range_planner = range_planner or TrackRangePlanner()
@@ -86,7 +89,7 @@ class SessionOutputWriter:
         )
 
         path = self._output_service.write_track(
-            source=self._ingestor.ring_buffer,
+            source=self._source if self._source is not None else self._ingestor.ring_buffer,
             byte_range=plan.outgoing,
             directory=self._directory,
             stem=safe_track_stem(transition.outgoing.label or "segment"),
