@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Protocol
 
@@ -66,6 +67,34 @@ class TrackRangePlanner:
 
 class EncodedTrackWriter:
     """Materialize frame-aligned encoded ranges without transcoding."""
+
+    def iter_range(
+        self,
+        *,
+        source: EncodedByteSource,
+        byte_range: TrackByteRange,
+        chunk_size: int = 64 * 1024,
+    ) -> Iterator[bytes]:
+        """Yield one retained encoded range using bounded reads."""
+
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be greater than zero")
+
+        if not source.contains(
+            byte_range.start_offset,
+            byte_range.end_offset,
+        ):
+            raise ValueError("requested track range is not fully retained")
+
+        current = byte_range.start_offset
+
+        while current < byte_range.end_offset:
+            chunk_end = min(
+                current + chunk_size,
+                byte_range.end_offset,
+            )
+            yield source.read(current, chunk_end)
+            current = chunk_end
 
     def write_range(
         self,

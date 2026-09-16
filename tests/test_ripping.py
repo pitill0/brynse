@@ -2509,3 +2509,59 @@ def test_public_package_api_version_matches_project_bootstrap() -> None:
     import fluxtuner_ripper
 
     assert fluxtuner_ripper.__version__ == "0.1.0.dev0"
+
+
+def test_encoded_track_writer_iterates_range_in_bounded_chunks() -> None:
+    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.output import EncodedTrackWriter
+
+    class _BoundedSource:
+        def __init__(self, data: bytes, max_read_size: int) -> None:
+            self.data = data
+            self.max_read_size = max_read_size
+            self.reads: list[tuple[int, int]] = []
+
+        @property
+        def end_offset(self) -> int:
+            return len(self.data)
+
+        def contains(self, start: int, end: int) -> bool:
+            return 0 <= start <= end <= len(self.data)
+
+        def read(self, start: int, end: int) -> bytes:
+            size = end - start
+            if size > self.max_read_size:
+                raise RuntimeError(f"unbounded read attempted: {size} > {self.max_read_size}")
+
+            self.reads.append((start, end))
+            return self.data[start:end]
+
+    source = _BoundedSource(
+        b"abcdefghijklmnopqrst",
+        max_read_size=4,
+    )
+
+    chunks = tuple(
+        EncodedTrackWriter().iter_range(
+            source=source,
+            byte_range=TrackByteRange(
+                start_offset=2,
+                end_offset=18,
+            ),
+            chunk_size=4,
+        )
+    )
+
+    assert chunks == (
+        b"cdef",
+        b"ghij",
+        b"klmn",
+        b"opqr",
+    )
+
+    assert source.reads == [
+        (2, 6),
+        (6, 10),
+        (10, 14),
+        (14, 18),
+    ]
