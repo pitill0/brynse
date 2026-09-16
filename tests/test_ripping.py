@@ -3652,3 +3652,75 @@ def test_safe_streaming_pipeline_shares_bounded_spool_between_ingest_and_sink(
         assert pipeline.spool._max_retained_bytes == 8 * 1024 * 1024 * 1024
     finally:
         pipeline.spool.close()
+
+
+def test_async_streaming_runtime_propagates_spool_limit_and_cleans_up_tasks(
+    tmp_path: Path,
+) -> None:
+    import asyncio
+
+    from fluxtuner_ripper.ingest import EncodedStreamIngestor
+    from fluxtuner_ripper.spooling_ingest import SpoolingEncodedStreamIngestor
+    from fluxtuner_ripper.streaming_runner import StreamingGenericRunner
+    from fluxtuner_ripper.streaming_runtime import AsyncStreamingRuntime
+    from fluxtuner_ripper.streaming_spool import StreamingSpool
+
+    class _FakeResolver:
+        def resolve_candidate(self, *, candidate, timeline, ring_buffer):
+            raise AssertionError("resolver must not be called")
+
+    async def audio_source():
+        yield b"abcdef"
+        yield b"ghij"
+
+    async def boundary_source():
+        await asyncio.sleep(60)
+        if False:
+            yield
+
+    async def exercise() -> None:
+        spool = StreamingSpool(
+            directory=tmp_path / "spool",
+            max_retained_bytes=8,
+        )
+
+        base_ingestor = EncodedStreamIngestor(
+            codec="mp3",
+            ring_max_bytes=4096,
+        )
+
+        spooling_ingestor = SpoolingEncodedStreamIngestor(
+            ingestor=base_ingestor,
+            spool=spool,
+        )
+
+        runner = StreamingGenericRunner(
+            ingestor=spooling_ingestor,
+            resolver=_FakeResolver(),  # type: ignore[arg-type]
+            settle_seconds=1.0,
+        )
+
+        runtime = AsyncStreamingRuntime(
+            runner=runner,
+        )
+
+        try:
+            with pytest.raises(
+                RuntimeError,
+                match="streaming spool retained byte limit exceeded",
+            ):
+                await runtime.run(
+                    audio_source=audio_source(),
+                    boundary_source=boundary_source(),
+                )
+
+            assert spool.start_offset == 0
+            assert spool.end_offset == 6
+            assert spool.retained_bytes == 6
+            assert spool.read(0, 6) == b"abcdef"
+        finally:
+            spool.close()
+
+        assert list((tmp_path / "spool").glob(".fluxtuner-spool-*.chunk")) == []
+
+    asyncio.run(exercise())
