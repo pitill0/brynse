@@ -3,10 +3,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
-from fluxtuner_ripper.ingest import EncodedStreamIngestor
+from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
 from fluxtuner_ripper.models import BoundaryCandidate
 from fluxtuner_ripper.orchestrator import CandidateResolution, CandidateResolver
+from fluxtuner_ripper.ripping import IncrementalFrameTimeline
+
+
+class StreamingIngestor(Protocol):
+    """Minimal encoded-stream contract required by the streaming runner."""
+
+    @property
+    def timeline(self) -> IncrementalFrameTimeline: ...
+
+    @property
+    def ring_buffer(self) -> EncodedAudioRingBuffer: ...
+
+    def feed(self, data: bytes) -> object: ...
 
 
 @dataclass(frozen=True)
@@ -23,7 +37,7 @@ class StreamingGenericRunner:
     def __init__(
         self,
         *,
-        ingestor: EncodedStreamIngestor,
+        ingestor: StreamingIngestor,
         resolver: CandidateResolver,
         settle_seconds: float,
     ) -> None:

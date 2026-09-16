@@ -5,15 +5,79 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TypeAlias
 
 from fluxtuner_ripper.generic_output import MaterializedSegment
+from fluxtuner_ripper.ingest import EncodedStreamIngestor
 from fluxtuner_ripper.models import BoundaryCandidate
+from fluxtuner_ripper.orchestrator import CandidateResolver
+from fluxtuner_ripper.spooling_ingest import (
+    SpoolingEncodedStreamIngestor,
+    create_safe_spooling_ingestor,
+)
 from fluxtuner_ripper.streaming_runner import (
     StreamingCandidateResult,
     StreamingGenericRunner,
 )
 from fluxtuner_ripper.streaming_sink import StreamingSegmentSink
+from fluxtuner_ripper.streaming_spool import StreamingSpool
+
+
+@dataclass(frozen=True)
+class SafeStreamingPipeline:
+    """Safely assembled live ingestion, retention, resolution, and output."""
+
+    spooling_ingestor: SpoolingEncodedStreamIngestor
+    spool: StreamingSpool
+    runner: StreamingGenericRunner
+    sink: StreamingSegmentSink
+    runtime: AsyncStreamingRuntime
+
+
+def create_safe_streaming_pipeline(
+    *,
+    ingestor: EncodedStreamIngestor,
+    resolver: CandidateResolver,
+    settle_seconds: float,
+    output_directory: Path,
+    spool_directory: Path,
+    codec: str,
+) -> SafeStreamingPipeline:
+    """Assemble the live runtime with one shared bounded spool."""
+
+    spooling_ingestor = create_safe_spooling_ingestor(
+        ingestor=ingestor,
+        spool_directory=spool_directory,
+    )
+    spool = spooling_ingestor.spool
+
+    runner = StreamingGenericRunner(
+        ingestor=spooling_ingestor,
+        resolver=resolver,
+        settle_seconds=settle_seconds,
+    )
+
+    sink = StreamingSegmentSink(
+        ingestor=ingestor,
+        directory=output_directory,
+        codec=codec,
+        spool=spool,
+        initial_start_source=spooling_ingestor,
+    )
+
+    runtime = AsyncStreamingRuntime(
+        runner=runner,
+        sink=sink,
+    )
+
+    return SafeStreamingPipeline(
+        spooling_ingestor=spooling_ingestor,
+        spool=spool,
+        runner=runner,
+        sink=sink,
+        runtime=runtime,
+    )
 
 
 @dataclass(frozen=True)

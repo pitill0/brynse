@@ -3620,3 +3620,35 @@ def test_safe_track_output_service_applies_runtime_timeout_policy() -> None:
 
     assert service._finalize_base_timeout_seconds == 30.0
     assert service._finalize_throughput_bytes_per_second == 8 * 1024 * 1024
+
+
+def test_safe_streaming_pipeline_shares_bounded_spool_between_ingest_and_sink(
+    tmp_path: Path,
+) -> None:
+    from fluxtuner_ripper.ingest import EncodedStreamIngestor
+    from fluxtuner_ripper.streaming_runtime import create_safe_streaming_pipeline
+
+    class _FakeResolver:
+        def resolve_candidate(self, *, candidate, timeline, ring_buffer):
+            raise AssertionError("resolver must not be called during pipeline construction")
+
+    ingestor = EncodedStreamIngestor(
+        codec="mp3",
+        ring_max_bytes=4096,
+    )
+
+    pipeline = create_safe_streaming_pipeline(
+        ingestor=ingestor,
+        resolver=_FakeResolver(),  # type: ignore[arg-type]
+        settle_seconds=1.0,
+        output_directory=tmp_path / "output",
+        spool_directory=tmp_path / "spool",
+        codec="mp3",
+    )
+
+    try:
+        assert pipeline.spooling_ingestor.spool is pipeline.spool
+        assert pipeline.sink._spool is pipeline.spool
+        assert pipeline.spool._max_retained_bytes == 8 * 1024 * 1024 * 1024
+    finally:
+        pipeline.spool.close()
