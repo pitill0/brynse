@@ -150,3 +150,41 @@ def test_streaming_spool_can_back_track_output_service(
         assert path.read_bytes() == b"FINAL:efghij"
     finally:
         spool.close()
+
+
+def test_streaming_spool_reclaims_complete_storage_chunks_without_rewriting(
+    tmp_path: Path,
+) -> None:
+    spool = StreamingSpool(
+        directory=tmp_path,
+        storage_chunk_size=4,
+    )
+
+    try:
+        spool.append(b"abcdefghijkl")
+
+        chunk_paths = list(tmp_path.glob(".fluxtuner-spool-*.chunk"))
+
+        assert len(chunk_paths) == 3
+        assert {path.read_bytes() for path in chunk_paths} == {
+            b"abcd",
+            b"efgh",
+            b"ijkl",
+        }
+
+        retained_chunk = next(path for path in chunk_paths if path.read_bytes() == b"ijkl")
+        retained_inode = retained_chunk.stat().st_ino
+
+        spool.discard_before(8)
+
+        remaining_paths = sorted(tmp_path.glob(".fluxtuner-spool-*.chunk"))
+
+        assert remaining_paths == [retained_chunk]
+        assert retained_chunk.stat().st_ino == retained_inode
+
+        assert spool.start_offset == 8
+        assert spool.end_offset == 12
+        assert spool.retained_bytes == 4
+        assert spool.read(8, 12) == b"ijkl"
+    finally:
+        spool.close()

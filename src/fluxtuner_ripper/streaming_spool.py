@@ -4,8 +4,17 @@ from __future__ import annotations
 
 import os
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
+
+
+@dataclass
+class _StorageChunk:
+    start_offset: int
+    end_offset: int
+    path: Path
+    handle: BinaryIO
 
 
 class StreamingSpool:
@@ -15,33 +24,32 @@ class StreamingSpool:
         self,
         *,
         directory: Path,
+        storage_chunk_size: int = 1024 * 1024,
         copy_chunk_size: int = 64 * 1024,
     ) -> None:
+        if storage_chunk_size <= 0:
+            raise ValueError("storage_chunk_size must be greater than zero")
         if copy_chunk_size <= 0:
             raise ValueError("copy_chunk_size must be greater than zero")
 
         directory.mkdir(parents=True, exist_ok=True)
 
-        fd, name = tempfile.mkstemp(
-            dir=directory,
-            prefix=".fluxtuner-spool-",
-            suffix=".tmp",
-        )
-
-        self._path = Path(name)
-        self._handle: BinaryIO = os.fdopen(
-            fd,
-            "w+b",
-            buffering=0,
-        )
+        self._directory = directory
+        self._storage_chunk_size = storage_chunk_size
         self._copy_chunk_size = copy_chunk_size
+        self._chunks: list[_StorageChunk] = []
         self._start_offset = 0
         self._end_offset = 0
         self._closed = False
 
+        self._create_chunk()
+
     @property
     def path(self) -> Path:
-        return self._path
+        """Return the oldest active spool chunk path."""
+
+        self._require_open()
+        return self._chunks[0].path
 
     @property
     def start_offset(self) -> int:
@@ -64,14 +72,23 @@ class StreamingSpool:
             return self._end_offset, self._end_offset
 
         chunk_start = self._end_offset
+        remaining = memoryview(data)
 
-        self._handle.seek(0, os.SEEK_END)
-        written = self._handle.write(data)
+        while remaining:
+            chunk = self._ensure_writable_chunk()
 
-        if written != len(data):
-            raise RuntimeError("failed to append complete encoded chunk to spool")
+            available = self._storage_chunk_size - (chunk.end_offset - chunk.start_offset)
+            write_size = min(len(remaining), available)
 
-        self._end_offset += len(data)
+            chunk.handle.seek(0, os.SEEK_END)
+            written = chunk.handle.write(remaining[:write_size])
+
+            if written != write_size:
+                raise RuntimeError("failed to append complete encoded chunk to spool")
+
+            chunk.end_offset += written
+            self._end_offset += written
+            remaining = remaining[written:]
 
         return chunk_start, self._end_offset
 
@@ -98,16 +115,42 @@ class StreamingSpool:
                 f"[{self._start_offset}, {self._end_offset})"
             )
 
-        local_start = start - self._start_offset
-        length = end - start
+        if start == end:
+            return b""
 
-        self._handle.seek(local_start)
-        data = self._handle.read(length)
+        result = bytearray()
+        current = start
 
-        if len(data) != length:
-            raise RuntimeError("failed to read complete retained span from spool")
+        for chunk in self._chunks:
+            if chunk.end_offset <= current:
+                continue
 
-        return data
+            if chunk.start_offset >= end:
+                break
+
+            local_start = max(current, chunk.start_offset)
+            local_end = min(end, chunk.end_offset)
+
+            if local_start >= local_end:
+                continue
+
+            chunk.handle.seek(local_start - chunk.start_offset)
+            length = local_end - local_start
+            data = chunk.handle.read(length)
+
+            if len(data) != length:
+                raise RuntimeError("failed to read complete retained span from spool")
+
+            result.extend(data)
+            current = local_end
+
+            if current == end:
+                break
+
+        if current != end:
+            raise RuntimeError("failed to resolve complete retained span across spool chunks")
+
+        return bytes(result)
 
     def discard_before(self, offset: int) -> None:
         """Discard bytes older than ``offset`` while preserving absolute offsets."""
@@ -123,58 +166,61 @@ class StreamingSpool:
         if offset == self._start_offset:
             return
 
-        if offset == self._end_offset:
-            self._handle.seek(0)
-            self._handle.truncate(0)
-            self._start_offset = offset
-            return
+        self._start_offset = offset
 
-        fd, temp_name = tempfile.mkstemp(
-            dir=self._path.parent,
-            prefix=".fluxtuner-spool-compact-",
-            suffix=".tmp",
-        )
-        temp_path = Path(temp_name)
+        while self._chunks and self._chunks[0].end_offset <= offset:
+            chunk = self._chunks.pop(0)
+            chunk.handle.close()
+            chunk.path.unlink(missing_ok=True)
 
-        try:
-            with os.fdopen(fd, "wb", buffering=0) as target:
-                self._handle.seek(offset - self._start_offset)
-
-                remaining = self._end_offset - offset
-
-                while remaining:
-                    chunk = self._handle.read(min(self._copy_chunk_size, remaining))
-
-                    if not chunk:
-                        raise RuntimeError("unexpected EOF while compacting streaming spool")
-
-                    written = target.write(chunk)
-                    if written != len(chunk):
-                        raise RuntimeError("failed to write complete chunk while compacting spool")
-
-                    remaining -= len(chunk)
-
-            self._handle.close()
-            os.replace(temp_path, self._path)
-
-            self._handle = self._path.open(
-                "r+b",
-                buffering=0,
-            )
-            self._start_offset = offset
-        except Exception:
-            temp_path.unlink(missing_ok=True)
-            raise
+        if not self._chunks:
+            self._create_chunk()
 
     def close(self) -> None:
-        """Close and remove the transient spool."""
+        """Close and remove all transient spool chunks."""
 
         if self._closed:
             return
 
         self._closed = True
-        self._handle.close()
-        self._path.unlink(missing_ok=True)
+
+        for chunk in self._chunks:
+            chunk.handle.close()
+            chunk.path.unlink(missing_ok=True)
+
+        self._chunks.clear()
+
+    def _ensure_writable_chunk(self) -> _StorageChunk:
+        chunk = self._chunks[-1]
+
+        if chunk.end_offset - chunk.start_offset < self._storage_chunk_size:
+            return chunk
+
+        return self._create_chunk()
+
+    def _create_chunk(self) -> _StorageChunk:
+        fd, name = tempfile.mkstemp(
+            dir=self._directory,
+            prefix=".fluxtuner-spool-",
+            suffix=".chunk",
+        )
+
+        path = Path(name)
+        handle = os.fdopen(
+            fd,
+            "w+b",
+            buffering=0,
+        )
+
+        chunk = _StorageChunk(
+            start_offset=self._end_offset,
+            end_offset=self._end_offset,
+            path=path,
+            handle=handle,
+        )
+        self._chunks.append(chunk)
+
+        return chunk
 
     def _require_open(self) -> None:
         if self._closed:
