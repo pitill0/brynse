@@ -3415,3 +3415,38 @@ def test_generic_segment_writer_uses_safe_output_service_factory_by_default(
     assert calls == 1
     assert writer._output_service is sentinel
     assert not isinstance(writer._output_service, TrackOutputService)
+
+
+def test_session_output_writer_uses_safe_output_service_factory_by_default(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import fluxtuner_ripper.session_output as session_output
+    from fluxtuner_ripper.output import TrackOutputService
+
+    class _FakeIngestor:
+        pass
+
+    sentinel = object()
+    calls = 0
+
+    def fake_factory():
+        nonlocal calls
+        calls += 1
+        return sentinel
+
+    monkeypatch.setattr(
+        session_output,
+        "create_safe_track_output_service",
+        fake_factory,
+    )
+
+    writer = session_output.SessionOutputWriter(
+        ingestor=_FakeIngestor(),  # type: ignore[arg-type]
+        directory=tmp_path,
+        codec="mp3",
+    )
+
+    assert calls == 1
+    assert writer._output_service is sentinel
+    assert not isinstance(writer._output_service, TrackOutputService)

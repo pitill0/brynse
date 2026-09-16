@@ -6,7 +6,11 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from fluxtuner_ripper.output import TrackOutputService, TrackRangePlanner
+from fluxtuner_ripper.output import (
+    TrackOutputService,
+    TrackRangePlanner,
+    create_safe_track_output_service,
+)
 from fluxtuner_ripper.ripping import RippingStreamIngestor
 from fluxtuner_ripper.session import SegmentTransition, TrackTransition
 
@@ -56,7 +60,7 @@ class SessionOutputWriter:
         self._directory = directory
         self._codec = codec
         self._range_planner = range_planner or TrackRangePlanner()
-        self._output_service = output_service or TrackOutputService()
+        self._output_service = output_service or create_safe_track_output_service()
         self._current_start_offset: int | None = None
 
     def write_segment_transition(
