@@ -188,3 +188,68 @@ def test_streaming_spool_reclaims_complete_storage_chunks_without_rewriting(
         assert spool.read(8, 12) == b"ijkl"
     finally:
         spool.close()
+
+
+def test_streaming_spool_discards_inside_chunk_without_rewriting_it(
+    tmp_path: Path,
+) -> None:
+    spool = StreamingSpool(
+        directory=tmp_path,
+        storage_chunk_size=8,
+    )
+
+    try:
+        spool.append(b"abcdefghijkl")
+
+        chunk_paths = list(tmp_path.glob(".fluxtuner-spool-*.chunk"))
+        first_chunk = next(path for path in chunk_paths if path.read_bytes() == b"abcdefgh")
+        first_inode = first_chunk.stat().st_ino
+
+        spool.discard_before(5)
+
+        assert spool.start_offset == 5
+        assert spool.end_offset == 12
+        assert spool.retained_bytes == 7
+        assert spool.read(5, 12) == b"fghijkl"
+
+        # Partial discard must advance the logical head only.
+        assert first_chunk.exists()
+        assert first_chunk.stat().st_ino == first_inode
+        assert first_chunk.read_bytes() == b"abcdefgh"
+    finally:
+        spool.close()
+
+
+def test_streaming_spool_survives_repeated_append_discard_cycles(
+    tmp_path: Path,
+) -> None:
+    spool = StreamingSpool(
+        directory=tmp_path,
+        storage_chunk_size=4,
+    )
+
+    try:
+        assert spool.append(b"abcdefgh") == (0, 8)
+        spool.discard_before(3)
+
+        assert spool.read(3, 8) == b"defgh"
+
+        assert spool.append(b"ijkl") == (8, 12)
+        spool.discard_before(7)
+
+        assert spool.start_offset == 7
+        assert spool.end_offset == 12
+        assert spool.read(7, 12) == b"hijkl"
+
+        assert spool.append(b"mnopqr") == (12, 18)
+        spool.discard_before(13)
+
+        assert spool.start_offset == 13
+        assert spool.end_offset == 18
+        assert spool.retained_bytes == 5
+        assert spool.read(13, 18) == b"nopqr"
+
+        assert not spool.contains(12, 13)
+        assert spool.contains(13, 18)
+    finally:
+        spool.close()
