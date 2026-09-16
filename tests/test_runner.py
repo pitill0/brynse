@@ -375,3 +375,182 @@ def test_runner_closes_spool_when_output_writer_construction_fails(
         runner.run()
 
     assert spool.closed is True
+
+
+def test_runner_closes_spool_when_append_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import fluxtuner_ripper.runner as runner_module
+
+    class FakeStream:
+        def __init__(self) -> None:
+            self._chunks = [b"chunk", b""]
+
+        def read(self, size: int = -1) -> bytes:
+            return self._chunks.pop(0)
+
+        def close(self) -> None:
+            pass
+
+    class FakeSpool:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def append(self, data: bytes) -> tuple[int, int]:
+            raise RuntimeError("spool append failed")
+
+        def close(self) -> None:
+            self.closed = True
+
+    class FakeIngestResult:
+        audio = b"clean-audio"
+        timed_metadata_events = ()
+
+    class FakeSessionResult:
+        ingest = FakeIngestResult()
+        transitions = ()
+
+    class FakeSession:
+        current_track = None
+
+        def feed(self, chunk: bytes) -> FakeSessionResult:
+            return FakeSessionResult()
+
+    class FakeOutputWriter:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+    spool = FakeSpool()
+
+    monkeypatch.setattr(
+        runner_module,
+        "create_safe_streaming_spool",
+        lambda *, directory: spool,
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "RippingSession",
+        lambda **kwargs: FakeSession(),
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "SessionOutputWriter",
+        FakeOutputWriter,
+    )
+
+    runner = RippingRunner(
+        RippingRunConfig(
+            url="https://example.invalid/stream",
+            output_directory=tmp_path,
+            codec="mp3",
+        ),
+        stream_opener=lambda url: (
+            FakeStream(),
+            {
+                "Content-Type": "audio/mpeg",
+                "icy-metaint": "1",
+            },
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="spool append failed"):
+        runner.run()
+
+    assert spool.closed is True
+
+
+def test_runner_does_not_discard_spool_when_track_write_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import fluxtuner_ripper.runner as runner_module
+
+    class FakeStream:
+        def __init__(self) -> None:
+            self._chunks = [b"chunk", b""]
+
+        def read(self, size: int = -1) -> bytes:
+            return self._chunks.pop(0)
+
+        def close(self) -> None:
+            pass
+
+    class FakeSpool:
+        def __init__(self) -> None:
+            self.closed = False
+            self.discarded: list[int] = []
+
+        def append(self, data: bytes) -> tuple[int, int]:
+            return 0, len(data)
+
+        def discard_before(self, offset: int) -> None:
+            self.discarded.append(offset)
+
+        def close(self) -> None:
+            self.closed = True
+
+    class FakeIngestResult:
+        audio = b"clean-audio"
+        timed_metadata_events = ()
+
+    class FakeTransition:
+        pass
+
+    class FakeSessionResult:
+        ingest = FakeIngestResult()
+        transitions = (FakeTransition(),)
+
+    class FakeSession:
+        current_track = None
+
+        def feed(self, chunk: bytes) -> FakeSessionResult:
+            return FakeSessionResult()
+
+    class FakeOutputWriter:
+        retained_start_offset = 4800
+
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        def write_transition(self, transition):
+            raise RuntimeError("track write failed")
+
+    spool = FakeSpool()
+
+    monkeypatch.setattr(
+        runner_module,
+        "create_safe_streaming_spool",
+        lambda *, directory: spool,
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "RippingSession",
+        lambda **kwargs: FakeSession(),
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "SessionOutputWriter",
+        FakeOutputWriter,
+    )
+
+    runner = RippingRunner(
+        RippingRunConfig(
+            url="https://example.invalid/stream",
+            output_directory=tmp_path,
+            codec="mp3",
+        ),
+        stream_opener=lambda url: (
+            FakeStream(),
+            {
+                "Content-Type": "audio/mpeg",
+                "icy-metaint": "1",
+            },
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="track write failed"):
+        runner.run()
+
+    assert spool.discarded == []
+    assert spool.closed is True
