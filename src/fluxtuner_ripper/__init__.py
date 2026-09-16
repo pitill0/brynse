@@ -103,6 +103,10 @@ from fluxtuner_ripper.session_output import (
     WrittenTrack,
     safe_track_stem,
 )
+from fluxtuner_ripper.streaming_runtime import (
+    SafeStreamingPipeline,
+    create_safe_streaming_pipeline,
+)
 from fluxtuner_ripper.structural import (
     StructuralBoundaryDetector,
     StructuralFeatureFrame,
@@ -170,6 +174,8 @@ __all__ = [
     "RippingRunError",
     "RippingRunResult",
     "RippingRunner",
+    "SafeStreamingPipeline",
+    "create_safe_streaming_pipeline",
     "RmsAcousticAnalyzer",
     "SplitAlignmentError",
     "SplitDecision",
