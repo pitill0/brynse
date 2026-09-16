@@ -156,3 +156,45 @@ def test_streaming_runner_reports_unresolved_attempt() -> None:
     assert completed[0].candidate == candidate
     assert completed[0].resolution is None
     assert runner.pending == ()
+
+
+def test_streaming_provider_cursor_proposes_only_new_time_window() -> None:
+    from fluxtuner_ripper.models import BoundaryCandidate
+    from fluxtuner_ripper.streaming_runner import StreamingProviderCursor
+
+    calls: list[tuple[float, float]] = []
+
+    class _Provider:
+        def propose(
+            self,
+            *,
+            start_time_seconds: float,
+            end_time_seconds: float,
+        ) -> tuple[BoundaryCandidate, ...]:
+            calls.append(
+                (
+                    start_time_seconds,
+                    end_time_seconds,
+                )
+            )
+            return (
+                BoundaryCandidate(
+                    time_seconds=end_time_seconds,
+                    source="test",
+                ),
+            )
+
+    cursor = StreamingProviderCursor(provider=_Provider())
+
+    first = cursor.propose_until(12.0)
+    second = cursor.propose_until(25.0)
+    third = cursor.propose_until(25.0)
+
+    assert calls == [
+        (0.0, 12.0),
+        (12.0, 25.0),
+    ]
+
+    assert tuple(candidate.time_seconds for candidate in first) == (12.0,)
+    assert tuple(candidate.time_seconds for candidate in second) == (25.0,)
+    assert third == ()

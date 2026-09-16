@@ -8,6 +8,7 @@ from typing import Protocol
 from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
 from fluxtuner_ripper.models import BoundaryCandidate
 from fluxtuner_ripper.orchestrator import CandidateResolution, CandidateResolver
+from fluxtuner_ripper.providers import BoundaryProvider
 from fluxtuner_ripper.ripping import IncrementalFrameTimeline
 
 
@@ -21,6 +22,36 @@ class StreamingIngestor(Protocol):
     def ring_buffer(self) -> EncodedAudioRingBuffer: ...
 
     def feed(self, data: bytes) -> object: ...
+
+
+class StreamingProviderCursor:
+    """Request boundary candidates only for newly observed stream time."""
+
+    def __init__(self, *, provider: BoundaryProvider) -> None:
+        self._provider = provider
+        self._end_time_seconds = 0.0
+
+    @property
+    def end_time_seconds(self) -> float:
+        return self._end_time_seconds
+
+    def propose_until(
+        self,
+        end_time_seconds: float,
+    ) -> tuple[BoundaryCandidate, ...]:
+        if end_time_seconds < self._end_time_seconds:
+            raise ValueError("end_time_seconds must not move backwards")
+
+        if end_time_seconds == self._end_time_seconds:
+            return ()
+
+        candidates = self._provider.propose(
+            start_time_seconds=self._end_time_seconds,
+            end_time_seconds=end_time_seconds,
+        )
+
+        self._end_time_seconds = end_time_seconds
+        return tuple(candidates)
 
 
 @dataclass(frozen=True)
