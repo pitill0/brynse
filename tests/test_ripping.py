@@ -3566,3 +3566,48 @@ time.sleep(60)
 
     assert elapsed < 5.0
     assert not output_path.exists()
+
+
+def test_aac_stream_finalizer_accepts_per_call_timeout_override(
+    tmp_path: Path,
+) -> None:
+    import time
+
+    from fluxtuner_ripper.output import AacTrackFinalizer, TrackFinalizeError
+
+    fake_ffmpeg = tmp_path / "fake-ffmpeg-aac-override-timeout"
+    fake_ffmpeg.write_text(
+        """#!/usr/bin/env python3
+import sys
+import time
+
+sys.stdin.buffer.read()
+time.sleep(60)
+""",
+        encoding="utf-8",
+    )
+    fake_ffmpeg.chmod(0o755)
+
+    output_path = tmp_path / "override-timeout.m4a"
+
+    finalizer = AacTrackFinalizer(
+        ffmpeg_binary=str(fake_ffmpeg),
+        timeout_seconds=30.0,
+    )
+
+    started = time.monotonic()
+
+    with pytest.raises(
+        TrackFinalizeError,
+        match="timed out",
+    ):
+        finalizer.finalize_stream(
+            chunks=iter((b"abcd", b"efgh")),
+            output_path=output_path,
+            timeout_seconds=0.2,
+        )
+
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 5.0
+    assert not output_path.exists()
