@@ -770,7 +770,10 @@ def create_safe_track_output_service() -> TrackOutputService:
     Runtime safety policy is centralized here so application paths do not
     instantiate a bare TrackOutputService directly.
     """
-    return TrackOutputService()
+    return TrackOutputService(
+        min_free_output_bytes=512 * 1024 * 1024,
+        output_space_factor=1.25,
+    )
 
 
 class TrackOutputService:

@@ -3450,3 +3450,12 @@ def test_session_output_writer_uses_safe_output_service_factory_by_default(
     assert calls == 1
     assert writer._output_service is sentinel
     assert not isinstance(writer._output_service, TrackOutputService)
+
+
+def test_safe_track_output_service_applies_runtime_disk_policy() -> None:
+    from fluxtuner_ripper.output import create_safe_track_output_service
+
+    service = create_safe_track_output_service()
+
+    assert service._min_free_output_bytes == 512 * 1024 * 1024
+    assert service._output_space_factor == 1.25
