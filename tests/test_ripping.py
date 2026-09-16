@@ -3380,3 +3380,38 @@ def test_streaming_segment_sink_uses_safe_output_service_factory_by_default(
     assert calls == 1
     assert sink._output_service is sentinel
     assert not isinstance(sink._output_service, TrackOutputService)
+
+
+def test_generic_segment_writer_uses_safe_output_service_factory_by_default(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import fluxtuner_ripper.generic_output as generic_output
+    from fluxtuner_ripper.output import TrackOutputService
+
+    class _FakeIngestor:
+        pass
+
+    sentinel = object()
+    calls = 0
+
+    def fake_factory():
+        nonlocal calls
+        calls += 1
+        return sentinel
+
+    monkeypatch.setattr(
+        generic_output,
+        "create_safe_track_output_service",
+        fake_factory,
+    )
+
+    writer = generic_output.GenericSegmentWriter(
+        ingestor=_FakeIngestor(),  # type: ignore[arg-type]
+        directory=tmp_path,
+        codec="mp3",
+    )
+
+    assert calls == 1
+    assert writer._output_service is sentinel
+    assert not isinstance(writer._output_service, TrackOutputService)

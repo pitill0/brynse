@@ -8,7 +8,11 @@ from pathlib import Path
 from fluxtuner_ripper.ingest import EncodedStreamIngestor
 from fluxtuner_ripper.models import TrackByteRange
 from fluxtuner_ripper.orchestrator import CandidateResolution
-from fluxtuner_ripper.output import TrackOutputService, TrackRangePlanner
+from fluxtuner_ripper.output import (
+    TrackOutputService,
+    TrackRangePlanner,
+    create_safe_track_output_service,
+)
 
 
 @dataclass(frozen=True)
@@ -44,7 +48,7 @@ class GenericSegmentWriter:
         self._codec = codec
         self._minimum_tail_seconds = minimum_tail_seconds
         self._range_planner = range_planner or TrackRangePlanner()
-        self._output_service = output_service or TrackOutputService()
+        self._output_service = output_service or create_safe_track_output_service()
 
     def write(
         self,
