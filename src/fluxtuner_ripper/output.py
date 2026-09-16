@@ -262,6 +262,7 @@ class Mp3TrackFinalizer:
         import os
         import subprocess  # nosec B404
         import tempfile
+        import threading
         from contextlib import suppress
 
         iterator = iter(chunks)
@@ -298,9 +299,16 @@ class Mp3TrackFinalizer:
         ]
 
         temp_path: Path | None = None
-        stderr_path: Path | None = None
         process: subprocess.Popen[bytes] | None = None
         replaced = False
+
+        feeder: threading.Thread | None = None
+        stderr_reader: threading.Thread | None = None
+
+        feeder_errors: list[BaseException] = []
+        stderr_errors: list[BaseException] = []
+        stderr_tail = bytearray()
+        stderr_tail_limit = 64 * 1024
 
         try:
             with tempfile.NamedTemporaryFile(
@@ -312,103 +320,125 @@ class Mp3TrackFinalizer:
             ) as output_handle:
                 temp_path = Path(output_handle.name)
 
-                with tempfile.NamedTemporaryFile(
-                    mode="w+b",
-                    dir=output_path.parent,
-                    prefix=".fluxtuner-ffmpeg-stderr-",
-                    suffix=".tmp",
-                    delete=False,
-                ) as stderr_handle:
-                    stderr_path = Path(stderr_handle.name)
-
-                    try:
-                        process = subprocess.Popen(  # nosec B603
-                            command,
-                            stdin=subprocess.PIPE,
-                            stdout=output_handle,
-                            stderr=stderr_handle,
-                            bufsize=0,
-                        )
-                    except FileNotFoundError as exc:
-                        raise TrackFinalizeError(
-                            f"FFmpeg binary not found: {self._ffmpeg_binary}"
-                        ) from exc
-
-                    if process.stdin is None:
-                        raise TrackFinalizeError("FFmpeg MP3 finalization did not provide stdin")
-
-                    stdin_handle = process.stdin
-
-                    import threading
-
-                    feeder_errors: list[BaseException] = []
-
-                    def feed_stdin() -> None:
-                        try:
-                            stdin_handle.write(first_chunk)
-
-                            for chunk in iterator:
-                                if chunk:
-                                    stdin_handle.write(chunk)
-                        except BrokenPipeError:
-                            # FFmpeg may close stdin early when it detects invalid input.
-                            pass
-                        except BaseException as exc:
-                            feeder_errors.append(exc)
-                        finally:
-                            with suppress(BrokenPipeError, OSError):
-                                stdin_handle.close()
-
-                    feeder = threading.Thread(
-                        target=feed_stdin,
-                        name="fluxtuner-mp3-ffmpeg-stdin",
-                        daemon=True,
+                try:
+                    process = subprocess.Popen(  # nosec B603
+                        command,
+                        stdin=subprocess.PIPE,
+                        stdout=output_handle,
+                        stderr=subprocess.PIPE,
+                        bufsize=0,
                     )
-                    feeder.start()
+                except FileNotFoundError as exc:
+                    raise TrackFinalizeError(
+                        f"FFmpeg binary not found: {self._ffmpeg_binary}"
+                    ) from exc
+
+                if process.stdin is None:
+                    raise TrackFinalizeError("FFmpeg MP3 finalization did not provide stdin")
+                if process.stderr is None:
+                    raise TrackFinalizeError("FFmpeg MP3 finalization did not provide stderr")
+
+                stdin_handle = process.stdin
+                stderr_handle = process.stderr
+
+                def drain_stderr() -> None:
+                    try:
+                        while True:
+                            data = stderr_handle.read(8192)
+                            if not data:
+                                break
+
+                            stderr_tail.extend(data)
+
+                            if len(stderr_tail) > stderr_tail_limit:
+                                del stderr_tail[:-stderr_tail_limit]
+                    except BaseException as exc:
+                        stderr_errors.append(exc)
+                    finally:
+                        with suppress(OSError):
+                            stderr_handle.close()
+
+                stderr_reader = threading.Thread(
+                    target=drain_stderr,
+                    name="fluxtuner-mp3-ffmpeg-stderr",
+                    daemon=True,
+                )
+                stderr_reader.start()
+
+                def feed_stdin() -> None:
+                    try:
+                        stdin_handle.write(first_chunk)
+
+                        for chunk in iterator:
+                            if chunk:
+                                stdin_handle.write(chunk)
+                    except BrokenPipeError:
+                        # FFmpeg may close stdin early when it detects invalid input.
+                        pass
+                    except BaseException as exc:
+                        feeder_errors.append(exc)
+                    finally:
+                        with suppress(BrokenPipeError, OSError):
+                            stdin_handle.close()
+
+                feeder = threading.Thread(
+                    target=feed_stdin,
+                    name="fluxtuner-mp3-ffmpeg-stdin",
+                    daemon=True,
+                )
+                feeder.start()
+
+                try:
+                    returncode = process.wait(
+                        timeout=self._timeout_seconds,
+                    )
+                except subprocess.TimeoutExpired as exc:
+                    with suppress(OSError):
+                        process.terminate()
 
                     try:
-                        returncode = process.wait(
-                            timeout=self._timeout_seconds,
-                        )
-                    except subprocess.TimeoutExpired as exc:
+                        process.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
                         with suppress(OSError):
-                            process.terminate()
-
-                        try:
-                            process.wait(timeout=1)
-                        except subprocess.TimeoutExpired:
-                            with suppress(OSError):
-                                process.kill()
-                            process.wait()
-
-                        feeder.join(timeout=1)
-
-                        raise TrackFinalizeError("FFmpeg MP3 finalization timed out") from exc
+                            process.kill()
+                        process.wait()
 
                     feeder.join(timeout=1)
+                    stderr_reader.join(timeout=1)
 
-                    if feeder.is_alive():
-                        raise TrackFinalizeError("FFmpeg MP3 stdin feeder did not terminate")
+                    raise TrackFinalizeError("FFmpeg MP3 finalization timed out") from exc
 
-                    if feeder_errors:
-                        raise TrackFinalizeError(
-                            "FFmpeg MP3 stdin feeding failed"
-                        ) from feeder_errors[0]
+                feeder.join(timeout=1)
+                stderr_reader.join(timeout=1)
 
-                    output_handle.flush()
-                    os.fsync(output_handle.fileno())
+                if feeder.is_alive():
+                    raise TrackFinalizeError("FFmpeg MP3 stdin feeder did not terminate")
 
-                    stderr_handle.flush()
-                    stderr_handle.seek(0, os.SEEK_END)
-                    stderr_size = stderr_handle.tell()
-                    stderr_handle.seek(max(0, stderr_size - 64 * 1024))
-                    stderr_tail = stderr_handle.read(64 * 1024)
+                if stderr_reader.is_alive():
+                    raise TrackFinalizeError("FFmpeg MP3 stderr reader did not terminate")
+
+                if feeder_errors:
+                    raise TrackFinalizeError("FFmpeg MP3 stdin feeding failed") from feeder_errors[
+                        0
+                    ]
+
+                if stderr_errors:
+                    raise TrackFinalizeError(
+                        "FFmpeg MP3 stderr draining failed"
+                    ) from stderr_errors[0]
+
+                output_handle.flush()
+                os.fsync(output_handle.fileno())
 
             if returncode != 0:
-                error = stderr_tail.decode(
-                    "utf-8",
-                    errors="replace",
-                ).strip()
+                error = (
+                    bytes(stderr_tail)
+                    .decode(
+                        "utf-8",
+                        errors="replace",
+                    )
+                    .strip()
+                )
                 raise TrackFinalizeError(
                     f"FFmpeg MP3 finalization failed with exit code {returncode}: {error}"
                 )
@@ -436,13 +466,15 @@ class Mp3TrackFinalizer:
                     with suppress(subprocess.TimeoutExpired):
                         process.wait(timeout=5)
 
+            if feeder is not None and feeder.is_alive():
+                feeder.join(timeout=1)
+
+            if stderr_reader is not None and stderr_reader.is_alive():
+                stderr_reader.join(timeout=1)
+
             if temp_path is not None and not replaced:
                 with suppress(OSError):
                     temp_path.unlink(missing_ok=True)
-
-            if stderr_path is not None:
-                with suppress(OSError):
-                    stderr_path.unlink(missing_ok=True)
 
 
 class AacTrackFinalizer:
