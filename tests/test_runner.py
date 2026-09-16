@@ -309,3 +309,69 @@ def test_runner_discards_spool_before_next_retained_track_offset(
     runner.run()
 
     assert spool.discarded == [4800]
+
+
+def test_runner_closes_spool_when_output_writer_construction_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import fluxtuner_ripper.runner as runner_module
+
+    class FakeStream:
+        def read(self, size: int = -1) -> bytes:
+            return b""
+
+        def close(self) -> None:
+            pass
+
+    class FakeSpool:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class FakeSession:
+        current_track = None
+
+    spool = FakeSpool()
+
+    monkeypatch.setattr(
+        runner_module,
+        "create_safe_streaming_spool",
+        lambda *, directory: spool,
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "RippingSession",
+        lambda **kwargs: FakeSession(),
+    )
+
+    def fail_output_writer(**kwargs):
+        raise RuntimeError("output writer construction failed")
+
+    monkeypatch.setattr(
+        runner_module,
+        "SessionOutputWriter",
+        fail_output_writer,
+    )
+
+    runner = RippingRunner(
+        RippingRunConfig(
+            url="https://example.invalid/stream",
+            output_directory=tmp_path,
+            codec="mp3",
+        ),
+        stream_opener=lambda url: (
+            FakeStream(),
+            {
+                "Content-Type": "audio/mpeg",
+                "icy-metaint": "1",
+            },
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="output writer construction failed"):
+        runner.run()
+
+    assert spool.closed is True
