@@ -38,6 +38,17 @@ class SafeStreamingPipeline:
         """Release resources owned by the pipeline."""
         self.spool.close()
 
+    def __enter__(self) -> SafeStreamingPipeline:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: object,
+        exc_value: object,
+        traceback: object,
+    ) -> None:
+        self.close()
+
 
 def create_safe_streaming_pipeline(
     *,

@@ -3758,3 +3758,30 @@ def test_safe_streaming_pipeline_close_releases_owned_spool(
 
     # Cleanup must be idempotent.
     pipeline.close()
+
+
+def test_safe_streaming_pipeline_context_manager_closes_owned_spool(
+    tmp_path: Path,
+) -> None:
+    from fluxtuner_ripper.ingest import EncodedStreamIngestor
+    from fluxtuner_ripper.streaming_runtime import create_safe_streaming_pipeline
+
+    class _FakeResolver:
+        def resolve_candidate(self, *, candidate, timeline, ring_buffer):
+            raise AssertionError("resolver must not be called")
+
+    with create_safe_streaming_pipeline(
+        ingestor=EncodedStreamIngestor(
+            codec="mp3",
+            ring_max_bytes=4096,
+        ),
+        resolver=_FakeResolver(),  # type: ignore[arg-type]
+        settle_seconds=1.0,
+        output_directory=tmp_path / "output",
+        spool_directory=tmp_path / "spool",
+        codec="mp3",
+    ) as pipeline:
+        spool_path = pipeline.spool.path
+        assert spool_path.exists()
+
+    assert not spool_path.exists()
