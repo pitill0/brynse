@@ -3459,3 +3459,65 @@ def test_safe_track_output_service_applies_runtime_disk_policy() -> None:
 
     assert service._min_free_output_bytes == 512 * 1024 * 1024
     assert service._output_space_factor == 1.25
+
+
+def test_track_output_service_derives_stream_finalizer_timeout_from_segment_size(
+    tmp_path: Path,
+) -> None:
+    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.output import TrackOutputService
+
+    class _Source:
+        def __init__(self, size: int) -> None:
+            self.data = b"x" * size
+
+        @property
+        def end_offset(self) -> int:
+            return len(self.data)
+
+        def contains(self, start: int, end: int) -> bool:
+            return 0 <= start <= end <= len(self.data)
+
+        def read(self, start: int, end: int) -> bytes:
+            return self.data[start:end]
+
+    class _StreamingFinalizer:
+        def __init__(self) -> None:
+            self.timeout_seconds: float | None = None
+
+        def finalize_stream(
+            self,
+            *,
+            chunks,
+            output_path: Path,
+            timeout_seconds: float | None = None,
+        ) -> None:
+            self.timeout_seconds = timeout_seconds
+
+            with output_path.open("wb") as handle:
+                for chunk in chunks:
+                    handle.write(chunk)
+
+    finalizer = _StreamingFinalizer()
+
+    service = TrackOutputService(
+        mp3_finalizer=finalizer,
+        finalize_base_timeout_seconds=30.0,
+        finalize_throughput_bytes_per_second=8.0,
+    )
+
+    source = _Source(320)
+
+    service.write_track(
+        source=source,
+        byte_range=TrackByteRange(
+            start_offset=0,
+            end_offset=320,
+        ),
+        directory=tmp_path,
+        stem="dynamic-timeout",
+        codec="mp3",
+        chunk_size=64,
+    )
+
+    assert finalizer.timeout_seconds == pytest.approx(40.0)

@@ -790,6 +790,8 @@ class TrackOutputService:
         max_segment_bytes: int | None = None,
         min_free_output_bytes: int | None = None,
         output_space_factor: float = 0.0,
+        finalize_base_timeout_seconds: float | None = None,
+        finalize_throughput_bytes_per_second: float | None = None,
     ) -> None:
         if max_segment_bytes is not None and max_segment_bytes <= 0:
             raise ValueError("max_segment_bytes must be greater than zero")
@@ -798,6 +800,22 @@ class TrackOutputService:
         if output_space_factor < 0:
             raise ValueError("output_space_factor must not be negative")
 
+        timeout_policy_values = (
+            finalize_base_timeout_seconds,
+            finalize_throughput_bytes_per_second,
+        )
+        if (timeout_policy_values[0] is None) != (timeout_policy_values[1] is None):
+            raise ValueError("finalize timeout policy requires both base timeout and throughput")
+
+        if finalize_base_timeout_seconds is not None and finalize_base_timeout_seconds <= 0:
+            raise ValueError("finalize_base_timeout_seconds must be greater than zero")
+
+        if (
+            finalize_throughput_bytes_per_second is not None
+            and finalize_throughput_bytes_per_second <= 0
+        ):
+            raise ValueError("finalize_throughput_bytes_per_second must be greater than zero")
+
         self._mp3_finalizer = mp3_finalizer or Mp3TrackFinalizer()
         self._aac_finalizer = aac_finalizer or AacTrackFinalizer()
         self._file_writer = file_writer or TrackFileWriter()
@@ -805,6 +823,8 @@ class TrackOutputService:
         self._max_segment_bytes = max_segment_bytes
         self._min_free_output_bytes = min_free_output_bytes
         self._output_space_factor = output_space_factor
+        self._finalize_base_timeout_seconds = finalize_base_timeout_seconds
+        self._finalize_throughput_bytes_per_second = finalize_throughput_bytes_per_second
 
     def write_track(
         self,
@@ -876,10 +896,25 @@ class TrackOutputService:
                 chunk_size=chunk_size,
             )
 
-            finalize_stream(
-                chunks=chunks,
-                output_path=output_path,
-            )
+            if (
+                self._finalize_base_timeout_seconds is not None
+                and self._finalize_throughput_bytes_per_second is not None
+            ):
+                timeout_seconds = max(
+                    self._finalize_base_timeout_seconds,
+                    segment_bytes / self._finalize_throughput_bytes_per_second,
+                )
+                finalize_stream(
+                    chunks=chunks,
+                    output_path=output_path,
+                    timeout_seconds=timeout_seconds,
+                )
+            else:
+                finalize_stream(
+                    chunks=chunks,
+                    output_path=output_path,
+                )
+
             return output_path
 
         raw = self._encoded_writer.write_range(
