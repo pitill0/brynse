@@ -3785,3 +3785,33 @@ def test_safe_streaming_pipeline_context_manager_closes_owned_spool(
         assert spool_path.exists()
 
     assert not spool_path.exists()
+
+
+def test_safe_streaming_pipeline_cleans_spool_when_construction_fails(
+    tmp_path: Path,
+) -> None:
+    import pytest
+
+    from fluxtuner_ripper.ingest import EncodedStreamIngestor
+    from fluxtuner_ripper.streaming_runtime import create_safe_streaming_pipeline
+
+    class _FakeResolver:
+        def resolve_candidate(self, *, candidate, timeline, ring_buffer):
+            raise AssertionError("resolver must not be called")
+
+    spool_directory = tmp_path / "spool"
+
+    with pytest.raises(ValueError):
+        create_safe_streaming_pipeline(
+            ingestor=EncodedStreamIngestor(
+                codec="mp3",
+                ring_max_bytes=4096,
+            ),
+            resolver=_FakeResolver(),  # type: ignore[arg-type]
+            settle_seconds=0,
+            output_directory=tmp_path / "output",
+            spool_directory=spool_directory,
+            codec="mp3",
+        )
+
+    assert list(spool_directory.glob(".fluxtuner-spool-*.chunk")) == []

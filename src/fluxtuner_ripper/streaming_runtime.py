@@ -67,32 +67,36 @@ def create_safe_streaming_pipeline(
     )
     spool = spooling_ingestor.spool
 
-    runner = StreamingGenericRunner(
-        ingestor=spooling_ingestor,
-        resolver=resolver,
-        settle_seconds=settle_seconds,
-    )
+    try:
+        runner = StreamingGenericRunner(
+            ingestor=spooling_ingestor,
+            resolver=resolver,
+            settle_seconds=settle_seconds,
+        )
 
-    sink = StreamingSegmentSink(
-        ingestor=ingestor,
-        directory=output_directory,
-        codec=codec,
-        spool=spool,
-        initial_start_source=spooling_ingestor,
-    )
+        sink = StreamingSegmentSink(
+            ingestor=ingestor,
+            directory=output_directory,
+            codec=codec,
+            spool=spool,
+            initial_start_source=spooling_ingestor,
+        )
 
-    runtime = AsyncStreamingRuntime(
-        runner=runner,
-        sink=sink,
-    )
+        runtime = AsyncStreamingRuntime(
+            runner=runner,
+            sink=sink,
+        )
 
-    return SafeStreamingPipeline(
-        spooling_ingestor=spooling_ingestor,
-        spool=spool,
-        runner=runner,
-        sink=sink,
-        runtime=runtime,
-    )
+        return SafeStreamingPipeline(
+            spooling_ingestor=spooling_ingestor,
+            spool=spool,
+            runner=runner,
+            sink=sink,
+            runtime=runtime,
+        )
+    except BaseException:
+        spool.close()
+        raise
 
 
 @dataclass(frozen=True)
