@@ -2818,3 +2818,43 @@ def test_track_output_service_streams_aac_without_full_range_read(
         b"klmn",
         b"opqr",
     ]
+
+
+def test_track_output_service_rejects_segment_over_configured_size_limit(
+    tmp_path: Path,
+) -> None:
+    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.output import TrackOutputService
+
+    class _SourceThatMustNotBeRead:
+        @property
+        def end_offset(self) -> int:
+            return 100
+
+        def contains(self, start: int, end: int) -> bool:
+            return True
+
+        def read(self, start: int, end: int) -> bytes:
+            raise AssertionError("oversized segment must be rejected before reading source bytes")
+
+    service = TrackOutputService(
+        max_segment_bytes=8,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="segment exceeds maximum allowed size",
+    ):
+        service.write_track(
+            source=_SourceThatMustNotBeRead(),
+            byte_range=TrackByteRange(
+                start_offset=10,
+                end_offset=19,
+            ),
+            directory=tmp_path,
+            stem="oversized",
+            codec="mp3",
+            chunk_size=4,
+        )
+
+    assert not (tmp_path / "oversized.mp3").exists()

@@ -602,11 +602,16 @@ class TrackOutputService:
         mp3_finalizer: Mp3TrackFinalizer | None = None,
         aac_finalizer: AacTrackFinalizer | None = None,
         file_writer: TrackFileWriter | None = None,
+        max_segment_bytes: int | None = None,
     ) -> None:
+        if max_segment_bytes is not None and max_segment_bytes <= 0:
+            raise ValueError("max_segment_bytes must be greater than zero")
+
         self._mp3_finalizer = mp3_finalizer or Mp3TrackFinalizer()
         self._aac_finalizer = aac_finalizer or AacTrackFinalizer()
         self._file_writer = file_writer or TrackFileWriter()
         self._encoded_writer = EncodedTrackWriter()
+        self._max_segment_bytes = max_segment_bytes
 
     def write_track(
         self,
@@ -622,6 +627,13 @@ class TrackOutputService:
             raise ValueError("chunk_size must be greater than zero")
         if not stem or not stem.strip():
             raise ValueError("stem must not be empty")
+
+        segment_bytes = byte_range.end_offset - byte_range.start_offset
+        if self._max_segment_bytes is not None and segment_bytes > self._max_segment_bytes:
+            raise ValueError(
+                "segment exceeds maximum allowed size: "
+                f"{segment_bytes} > {self._max_segment_bytes} bytes"
+            )
 
         normalized = codec.strip().lower()
         finalizer: object
