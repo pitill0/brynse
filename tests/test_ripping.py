@@ -3611,3 +3611,12 @@ time.sleep(60)
 
     assert elapsed < 5.0
     assert not output_path.exists()
+
+
+def test_safe_track_output_service_applies_runtime_timeout_policy() -> None:
+    from fluxtuner_ripper.output import create_safe_track_output_service
+
+    service = create_safe_track_output_service()
+
+    assert service._finalize_base_timeout_seconds == 30.0
+    assert service._finalize_throughput_bytes_per_second == 8 * 1024 * 1024

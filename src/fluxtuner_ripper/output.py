@@ -789,6 +789,8 @@ def create_safe_track_output_service() -> TrackOutputService:
     return TrackOutputService(
         min_free_output_bytes=512 * 1024 * 1024,
         output_space_factor=1.25,
+        finalize_base_timeout_seconds=30.0,
+        finalize_throughput_bytes_per_second=8 * 1024 * 1024,
     )
 
 
