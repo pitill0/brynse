@@ -3724,3 +3724,37 @@ def test_async_streaming_runtime_propagates_spool_limit_and_cleans_up_tasks(
         assert list((tmp_path / "spool").glob(".fluxtuner-spool-*.chunk")) == []
 
     asyncio.run(exercise())
+
+
+def test_safe_streaming_pipeline_close_releases_owned_spool(
+    tmp_path: Path,
+) -> None:
+    from fluxtuner_ripper.ingest import EncodedStreamIngestor
+    from fluxtuner_ripper.streaming_runtime import create_safe_streaming_pipeline
+
+    class _FakeResolver:
+        def resolve_candidate(self, *, candidate, timeline, ring_buffer):
+            raise AssertionError("resolver must not be called")
+
+    pipeline = create_safe_streaming_pipeline(
+        ingestor=EncodedStreamIngestor(
+            codec="mp3",
+            ring_max_bytes=4096,
+        ),
+        resolver=_FakeResolver(),  # type: ignore[arg-type]
+        settle_seconds=1.0,
+        output_directory=tmp_path / "output",
+        spool_directory=tmp_path / "spool",
+        codec="mp3",
+    )
+
+    spool_path = pipeline.spool.path
+
+    assert spool_path.exists()
+
+    pipeline.close()
+
+    assert not spool_path.exists()
+
+    # Cleanup must be idempotent.
+    pipeline.close()

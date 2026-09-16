@@ -34,6 +34,10 @@ class SafeStreamingPipeline:
     sink: StreamingSegmentSink
     runtime: AsyncStreamingRuntime
 
+    def close(self) -> None:
+        """Release resources owned by the pipeline."""
+        self.spool.close()
+
 
 def create_safe_streaming_pipeline(
     *,
