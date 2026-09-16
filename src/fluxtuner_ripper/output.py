@@ -188,8 +188,17 @@ class TrackFinalizeError(RuntimeError):
 class Mp3TrackFinalizer:
     """Remux MP3 bytes without transcoding to rebuild seek metadata."""
 
-    def __init__(self, *, ffmpeg_binary: str = "ffmpeg") -> None:
+    def __init__(
+        self,
+        *,
+        ffmpeg_binary: str = "ffmpeg",
+        timeout_seconds: float | None = None,
+    ) -> None:
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be greater than zero")
+
         self._ffmpeg_binary = ffmpeg_binary
+        self._timeout_seconds = timeout_seconds
 
     def finalize(self, data: bytes) -> bytes:
         """Remux MP3 through FFmpeg stream-copy and emit a fresh Xing header."""
@@ -341,7 +350,22 @@ class Mp3TrackFinalizer:
                         with suppress(BrokenPipeError, OSError):
                             process.stdin.close()
 
-                    returncode = process.wait()
+                    try:
+                        returncode = process.wait(
+                            timeout=self._timeout_seconds,
+                        )
+                    except subprocess.TimeoutExpired as exc:
+                        with suppress(OSError):
+                            process.terminate()
+
+                        try:
+                            process.wait(timeout=1)
+                        except subprocess.TimeoutExpired:
+                            with suppress(OSError):
+                                process.kill()
+                            process.wait()
+
+                        raise TrackFinalizeError("FFmpeg MP3 finalization timed out") from exc
 
                     output_handle.flush()
                     os.fsync(output_handle.fileno())

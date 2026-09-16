@@ -3090,3 +3090,55 @@ def test_track_output_service_rejects_unsafe_output_stem(
             codec="mp3",
             chunk_size=4,
         )
+
+
+def test_mp3_stream_finalizer_times_out_and_cleans_partial_output(
+    tmp_path: Path,
+) -> None:
+    import time
+
+    from fluxtuner_ripper.output import Mp3TrackFinalizer, TrackFinalizeError
+
+    fake_ffmpeg = tmp_path / "fake-ffmpeg-timeout"
+    fake_ffmpeg.write_text(
+        """#!/usr/bin/env python3
+import sys
+import time
+
+sys.stdin.buffer.read()
+time.sleep(60)
+""",
+        encoding="utf-8",
+    )
+    fake_ffmpeg.chmod(0o755)
+
+    output_path = tmp_path / "timeout.mp3"
+
+    finalizer = Mp3TrackFinalizer(
+        ffmpeg_binary=str(fake_ffmpeg),
+        timeout_seconds=0.1,
+    )
+
+    started = time.monotonic()
+
+    with pytest.raises(
+        TrackFinalizeError,
+        match="timed out",
+    ):
+        finalizer.finalize_stream(
+            chunks=iter((b"abcd", b"efgh")),
+            output_path=output_path,
+        )
+
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 5.0
+    assert not output_path.exists()
+
+    leftovers = [
+        item
+        for item in tmp_path.iterdir()
+        if item.name.startswith(".timeout.mp3.")
+        or item.name.startswith(".fluxtuner-ffmpeg-stderr-")
+    ]
+    assert leftovers == []
