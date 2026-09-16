@@ -604,11 +604,14 @@ class TrackOutputService:
         file_writer: TrackFileWriter | None = None,
         max_segment_bytes: int | None = None,
         min_free_output_bytes: int | None = None,
+        output_space_factor: float = 0.0,
     ) -> None:
         if max_segment_bytes is not None and max_segment_bytes <= 0:
             raise ValueError("max_segment_bytes must be greater than zero")
         if min_free_output_bytes is not None and min_free_output_bytes < 0:
             raise ValueError("min_free_output_bytes must not be negative")
+        if output_space_factor < 0:
+            raise ValueError("output_space_factor must not be negative")
 
         self._mp3_finalizer = mp3_finalizer or Mp3TrackFinalizer()
         self._aac_finalizer = aac_finalizer or AacTrackFinalizer()
@@ -616,6 +619,7 @@ class TrackOutputService:
         self._encoded_writer = EncodedTrackWriter()
         self._max_segment_bytes = max_segment_bytes
         self._min_free_output_bytes = min_free_output_bytes
+        self._output_space_factor = output_space_factor
 
     def write_track(
         self,
@@ -639,16 +643,20 @@ class TrackOutputService:
                 f"{segment_bytes} > {self._max_segment_bytes} bytes"
             )
 
-        if self._min_free_output_bytes is not None:
+        if self._min_free_output_bytes is not None or self._output_space_factor > 0:
+            import math
             import shutil
 
             directory.mkdir(parents=True, exist_ok=True)
             free_bytes = shutil.disk_usage(directory).free
 
-            if free_bytes < self._min_free_output_bytes:
+            reserve_bytes = self._min_free_output_bytes or 0
+            estimated_output_bytes = math.ceil(segment_bytes * self._output_space_factor)
+            required_free_bytes = reserve_bytes + estimated_output_bytes
+
+            if free_bytes < required_free_bytes:
                 raise RuntimeError(
-                    "insufficient free disk space: "
-                    f"{free_bytes} < {self._min_free_output_bytes} bytes"
+                    f"insufficient free disk space: {free_bytes} < {required_free_bytes} bytes"
                 )
 
         normalized = codec.strip().lower()
