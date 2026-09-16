@@ -274,9 +274,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         _validate_args(args)
-        data = _read_input(args.input)
+        chunks = _iter_input(args.input)
         payload = _run_generic_pipeline(
-            data=data,
+            chunks=chunks,
             codec=args.codec,
             provider_name=args.provider,
             interval_seconds=args.interval,

@@ -396,3 +396,48 @@ def test_run_generic_pipeline_accepts_incremental_chunks(
         b"data",
     ]
     assert payload["bytes_ingested"] == 12
+
+
+def test_main_streams_input_chunks_into_generic_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import fluxtuner_ripper.generic_cli as generic_cli
+
+    input_path = tmp_path / "input.mp3"
+    input_path.write_bytes(b"abcdefghij")
+
+    received_chunks: list[bytes] = []
+
+    def fake_run_generic_pipeline(**kwargs: object) -> dict[str, object]:
+        chunks = kwargs.get("chunks")
+        assert chunks is not None
+        received_chunks.extend(chunks)
+        return {
+            "bytes_ingested": sum(len(chunk) for chunk in received_chunks),
+            "codec": "mp3",
+            "provider": "fixed_interval",
+            "interval_seconds": 30.0,
+            "boundaries": [],
+        }
+
+    monkeypatch.setattr(
+        generic_cli,
+        "_run_generic_pipeline",
+        fake_run_generic_pipeline,
+    )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "fluxtuner-ripper-segment",
+            str(input_path),
+            "--codec",
+            "mp3",
+            "--interval",
+            "30",
+        ],
+    )
+
+    assert generic_cli.main() == 0
+    assert b"".join(received_chunks) == b"abcdefghij"
