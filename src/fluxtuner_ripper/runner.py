@@ -295,6 +295,11 @@ class RippingRunner:
 
                 for transition in result.transitions:
                     written = output_writer.write_transition(transition)
+
+                    retained_start_offset = output_writer.retained_start_offset
+                    if retained_start_offset is not None:
+                        spool.discard_before(retained_start_offset)
+
                     if on_track_written is not None:
                         on_track_written(written)
 
