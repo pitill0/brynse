@@ -27,6 +27,7 @@ from fluxtuner_ripper.ripping import RippingStreamIngestor
 from fluxtuner_ripper.session import RippingSession
 from fluxtuner_ripper.session_output import SessionOutputWriter, WrittenTrack
 from fluxtuner_ripper.shadow import ShadowBoundaryAnalysis
+from fluxtuner_ripper.streaming_spool import create_safe_streaming_spool
 from fluxtuner_ripper.transient import ConservativeTransientExclusionPolicy
 
 _CHUNK_SIZE = 64 * 1024
@@ -224,6 +225,7 @@ class RippingRunner:
 
         stream, headers = self._stream_opener(config.url)
         self._stream = stream
+        spool = None
 
         try:
             codec = resolve_codec(config.codec, headers)
@@ -246,10 +248,14 @@ class RippingRunner:
                 transient_exclusion_policy=transient_policy,
             )
             self._session = session
+            spool = create_safe_streaming_spool(
+                directory=config.output_directory / ".fluxtuner-spool",
+            )
             output_writer = SessionOutputWriter(
                 ingestor=ingestor,
                 directory=config.output_directory,
                 codec=codec,
+                source=spool,
             )
             shadow_observer = (
                 self._shadow_observer_factory(config.ffmpeg_binary)
@@ -272,6 +278,9 @@ class RippingRunner:
                     break
 
                 result = session.feed(chunk)
+
+                if result.ingest.audio:
+                    spool.append(result.ingest.audio)
 
                 if shadow_observer is not None and on_shadow_analysis is not None:
                     for analysis in shadow_observer.observe(
@@ -297,5 +306,7 @@ class RippingRunner:
             )
         finally:
             self._stream = None
+            if spool is not None:
+                spool.close()
             with suppress(OSError):
                 stream.close()

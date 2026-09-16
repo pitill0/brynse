@@ -148,3 +148,71 @@ def test_runner_shadow_callback_is_parallel_and_optional(tmp_path: Path) -> None
     assert observer.calls == 1
     assert callbacks == ["shadow-analysis"]
     assert stream.closed is True
+
+
+def test_runner_retains_clean_audio_in_safe_streaming_spool(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import fluxtuner_ripper.runner as runner_module
+
+    frame_length = 417
+    frame = b"\xff\xfb\x90\x00" + bytes(frame_length - 4)
+
+    class FakeStream:
+        def __init__(self) -> None:
+            self._chunks = [frame + b"\x00", b""]
+
+        def read(self, size: int = -1) -> bytes:
+            return self._chunks.pop(0)
+
+        def close(self) -> None:
+            pass
+
+    class FakeSpool:
+        def __init__(self) -> None:
+            self.appended: list[bytes] = []
+            self.closed = False
+
+        def append(self, data: bytes) -> tuple[int, int]:
+            start = sum(len(chunk) for chunk in self.appended)
+            self.appended.append(data)
+            return start, start + len(data)
+
+        def close(self) -> None:
+            self.closed = True
+
+    spool = FakeSpool()
+    spool_directories: list[Path] = []
+
+    def fake_spool_factory(*, directory: Path):
+        spool_directories.append(directory)
+        return spool
+
+    monkeypatch.setattr(
+        runner_module,
+        "create_safe_streaming_spool",
+        fake_spool_factory,
+    )
+
+    runner = RippingRunner(
+        RippingRunConfig(
+            url="https://example.invalid/stream",
+            output_directory=tmp_path,
+            codec="mp3",
+        ),
+        stream_opener=lambda url: (
+            FakeStream(),
+            {
+                "Content-Type": "audio/mpeg",
+                "icy-metaint": str(frame_length),
+            },
+        ),
+    )
+
+    result = runner.run()
+
+    assert result.stopped is False
+    assert spool_directories == [tmp_path / ".fluxtuner-spool"]
+    assert spool.appended == [frame]
+    assert spool.closed is True
