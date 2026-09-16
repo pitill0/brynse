@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from fluxtuner_ripper.ripping import (
@@ -2565,3 +2567,43 @@ def test_encoded_track_writer_iterates_range_in_bounded_chunks() -> None:
         (10, 14),
         (14, 18),
     ]
+
+
+def test_mp3_finalizer_streams_chunks_directly_to_output_file(
+    tmp_path: Path,
+) -> None:
+    from fluxtuner_ripper.output import Mp3TrackFinalizer
+
+    fake_ffmpeg = tmp_path / "fake-ffmpeg"
+    fake_ffmpeg.write_text(
+        """#!/usr/bin/env python3
+import shutil
+import sys
+
+shutil.copyfileobj(sys.stdin.buffer, sys.stdout.buffer)
+""",
+        encoding="utf-8",
+    )
+    fake_ffmpeg.chmod(0o755)
+
+    output_path = tmp_path / "segment.mp3"
+
+    chunks = iter(
+        (
+            b"abcd",
+            b"efgh",
+            b"ijkl",
+            b"mnop",
+        )
+    )
+
+    finalizer = Mp3TrackFinalizer(
+        ffmpeg_binary=str(fake_ffmpeg),
+    )
+
+    finalizer.finalize_stream(
+        chunks=chunks,
+        output_path=output_path,
+    )
+
+    assert output_path.read_bytes() == b"abcdefghijklmnop"

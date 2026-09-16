@@ -233,6 +233,156 @@ class Mp3TrackFinalizer:
 
         return completed.stdout
 
+    def finalize_stream(
+        self,
+        *,
+        chunks: Iterator[bytes],
+        output_path: Path,
+    ) -> None:
+        """Remux MP3 chunks to disk without materializing the full segment in RAM."""
+
+        import os
+        import subprocess  # nosec B404
+        import tempfile
+        from contextlib import suppress
+
+        iterator = iter(chunks)
+
+        first_chunk: bytes | None = None
+        for chunk in iterator:
+            if chunk:
+                first_chunk = chunk
+                break
+
+        if first_chunk is None:
+            raise ValueError("chunks must contain encoded data")
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        command = [
+            self._ffmpeg_binary,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "mp3",
+            "-i",
+            "pipe:0",
+            "-map",
+            "0:a:0",
+            "-c:a",
+            "copy",
+            "-write_xing",
+            "1",
+            "-f",
+            "mp3",
+            "pipe:1",
+        ]
+
+        temp_path: Path | None = None
+        stderr_path: Path | None = None
+        process: subprocess.Popen[bytes] | None = None
+        replaced = False
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=output_path.parent,
+                prefix=f".{output_path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as output_handle:
+                temp_path = Path(output_handle.name)
+
+                with tempfile.NamedTemporaryFile(
+                    mode="w+b",
+                    dir=output_path.parent,
+                    prefix=".fluxtuner-ffmpeg-stderr-",
+                    suffix=".tmp",
+                    delete=False,
+                ) as stderr_handle:
+                    stderr_path = Path(stderr_handle.name)
+
+                    try:
+                        process = subprocess.Popen(  # nosec B603
+                            command,
+                            stdin=subprocess.PIPE,
+                            stdout=output_handle,
+                            stderr=stderr_handle,
+                            bufsize=0,
+                        )
+                    except FileNotFoundError as exc:
+                        raise TrackFinalizeError(
+                            f"FFmpeg binary not found: {self._ffmpeg_binary}"
+                        ) from exc
+
+                    if process.stdin is None:
+                        raise TrackFinalizeError("FFmpeg MP3 finalization did not provide stdin")
+
+                    try:
+                        process.stdin.write(first_chunk)
+
+                        for chunk in iterator:
+                            if chunk:
+                                process.stdin.write(chunk)
+                    except BrokenPipeError:
+                        # FFmpeg may close stdin early when it detects invalid input.
+                        pass
+                    finally:
+                        with suppress(BrokenPipeError, OSError):
+                            process.stdin.close()
+
+                    returncode = process.wait()
+
+                    output_handle.flush()
+                    os.fsync(output_handle.fileno())
+
+                    stderr_handle.flush()
+                    stderr_handle.seek(0, os.SEEK_END)
+                    stderr_size = stderr_handle.tell()
+                    stderr_handle.seek(max(0, stderr_size - 64 * 1024))
+                    stderr_tail = stderr_handle.read(64 * 1024)
+
+            if returncode != 0:
+                error = stderr_tail.decode(
+                    "utf-8",
+                    errors="replace",
+                ).strip()
+                raise TrackFinalizeError(
+                    f"FFmpeg MP3 finalization failed with exit code {returncode}: {error}"
+                )
+
+            if temp_path is None or temp_path.stat().st_size == 0:
+                raise TrackFinalizeError("FFmpeg MP3 finalization produced no output")
+
+            os.replace(temp_path, output_path)
+            replaced = True
+
+        finally:
+            if process is not None and process.poll() is None:
+                with suppress(OSError):
+                    if process.stdin is not None:
+                        process.stdin.close()
+
+                with suppress(OSError):
+                    process.terminate()
+
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    with suppress(OSError):
+                        process.kill()
+                    with suppress(subprocess.TimeoutExpired):
+                        process.wait(timeout=5)
+
+            if temp_path is not None and not replaced:
+                with suppress(OSError):
+                    temp_path.unlink(missing_ok=True)
+
+            if stderr_path is not None:
+                with suppress(OSError):
+                    stderr_path.unlink(missing_ok=True)
+
 
 class AacTrackFinalizer:
     """Remux AAC/ADTS bytes to M4A without transcoding."""
