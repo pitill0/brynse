@@ -236,9 +236,14 @@ class Mp3TrackFinalizer:
                 input=data,
                 capture_output=True,
                 check=False,
+                timeout=self._timeout_seconds,
             )
         except FileNotFoundError as exc:
             raise TrackFinalizeError(f"FFmpeg binary not found: {self._ffmpeg_binary}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise TrackFinalizeError(
+                f"FFmpeg MP3 finalization timed out after {self._timeout_seconds} seconds"
+            ) from exc
 
         if completed.returncode != 0:
             error = completed.stderr.decode("utf-8", errors="replace").strip()
@@ -538,9 +543,14 @@ class AacTrackFinalizer:
                 input=data,
                 capture_output=True,
                 check=False,
+                timeout=self._timeout_seconds,
             )
         except FileNotFoundError as exc:
             raise TrackFinalizeError(f"FFmpeg binary not found: {self._ffmpeg_binary}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise TrackFinalizeError(
+                f"FFmpeg AAC finalization timed out after {self._timeout_seconds} seconds"
+            ) from exc
 
         if completed.returncode != 0:
             error = completed.stderr.decode("utf-8", errors="replace").strip()

@@ -2055,6 +2055,44 @@ def test_mp3_track_finalizer_rejects_empty_input() -> None:
         Mp3TrackFinalizer().finalize(b"")
 
 
+def test_mp3_track_finalizer_legacy_finalize_respects_timeout(
+    tmp_path: Path,
+) -> None:
+    import time
+
+    from fluxtuner_ripper.ripping import Mp3TrackFinalizer, TrackFinalizeError
+
+    fake_ffmpeg = tmp_path / "fake-ffmpeg-legacy-mp3-timeout"
+    fake_ffmpeg.write_text(
+        """#!/usr/bin/env python3
+import sys
+import time
+
+sys.stdin.buffer.read()
+time.sleep(60)
+""",
+        encoding="utf-8",
+    )
+    fake_ffmpeg.chmod(0o755)
+
+    finalizer = Mp3TrackFinalizer(
+        ffmpeg_binary=str(fake_ffmpeg),
+        timeout_seconds=0.2,
+    )
+
+    started = time.monotonic()
+
+    with pytest.raises(
+        TrackFinalizeError,
+        match="timed out",
+    ):
+        finalizer.finalize(b"legacy-mp3-data")
+
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 5.0
+
+
 def test_mp3_track_finalizer_rejects_invalid_mp3_when_ffmpeg_available() -> None:
     import shutil
 
@@ -2217,6 +2255,44 @@ def test_aac_track_finalizer_rejects_empty_input() -> None:
 
     with pytest.raises(ValueError):
         AacTrackFinalizer().finalize(b"")
+
+
+def test_aac_track_finalizer_legacy_finalize_respects_timeout(
+    tmp_path: Path,
+) -> None:
+    import time
+
+    from fluxtuner_ripper.ripping import AacTrackFinalizer, TrackFinalizeError
+
+    fake_ffmpeg = tmp_path / "fake-ffmpeg-legacy-aac-timeout"
+    fake_ffmpeg.write_text(
+        """#!/usr/bin/env python3
+import sys
+import time
+
+sys.stdin.buffer.read()
+time.sleep(60)
+""",
+        encoding="utf-8",
+    )
+    fake_ffmpeg.chmod(0o755)
+
+    finalizer = AacTrackFinalizer(
+        ffmpeg_binary=str(fake_ffmpeg),
+        timeout_seconds=0.2,
+    )
+
+    started = time.monotonic()
+
+    with pytest.raises(
+        TrackFinalizeError,
+        match="timed out",
+    ):
+        finalizer.finalize(b"legacy-aac-data")
+
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 5.0
 
 
 def test_aac_track_finalizer_rejects_invalid_aac_when_ffmpeg_available() -> None:
