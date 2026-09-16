@@ -326,3 +326,23 @@ def test_run_generic_pipeline_uses_external_boundary_provider(
 
     assert payload["provider"] == "external"
     assert payload["boundaries"] == []
+
+
+def test_iter_input_reads_file_incrementally(tmp_path: Path) -> None:
+    import fluxtuner_ripper.generic_cli as generic_cli
+
+    path = tmp_path / "input.aac"
+    path.write_bytes(b"abcdefghij")
+
+    chunks = tuple(
+        generic_cli._iter_input(
+            str(path),
+            chunk_size=4,
+        )
+    )
+
+    assert chunks == (
+        b"abcd",
+        b"efgh",
+        b"ij",
+    )

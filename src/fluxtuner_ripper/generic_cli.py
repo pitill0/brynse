@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 from fluxtuner_ripper.external_boundaries import (
@@ -110,6 +110,33 @@ def _validate_args(args: argparse.Namespace) -> None:
 
         if not path.is_file():
             raise GenericCliError(f"input path is not a file: {path}")
+
+
+def _iter_input(
+    input_value: str,
+    *,
+    chunk_size: int = 64 * 1024,
+) -> Iterator[bytes]:
+    """Yield encoded input incrementally from a file or stdin."""
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be greater than zero")
+
+    if input_value == "-":
+        stream = sys.stdin.buffer
+        while True:
+            chunk = stream.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+        return
+
+    path = Path(input_value)
+    with path.open("rb") as stream:
+        while True:
+            chunk = stream.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
 
 
 def _read_input(input_name: str) -> bytes:
