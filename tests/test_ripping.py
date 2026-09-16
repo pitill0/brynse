@@ -2733,3 +2733,88 @@ def test_track_output_service_streams_mp3_without_full_range_read(
         b"klmn",
         b"opqr",
     ]
+
+
+def test_track_output_service_streams_aac_without_full_range_read(
+    tmp_path: Path,
+) -> None:
+    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.output import TrackOutputService
+
+    class _BoundedSource:
+        def __init__(self, data: bytes, max_read_size: int) -> None:
+            self.data = data
+            self.max_read_size = max_read_size
+            self.reads: list[tuple[int, int]] = []
+
+        @property
+        def end_offset(self) -> int:
+            return len(self.data)
+
+        def contains(self, start: int, end: int) -> bool:
+            return 0 <= start <= end <= len(self.data)
+
+        def read(self, start: int, end: int) -> bytes:
+            size = end - start
+            if size > self.max_read_size:
+                raise RuntimeError(f"unbounded read attempted: {size} > {self.max_read_size}")
+
+            self.reads.append((start, end))
+            return self.data[start:end]
+
+    class _StreamingFinalizer:
+        def __init__(self) -> None:
+            self.received: list[bytes] = []
+
+        def finalize(self, data: bytes) -> bytes:
+            raise AssertionError("legacy whole-segment finalization must not be used")
+
+        def finalize_stream(
+            self,
+            *,
+            chunks,
+            output_path: Path,
+        ) -> None:
+            with output_path.open("wb") as handle:
+                for chunk in chunks:
+                    self.received.append(chunk)
+                    handle.write(chunk)
+
+    source = _BoundedSource(
+        b"abcdefghijklmnopqrst",
+        max_read_size=4,
+    )
+    finalizer = _StreamingFinalizer()
+
+    service = TrackOutputService(
+        aac_finalizer=finalizer,
+    )
+
+    path = service.write_track(
+        source=source,
+        byte_range=TrackByteRange(
+            start_offset=2,
+            end_offset=18,
+        ),
+        directory=tmp_path,
+        stem="Track",
+        codec="aac",
+        chunk_size=4,
+    )
+
+    assert path == tmp_path / "Track.m4a"
+    assert path.read_bytes() == b"cdefghijklmnopqr"
+
+    assert source.reads == [
+        (2, 6),
+        (6, 10),
+        (10, 14),
+        (14, 18),
+    ]
+
+    assert finalizer.received == [
+        b"cdef",
+        b"ghij",
+        b"klmn",
+        b"opqr",
+    ]
