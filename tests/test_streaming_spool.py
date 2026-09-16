@@ -361,3 +361,18 @@ def test_streaming_spool_rejects_append_when_free_disk_space_is_too_low(
         assert spool.retained_bytes == 0
     finally:
         spool.close()
+
+
+def test_safe_streaming_spool_applies_runtime_disk_reserve(
+    tmp_path: Path,
+) -> None:
+    from fluxtuner_ripper.streaming_spool import create_safe_streaming_spool
+
+    spool = create_safe_streaming_spool(
+        directory=tmp_path,
+    )
+
+    try:
+        assert spool._min_free_bytes == 512 * 1024 * 1024
+    finally:
+        spool.close()

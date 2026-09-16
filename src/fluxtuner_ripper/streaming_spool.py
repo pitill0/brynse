@@ -28,6 +28,7 @@ def create_safe_streaming_spool(
         storage_chunk_size=storage_chunk_size,
         copy_chunk_size=copy_chunk_size,
         max_retained_bytes=8 * 1024 * 1024 * 1024,
+        min_free_bytes=512 * 1024 * 1024,
     )
 
 
