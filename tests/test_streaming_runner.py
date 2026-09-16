@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from fluxtuner_ripper.models import BoundaryCandidate
 from fluxtuner_ripper.streaming_runner import StreamingGenericRunner
 
@@ -198,3 +200,81 @@ def test_streaming_provider_cursor_proposes_only_new_time_window() -> None:
     assert tuple(candidate.time_seconds for candidate in first) == (12.0,)
     assert tuple(candidate.time_seconds for candidate in second) == (25.0,)
     assert third == ()
+
+
+def test_streaming_generic_runner_polls_provider_after_feed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    import fluxtuner_ripper.streaming_runner as streaming_runner
+
+    candidate = SimpleNamespace(
+        time_seconds=1.0,
+        source="test",
+    )
+    resolution = SimpleNamespace(candidate=candidate)
+
+    class _Ingestor:
+        timeline = SimpleNamespace(
+            frames=(
+                SimpleNamespace(
+                    time_seconds=0.0,
+                    samples=1250,
+                    sample_rate=1000,
+                ),
+            ),
+        )
+        ring_buffer = object()
+
+        def feed(self, chunk: bytes) -> object:
+            return object()
+
+    class _ProviderCursor:
+        def __init__(self, *, provider: object) -> None:
+            self.provider = provider
+            self.calls: list[float] = []
+
+        def propose_until(
+            self,
+            end_time_seconds: float,
+        ) -> tuple[object, ...]:
+            self.calls.append(end_time_seconds)
+            return (candidate,)
+
+    class _Resolver:
+        def resolve_candidate(
+            self,
+            *,
+            candidate: object,
+            timeline: object,
+            ring_buffer: object,
+        ) -> object:
+            return resolution
+
+    cursor_instances: list[_ProviderCursor] = []
+
+    def cursor_factory(*, provider: object) -> _ProviderCursor:
+        cursor = _ProviderCursor(provider=provider)
+        cursor_instances.append(cursor)
+        return cursor
+
+    monkeypatch.setattr(
+        streaming_runner,
+        "StreamingProviderCursor",
+        cursor_factory,
+    )
+
+    runner = streaming_runner.StreamingGenericRunner(
+        ingestor=_Ingestor(),
+        resolver=_Resolver(),
+        settle_seconds=0.2,
+        provider=object(),
+    )
+
+    completed = runner.feed(b"encoded")
+
+    assert cursor_instances[0].calls == [1.25]
+    assert len(completed) == 1
+    assert completed[0].candidate is candidate
+    assert completed[0].resolution is resolution

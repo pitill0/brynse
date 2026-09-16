@@ -71,6 +71,7 @@ class StreamingGenericRunner:
         ingestor: StreamingIngestor,
         resolver: CandidateResolver,
         settle_seconds: float,
+        provider: BoundaryProvider | None = None,
     ) -> None:
         if settle_seconds <= 0:
             raise ValueError("settle_seconds must be greater than zero")
@@ -78,6 +79,9 @@ class StreamingGenericRunner:
         self._ingestor = ingestor
         self._resolver = resolver
         self._settle_seconds = settle_seconds
+        self._provider_cursor = (
+            StreamingProviderCursor(provider=provider) if provider is not None else None
+        )
         self._pending: list[BoundaryCandidate] = []
 
     @property
@@ -102,6 +106,15 @@ class StreamingGenericRunner:
         """Ingest encoded bytes and resolve newly mature candidates."""
 
         self._ingestor.feed(chunk)
+
+        provider_cursor = self._provider_cursor
+        if provider_cursor is not None:
+            stream_end = self._stream_end_time_seconds()
+            if stream_end is not None:
+                candidates = provider_cursor.propose_until(stream_end)
+                self._pending.extend(candidates)
+                self._pending.sort(key=lambda item: item.time_seconds)
+
         return self._resolve_ready()
 
     def _stream_end_time_seconds(self) -> float | None:
