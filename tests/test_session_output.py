@@ -354,3 +354,26 @@ def test_session_output_writer_uses_explicit_encoded_source(
 
     assert output.calls[0]["source"] is retained_source
     assert output.calls[0]["source"] is not ingestor.ring_buffer
+
+
+def test_session_output_writer_exposes_next_retained_start_offset(
+    tmp_path: Path,
+) -> None:
+    transition = _transition()
+    plan = TrackWritePlan(
+        outgoing=TrackByteRange(start_offset=1000, end_offset=5200),
+        incoming=TrackByteRange(start_offset=4800, end_offset=10000),
+    )
+    writer = SessionOutputWriter(
+        ingestor=_Ingestor(),
+        directory=tmp_path,
+        codec="mp3",
+        range_planner=_Planner(plan),
+        output_service=_Output(tmp_path / "track.mp3"),
+    )
+
+    assert writer.retained_start_offset is None
+
+    writer.write_transition(transition)
+
+    assert writer.retained_start_offset == 4800

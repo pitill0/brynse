@@ -66,6 +66,11 @@ class SessionOutputWriter:
         self._output_service = output_service or create_safe_track_output_service()
         self._current_start_offset: int | None = None
 
+    @property
+    def retained_start_offset(self) -> int | None:
+        """Return the earliest encoded offset still needed for the next track."""
+        return self._current_start_offset
+
     def write_segment_transition(
         self,
         transition: SegmentTransition,
