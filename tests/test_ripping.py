@@ -3521,3 +3521,48 @@ def test_track_output_service_derives_stream_finalizer_timeout_from_segment_size
     )
 
     assert finalizer.timeout_seconds == pytest.approx(40.0)
+
+
+def test_mp3_stream_finalizer_accepts_per_call_timeout_override(
+    tmp_path: Path,
+) -> None:
+    import time
+
+    from fluxtuner_ripper.output import Mp3TrackFinalizer, TrackFinalizeError
+
+    fake_ffmpeg = tmp_path / "fake-ffmpeg-mp3-override-timeout"
+    fake_ffmpeg.write_text(
+        """#!/usr/bin/env python3
+import sys
+import time
+
+sys.stdin.buffer.read()
+time.sleep(60)
+""",
+        encoding="utf-8",
+    )
+    fake_ffmpeg.chmod(0o755)
+
+    output_path = tmp_path / "override-timeout.mp3"
+
+    finalizer = Mp3TrackFinalizer(
+        ffmpeg_binary=str(fake_ffmpeg),
+        timeout_seconds=30.0,
+    )
+
+    started = time.monotonic()
+
+    with pytest.raises(
+        TrackFinalizeError,
+        match="timed out",
+    ):
+        finalizer.finalize_stream(
+            chunks=iter((b"abcd", b"efgh")),
+            output_path=output_path,
+            timeout_seconds=0.2,
+        )
+
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 5.0
+    assert not output_path.exists()

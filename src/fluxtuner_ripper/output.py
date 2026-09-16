@@ -256,6 +256,7 @@ class Mp3TrackFinalizer:
         *,
         chunks: Iterator[bytes],
         output_path: Path,
+        timeout_seconds: float | None = None,
     ) -> None:
         """Remux MP3 chunks to disk without materializing the full segment in RAM."""
 
@@ -264,6 +265,13 @@ class Mp3TrackFinalizer:
         import tempfile
         import threading
         from contextlib import suppress
+
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be greater than zero")
+
+        effective_timeout_seconds = (
+            timeout_seconds if timeout_seconds is not None else self._timeout_seconds
+        )
 
         iterator = iter(chunks)
 
@@ -390,7 +398,7 @@ class Mp3TrackFinalizer:
 
                 try:
                     returncode = process.wait(
-                        timeout=self._timeout_seconds,
+                        timeout=effective_timeout_seconds,
                     )
                 except subprocess.TimeoutExpired as exc:
                     with suppress(OSError):
