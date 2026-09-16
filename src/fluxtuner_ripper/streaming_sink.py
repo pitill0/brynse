@@ -13,6 +13,7 @@ from fluxtuner_ripper.output import (
     EncodedByteSource,
     TrackOutputService,
     TrackRangePlanner,
+    create_safe_track_output_service,
 )
 from fluxtuner_ripper.streaming_spool import StreamingSpool
 
@@ -50,7 +51,7 @@ class StreamingSegmentSink:
         self._initial_start_offset = initial_start_offset
         self._initial_start_source = initial_start_source
         self._range_planner = range_planner or TrackRangePlanner()
-        self._output_service = output_service or TrackOutputService()
+        self._output_service = output_service or create_safe_track_output_service()
 
         self._current_start_offset: int | None = None
         self._next_index = 1

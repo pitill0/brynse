@@ -764,6 +764,15 @@ class AacTrackFinalizer:
                     temp_path.unlink(missing_ok=True)
 
 
+def create_safe_track_output_service() -> TrackOutputService:
+    """Create the default runtime output service.
+
+    Runtime safety policy is centralized here so application paths do not
+    instantiate a bare TrackOutputService directly.
+    """
+    return TrackOutputService()
+
+
 class TrackOutputService:
     """Compose range extraction, codec finalization, and atomic persistence."""
 

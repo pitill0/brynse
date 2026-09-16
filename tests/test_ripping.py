@@ -3344,3 +3344,39 @@ raise SystemExit(1)
         )
 
     assert not output_path.exists()
+
+
+def test_streaming_segment_sink_uses_safe_output_service_factory_by_default(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import fluxtuner_ripper.streaming_sink as streaming_sink
+    from fluxtuner_ripper.output import TrackOutputService
+
+    class _FakeIngestor:
+        def __init__(self) -> None:
+            self.ring_buffer = object()
+
+    sentinel = object()
+    calls = 0
+
+    def fake_factory():
+        nonlocal calls
+        calls += 1
+        return sentinel
+
+    monkeypatch.setattr(
+        streaming_sink,
+        "create_safe_track_output_service",
+        fake_factory,
+    )
+
+    sink = streaming_sink.StreamingSegmentSink(
+        ingestor=_FakeIngestor(),  # type: ignore[arg-type]
+        directory=tmp_path,
+        codec="mp3",
+    )
+
+    assert calls == 1
+    assert sink._output_service is sentinel
+    assert not isinstance(sink._output_service, TrackOutputService)
