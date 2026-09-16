@@ -253,3 +253,35 @@ def test_streaming_spool_survives_repeated_append_discard_cycles(
         assert spool.contains(13, 18)
     finally:
         spool.close()
+
+
+def test_streaming_spool_keeps_open_chunk_file_descriptors_bounded(
+    tmp_path: Path,
+) -> None:
+    spool = StreamingSpool(
+        directory=tmp_path,
+        storage_chunk_size=4,
+    )
+
+    try:
+        # Eight physical chunks, all still logically retained.
+        spool.append(b"abcdefghijklmnopqrstuvwxyz012345")
+
+        chunk_paths = set(tmp_path.glob(".fluxtuner-spool-*.chunk"))
+
+        assert len(chunk_paths) == 8
+
+        open_chunk_paths: set[Path] = set()
+
+        for fd_path in Path("/proc/self/fd").iterdir():
+            try:
+                target = fd_path.resolve(strict=True)
+            except (FileNotFoundError, OSError):
+                continue
+
+            if target in chunk_paths:
+                open_chunk_paths.add(target)
+
+        assert len(open_chunk_paths) <= 1
+    finally:
+        spool.close()

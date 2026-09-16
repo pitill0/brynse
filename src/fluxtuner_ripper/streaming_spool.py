@@ -14,7 +14,6 @@ class _StorageChunk:
     start_offset: int
     end_offset: int
     path: Path
-    handle: BinaryIO
 
 
 class StreamingSpool:
@@ -41,6 +40,8 @@ class StreamingSpool:
         self._start_offset = 0
         self._end_offset = 0
         self._closed = False
+        self._write_handle: BinaryIO | None = None
+        self._write_path: Path | None = None
 
         self._create_chunk()
 
@@ -80,8 +81,12 @@ class StreamingSpool:
             available = self._storage_chunk_size - (chunk.end_offset - chunk.start_offset)
             write_size = min(len(remaining), available)
 
-            chunk.handle.seek(0, os.SEEK_END)
-            written = chunk.handle.write(remaining[:write_size])
+            handle = self._write_handle
+            if handle is None or self._write_path != chunk.path:
+                raise RuntimeError("writable spool chunk has no active write handle")
+
+            handle.seek(0, os.SEEK_END)
+            written = handle.write(remaining[:write_size])
 
             if written != write_size:
                 raise RuntimeError("failed to append complete encoded chunk to spool")
@@ -134,9 +139,11 @@ class StreamingSpool:
             if local_start >= local_end:
                 continue
 
-            chunk.handle.seek(local_start - chunk.start_offset)
             length = local_end - local_start
-            data = chunk.handle.read(length)
+
+            with chunk.path.open("rb", buffering=0) as handle:
+                handle.seek(local_start - chunk.start_offset)
+                data = handle.read(length)
 
             if len(data) != length:
                 raise RuntimeError("failed to read complete retained span from spool")
@@ -170,7 +177,10 @@ class StreamingSpool:
 
         while self._chunks and self._chunks[0].end_offset <= offset:
             chunk = self._chunks.pop(0)
-            chunk.handle.close()
+
+            if self._write_path == chunk.path:
+                self._close_write_handle()
+
             chunk.path.unlink(missing_ok=True)
 
         if not self._chunks:
@@ -183,9 +193,9 @@ class StreamingSpool:
             return
 
         self._closed = True
+        self._close_write_handle()
 
         for chunk in self._chunks:
-            chunk.handle.close()
             chunk.path.unlink(missing_ok=True)
 
         self._chunks.clear()
@@ -199,6 +209,8 @@ class StreamingSpool:
         return self._create_chunk()
 
     def _create_chunk(self) -> _StorageChunk:
+        self._close_write_handle()
+
         fd, name = tempfile.mkstemp(
             dir=self._directory,
             prefix=".fluxtuner-spool-",
@@ -216,11 +228,21 @@ class StreamingSpool:
             start_offset=self._end_offset,
             end_offset=self._end_offset,
             path=path,
-            handle=handle,
         )
         self._chunks.append(chunk)
+        self._write_handle = handle
+        self._write_path = path
 
         return chunk
+
+    def _close_write_handle(self) -> None:
+        handle = self._write_handle
+        if handle is None:
+            return
+
+        handle.close()
+        self._write_handle = None
+        self._write_path = None
 
     def _require_open(self) -> None:
         if self._closed:
