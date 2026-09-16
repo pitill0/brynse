@@ -2607,3 +2607,44 @@ shutil.copyfileobj(sys.stdin.buffer, sys.stdout.buffer)
     )
 
     assert output_path.read_bytes() == b"abcdefghijklmnop"
+
+
+def test_aac_finalizer_streams_chunks_directly_to_output_file(
+    tmp_path: Path,
+) -> None:
+    from fluxtuner_ripper.output import AacTrackFinalizer
+
+    fake_ffmpeg = tmp_path / "fake-ffmpeg"
+    fake_ffmpeg.write_text(
+        """#!/usr/bin/env python3
+import pathlib
+import sys
+
+output_path = pathlib.Path(sys.argv[-1])
+output_path.write_bytes(sys.stdin.buffer.read())
+""",
+        encoding="utf-8",
+    )
+    fake_ffmpeg.chmod(0o755)
+
+    output_path = tmp_path / "segment.m4a"
+
+    chunks = iter(
+        (
+            b"abcd",
+            b"efgh",
+            b"ijkl",
+            b"mnop",
+        )
+    )
+
+    finalizer = AacTrackFinalizer(
+        ffmpeg_binary=str(fake_ffmpeg),
+    )
+
+    finalizer.finalize_stream(
+        chunks=chunks,
+        output_path=output_path,
+    )
+
+    assert output_path.read_bytes() == b"abcdefghijklmnop"
