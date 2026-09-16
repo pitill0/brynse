@@ -448,8 +448,17 @@ class Mp3TrackFinalizer:
 class AacTrackFinalizer:
     """Remux AAC/ADTS bytes to M4A without transcoding."""
 
-    def __init__(self, *, ffmpeg_binary: str = "ffmpeg") -> None:
+    def __init__(
+        self,
+        *,
+        ffmpeg_binary: str = "ffmpeg",
+        timeout_seconds: float | None = None,
+    ) -> None:
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be greater than zero")
+
         self._ffmpeg_binary = ffmpeg_binary
+        self._timeout_seconds = timeout_seconds
 
     def finalize(self, data: bytes) -> bytes:
         """Remux raw ADTS AAC into an M4A/MP4 container using stream-copy."""
@@ -589,20 +598,63 @@ class AacTrackFinalizer:
                 if process.stdin is None:
                     raise TrackFinalizeError("FFmpeg AAC finalization did not provide stdin")
 
+                stdin_handle = process.stdin
+
+                import threading
+
+                feeder_errors: list[BaseException] = []
+
+                def feed_stdin() -> None:
+                    try:
+                        stdin_handle.write(first_chunk)
+
+                        for chunk in iterator:
+                            if chunk:
+                                stdin_handle.write(chunk)
+                    except BrokenPipeError:
+                        # FFmpeg may stop consuming invalid encoded input early.
+                        pass
+                    except BaseException as exc:
+                        feeder_errors.append(exc)
+                    finally:
+                        with suppress(BrokenPipeError, OSError):
+                            stdin_handle.close()
+
+                feeder = threading.Thread(
+                    target=feed_stdin,
+                    name="fluxtuner-aac-ffmpeg-stdin",
+                    daemon=True,
+                )
+                feeder.start()
+
                 try:
-                    process.stdin.write(first_chunk)
+                    returncode = process.wait(
+                        timeout=self._timeout_seconds,
+                    )
+                except subprocess.TimeoutExpired as exc:
+                    with suppress(OSError):
+                        process.terminate()
 
-                    for chunk in iterator:
-                        if chunk:
-                            process.stdin.write(chunk)
-                except BrokenPipeError:
-                    # FFmpeg may stop consuming invalid encoded input early.
-                    pass
-                finally:
-                    with suppress(BrokenPipeError, OSError):
-                        process.stdin.close()
+                    try:
+                        process.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        with suppress(OSError):
+                            process.kill()
+                        process.wait()
 
-                returncode = process.wait()
+                    feeder.join(timeout=1)
+
+                    raise TrackFinalizeError("FFmpeg AAC finalization timed out") from exc
+
+                feeder.join(timeout=1)
+
+                if feeder.is_alive():
+                    raise TrackFinalizeError("FFmpeg AAC stdin feeder did not terminate")
+
+                if feeder_errors:
+                    raise TrackFinalizeError("FFmpeg AAC stdin feeding failed") from feeder_errors[
+                        0
+                    ]
 
                 stderr_handle.flush()
                 stderr_handle.seek(0, os.SEEK_END)

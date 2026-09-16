@@ -3186,3 +3186,55 @@ time.sleep(60)
 
     assert elapsed < 5.0
     assert not output_path.exists()
+
+
+def test_aac_stream_finalizer_times_out_when_ffmpeg_stops_consuming_stdin(
+    tmp_path: Path,
+) -> None:
+    import time
+
+    from fluxtuner_ripper.output import AacTrackFinalizer, TrackFinalizeError
+
+    fake_ffmpeg = tmp_path / "fake-ffmpeg-aac-no-stdin"
+    fake_ffmpeg.write_text(
+        """#!/usr/bin/env python3
+import time
+
+time.sleep(60)
+""",
+        encoding="utf-8",
+    )
+    fake_ffmpeg.chmod(0o755)
+
+    output_path = tmp_path / "blocked-stdin.m4a"
+
+    finalizer = AacTrackFinalizer(
+        ffmpeg_binary=str(fake_ffmpeg),
+        timeout_seconds=0.2,
+    )
+
+    payload = b"x" * (16 * 1024 * 1024)
+
+    started = time.monotonic()
+
+    with pytest.raises(
+        TrackFinalizeError,
+        match="timed out",
+    ):
+        finalizer.finalize_stream(
+            chunks=iter((payload,)),
+            output_path=output_path,
+        )
+
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 5.0
+    assert not output_path.exists()
+
+    leftovers = [
+        item
+        for item in tmp_path.iterdir()
+        if item.name.startswith(".blocked-stdin.m4a.")
+        or item.name.startswith(".fluxtuner-ffmpeg-stderr-")
+    ]
+    assert leftovers == []
