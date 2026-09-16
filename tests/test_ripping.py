@@ -2858,3 +2858,57 @@ def test_track_output_service_rejects_segment_over_configured_size_limit(
         )
 
     assert not (tmp_path / "oversized.mp3").exists()
+
+
+def test_track_output_service_rejects_when_free_disk_space_is_too_low(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.output import TrackOutputService
+
+    class _SourceThatMustNotBeRead:
+        @property
+        def end_offset(self) -> int:
+            return 100
+
+        def contains(self, start: int, end: int) -> bool:
+            return True
+
+        def read(self, start: int, end: int) -> bytes:
+            raise AssertionError("disk-space rejection must happen before reading source bytes")
+
+    class _DiskUsage:
+        total = 1_000_000
+        used = 950_000
+        free = 50_000
+
+    import shutil
+
+    monkeypatch.setattr(
+        shutil,
+        "disk_usage",
+        lambda _: _DiskUsage(),
+    )
+
+    service = TrackOutputService(
+        min_free_output_bytes=100_000,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="insufficient free disk space",
+    ):
+        service.write_track(
+            source=_SourceThatMustNotBeRead(),
+            byte_range=TrackByteRange(
+                start_offset=10,
+                end_offset=20,
+            ),
+            directory=tmp_path,
+            stem="disk-full",
+            codec="mp3",
+            chunk_size=4,
+        )
+
+    assert not (tmp_path / "disk-full.mp3").exists()

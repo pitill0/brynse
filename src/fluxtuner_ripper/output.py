@@ -603,15 +603,19 @@ class TrackOutputService:
         aac_finalizer: AacTrackFinalizer | None = None,
         file_writer: TrackFileWriter | None = None,
         max_segment_bytes: int | None = None,
+        min_free_output_bytes: int | None = None,
     ) -> None:
         if max_segment_bytes is not None and max_segment_bytes <= 0:
             raise ValueError("max_segment_bytes must be greater than zero")
+        if min_free_output_bytes is not None and min_free_output_bytes < 0:
+            raise ValueError("min_free_output_bytes must not be negative")
 
         self._mp3_finalizer = mp3_finalizer or Mp3TrackFinalizer()
         self._aac_finalizer = aac_finalizer or AacTrackFinalizer()
         self._file_writer = file_writer or TrackFileWriter()
         self._encoded_writer = EncodedTrackWriter()
         self._max_segment_bytes = max_segment_bytes
+        self._min_free_output_bytes = min_free_output_bytes
 
     def write_track(
         self,
@@ -634,6 +638,18 @@ class TrackOutputService:
                 "segment exceeds maximum allowed size: "
                 f"{segment_bytes} > {self._max_segment_bytes} bytes"
             )
+
+        if self._min_free_output_bytes is not None:
+            import shutil
+
+            directory.mkdir(parents=True, exist_ok=True)
+            free_bytes = shutil.disk_usage(directory).free
+
+            if free_bytes < self._min_free_output_bytes:
+                raise RuntimeError(
+                    "insufficient free disk space: "
+                    f"{free_bytes} < {self._min_free_output_bytes} bytes"
+                )
 
         normalized = codec.strip().lower()
         finalizer: object
