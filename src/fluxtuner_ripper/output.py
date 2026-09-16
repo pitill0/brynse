@@ -616,21 +616,48 @@ class TrackOutputService:
         directory: Path,
         stem: str,
         codec: str,
+        chunk_size: int = 64 * 1024,
     ) -> Path:
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be greater than zero")
+        if not stem or not stem.strip():
+            raise ValueError("stem must not be empty")
+
+        normalized = codec.strip().lower()
+        finalizer: object
+
+        if normalized == "mp3":
+            finalizer = self._mp3_finalizer
+            output_codec = "mp3"
+        elif normalized == "aac":
+            finalizer = self._aac_finalizer
+            output_codec = "m4a"
+        else:
+            raise ValueError(f"unsupported codec for track output: {codec}")
+
+        finalize_stream = getattr(finalizer, "finalize_stream", None)
+
+        if callable(finalize_stream):
+            directory.mkdir(parents=True, exist_ok=True)
+            output_path = directory / f"{stem}.{output_codec}"
+
+            chunks = self._encoded_writer.iter_range(
+                source=source,
+                byte_range=byte_range,
+                chunk_size=chunk_size,
+            )
+
+            finalize_stream(
+                chunks=chunks,
+                output_path=output_path,
+            )
+            return output_path
+
         raw = self._encoded_writer.write_range(
             source=source,
             byte_range=byte_range,
         )
-
-        normalized = codec.strip().lower()
-        if normalized == "mp3":
-            finalized = self._mp3_finalizer.finalize(raw)
-            output_codec = "mp3"
-        elif normalized == "aac":
-            finalized = self._aac_finalizer.finalize(raw)
-            output_codec = "m4a"
-        else:
-            raise ValueError(f"unsupported codec for track output: {codec}")
+        finalized = finalizer.finalize(raw)
 
         return self._write_finalized(
             directory=directory,
