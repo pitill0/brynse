@@ -25,17 +25,21 @@ class StreamingSpool:
         directory: Path,
         storage_chunk_size: int = 1024 * 1024,
         copy_chunk_size: int = 64 * 1024,
+        max_retained_bytes: int | None = None,
     ) -> None:
         if storage_chunk_size <= 0:
             raise ValueError("storage_chunk_size must be greater than zero")
         if copy_chunk_size <= 0:
             raise ValueError("copy_chunk_size must be greater than zero")
+        if max_retained_bytes is not None and max_retained_bytes <= 0:
+            raise ValueError("max_retained_bytes must be greater than zero")
 
         directory.mkdir(parents=True, exist_ok=True)
 
         self._directory = directory
         self._storage_chunk_size = storage_chunk_size
         self._copy_chunk_size = copy_chunk_size
+        self._max_retained_bytes = max_retained_bytes
         self._chunks: list[_StorageChunk] = []
         self._start_offset = 0
         self._end_offset = 0
@@ -71,6 +75,16 @@ class StreamingSpool:
 
         if not data:
             return self._end_offset, self._end_offset
+
+        if (
+            self._max_retained_bytes is not None
+            and self.retained_bytes + len(data) > self._max_retained_bytes
+        ):
+            raise RuntimeError(
+                "streaming spool retained byte limit exceeded: "
+                f"{self.retained_bytes + len(data)} > "
+                f"{self._max_retained_bytes} bytes"
+            )
 
         chunk_start = self._end_offset
         remaining = memoryview(data)

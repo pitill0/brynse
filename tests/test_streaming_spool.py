@@ -285,3 +285,28 @@ def test_streaming_spool_keeps_open_chunk_file_descriptors_bounded(
         assert len(open_chunk_paths) <= 1
     finally:
         spool.close()
+
+
+def test_streaming_spool_rejects_append_beyond_retained_byte_limit(
+    tmp_path: Path,
+) -> None:
+    spool = StreamingSpool(
+        directory=tmp_path,
+        max_retained_bytes=8,
+    )
+
+    try:
+        assert spool.append(b"abcdef") == (0, 6)
+
+        with pytest.raises(
+            RuntimeError,
+            match="streaming spool retained byte limit exceeded",
+        ):
+            spool.append(b"ghij")
+
+        assert spool.start_offset == 0
+        assert spool.end_offset == 6
+        assert spool.retained_bytes == 6
+        assert spool.read(0, 6) == b"abcdef"
+    finally:
+        spool.close()
