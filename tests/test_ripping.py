@@ -2969,3 +2969,43 @@ def test_track_output_service_requires_space_for_segment_plus_reserve(
         )
 
     assert not (tmp_path / "large-segment.mp3").exists()
+
+
+def test_track_output_service_rejects_chunk_size_above_hard_limit(
+    tmp_path: Path,
+) -> None:
+    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.output import TrackOutputService
+
+    class _SourceThatMustNotBeRead:
+        @property
+        def end_offset(self) -> int:
+            return 100
+
+        def contains(self, start: int, end: int) -> bool:
+            return True
+
+        def read(self, start: int, end: int) -> bytes:
+            raise AssertionError(
+                "oversized chunk_size must be rejected before reading source bytes"
+            )
+
+    service = TrackOutputService()
+
+    with pytest.raises(
+        ValueError,
+        match="chunk_size exceeds maximum allowed size",
+    ):
+        service.write_track(
+            source=_SourceThatMustNotBeRead(),
+            byte_range=TrackByteRange(
+                start_offset=0,
+                end_offset=10,
+            ),
+            directory=tmp_path,
+            stem="chunk-too-large",
+            codec="mp3",
+            chunk_size=16 * 1024 * 1024,
+        )
+
+    assert not (tmp_path / "chunk-too-large.mp3").exists()

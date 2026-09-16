@@ -596,6 +596,8 @@ class AacTrackFinalizer:
 class TrackOutputService:
     """Compose range extraction, codec finalization, and atomic persistence."""
 
+    _MAX_CHUNK_SIZE = 4 * 1024 * 1024
+
     def __init__(
         self,
         *,
@@ -633,6 +635,11 @@ class TrackOutputService:
     ) -> Path:
         if chunk_size <= 0:
             raise ValueError("chunk_size must be greater than zero")
+        if chunk_size > self._MAX_CHUNK_SIZE:
+            raise ValueError(
+                "chunk_size exceeds maximum allowed size: "
+                f"{chunk_size} > {self._MAX_CHUNK_SIZE} bytes"
+            )
         if not stem or not stem.strip():
             raise ValueError("stem must not be empty")
 
