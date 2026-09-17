@@ -482,6 +482,9 @@ def test_run_generic_pipeline_materializes_completed_boundary_before_input_eof(
 
             return ()
 
+        def finalize(self) -> tuple[object, ...]:
+            return ()
+
     class _StreamingSink:
         def __init__(self, **kwargs: object) -> None:
             pass
@@ -589,6 +592,9 @@ def test_run_generic_pipeline_finalizes_open_tail_at_eof(
             events.append(f"feed:{chunk.decode()}")
             return ()
 
+        def finalize(self) -> tuple[object, ...]:
+            return ()
+
     class _StreamingSink:
         def __init__(self, **kwargs: object) -> None:
             self.finalize_calls = 0
@@ -649,6 +655,155 @@ def test_run_generic_pipeline_finalizes_open_tail_at_eof(
             "end_offset": 300,
             "path": str(tmp_path / "segment-0001.mp3"),
         }
+    ]
+
+
+def test_run_generic_pipeline_processes_pending_boundary_before_tail_at_eof(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+
+    import fluxtuner_ripper.generic_cli as generic_cli
+
+    events: list[str] = []
+
+    resolution = SimpleNamespace(
+        candidate=SimpleNamespace(
+            time_seconds=10.0,
+            source="manual",
+        ),
+        temporal=SimpleNamespace(
+            incoming_start_seconds=10.0,
+        ),
+        split=SimpleNamespace(
+            incoming_start=100,
+            outgoing_end=100,
+            kind=SimpleNamespace(value="hard_cut"),
+        ),
+    )
+
+    class _Ingestor:
+        def __init__(self, *, codec: str, ring_max_bytes: int) -> None:
+            self.codec = codec
+            self.ring_max_bytes = ring_max_bytes
+
+    class _Provider:
+        def __init__(self, *, interval_seconds: float) -> None:
+            self.interval_seconds = interval_seconds
+
+    class _Resolver:
+        pass
+
+    class _Spool:
+        def close(self) -> None:
+            events.append("close")
+
+    class _SpoolingIngestor:
+        def __init__(self) -> None:
+            self.spool = _Spool()
+
+    class _StreamingRunner:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def feed(self, chunk: bytes) -> tuple[object, ...]:
+            events.append(f"feed:{chunk.decode()}")
+            return ()
+
+        def finalize(self) -> tuple[object, ...]:
+            events.append("runner-finalize")
+            return (
+                SimpleNamespace(
+                    candidate=resolution.candidate,
+                    resolution=resolution,
+                ),
+            )
+
+    class _StreamingSink:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def accept(self, received_resolution: object) -> object:
+            assert received_resolution is resolution
+            events.append("accept")
+
+            return SimpleNamespace(
+                index=1,
+                start_offset=0,
+                end_offset=100,
+                path=tmp_path / "segment-0001.mp3",
+            )
+
+        def finalize(self) -> object:
+            events.append("sink-finalize")
+
+            return SimpleNamespace(
+                index=2,
+                start_offset=100,
+                end_offset=300,
+                path=tmp_path / "segment-0002.mp3",
+            )
+
+    monkeypatch.setattr(generic_cli, "EncodedStreamIngestor", _Ingestor)
+    monkeypatch.setattr(generic_cli, "FixedIntervalBoundaryProvider", _Provider)
+    monkeypatch.setattr(generic_cli, "RippingOrchestrator", _Resolver)
+    monkeypatch.setattr(
+        generic_cli,
+        "create_safe_spooling_ingestor",
+        lambda **kwargs: _SpoolingIngestor(),
+    )
+    monkeypatch.setattr(
+        generic_cli,
+        "StreamingGenericRunner",
+        _StreamingRunner,
+    )
+    monkeypatch.setattr(
+        generic_cli,
+        "StreamingSegmentSink",
+        _StreamingSink,
+    )
+
+    payload = generic_cli._run_generic_pipeline(
+        chunks=(b"one", b"two"),
+        codec="mp3",
+        interval_seconds=30.0,
+        output_directory=tmp_path,
+    )
+
+    assert events == [
+        "feed:one",
+        "feed:two",
+        "runner-finalize",
+        "accept",
+        "sink-finalize",
+        "close",
+    ]
+
+    assert payload["boundaries"] == [
+        {
+            "requested_time_seconds": 10.0,
+            "source": "manual",
+            "resolved_time_seconds": 10.0,
+            "incoming_start_offset": 100,
+            "outgoing_end_offset": 100,
+            "split_kind": "hard_cut",
+        }
+    ]
+
+    assert payload["segments"] == [
+        {
+            "index": 1,
+            "start_offset": 0,
+            "end_offset": 100,
+            "path": str(tmp_path / "segment-0001.mp3"),
+        },
+        {
+            "index": 2,
+            "start_offset": 100,
+            "end_offset": 300,
+            "path": str(tmp_path / "segment-0002.mp3"),
+        },
     ]
 
 
