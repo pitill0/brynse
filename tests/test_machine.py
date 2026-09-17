@@ -33,3 +33,24 @@ def test_machine_segment_source_consumes_stream_source() -> None:
 
     assert isinstance(result, dict)
     assert source.closed is True
+
+
+def test_segment_request_is_json_serializable() -> None:
+    import json
+
+    from fluxtuner_ripper.machine import SegmentRequest
+
+    request = SegmentRequest(
+        codec="mp3",
+        provider="fixed",
+        interval_seconds=10.0,
+    )
+
+    payload = request.to_dict()
+
+    assert payload == {
+        "codec": "mp3",
+        "provider": "fixed",
+        "interval_seconds": 10.0,
+    }
+    assert json.loads(json.dumps(payload)) == payload

@@ -3,11 +3,26 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 
 from fluxtuner_ripper.generic_cli import _run_generic_pipeline
 from fluxtuner_ripper.source import StreamSource
 
 _CHUNK_SIZE = 64 * 1024
+
+
+@dataclass(frozen=True)
+class SegmentRequest:
+    codec: str
+    provider: str
+    interval_seconds: float | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "codec": self.codec,
+            "provider": self.provider,
+            "interval_seconds": self.interval_seconds,
+        }
 
 
 def segment_source(
