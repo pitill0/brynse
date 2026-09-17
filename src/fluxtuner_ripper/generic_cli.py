@@ -260,6 +260,10 @@ def _run_generic_pipeline(
 
                     completed.append(streaming_result.resolution)
                     materialized.append(sink.accept(streaming_result.resolution))
+
+            tail = sink.finalize()
+            if tail is not None:
+                materialized.append(tail)
         finally:
             spooling_ingestor.spool.close()
 
