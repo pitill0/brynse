@@ -278,3 +278,37 @@ def test_streaming_generic_runner_polls_provider_after_feed(
     assert len(completed) == 1
     assert completed[0].candidate is candidate
     assert completed[0].resolution is resolution
+
+
+def test_streaming_runner_finalize_resolves_pending_candidate_at_eof() -> None:
+    from fluxtuner_ripper.providers import ManualBoundaryProvider
+
+    ingestor = _Ingestor()
+    resolver = _Resolver()
+
+    runner = StreamingGenericRunner(
+        ingestor=ingestor,  # type: ignore[arg-type]
+        resolver=resolver,  # type: ignore[arg-type]
+        settle_seconds=2.0,
+        provider=ManualBoundaryProvider(
+            boundary_times_seconds=(10.0,),
+        ),
+    )
+
+    assert runner.feed(b"11") == ()
+
+    assert tuple(candidate.time_seconds for candidate in runner.pending) == (10.0,)
+    assert resolver.calls == []
+
+    completed = runner.finalize()
+
+    assert len(completed) == 1
+    assert completed[0].candidate.time_seconds == 10.0
+    assert completed[0].resolution is not None
+
+    assert runner.pending == ()
+    assert resolver.calls == [completed[0].candidate]
+
+    # EOF finalization must not resolve the same candidate twice.
+    assert runner.finalize() == ()
+    assert resolver.calls == [completed[0].candidate]

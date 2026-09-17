@@ -141,9 +141,22 @@ class StreamingGenericRunner:
 
         self._pending = waiting
 
+        return self._resolve_candidates(ready)
+
+    def finalize(self) -> tuple[StreamingCandidateResult, ...]:
+        """Resolve every candidate still pending at end of stream."""
+
+        pending = self._pending
+        self._pending = []
+        return self._resolve_candidates(pending)
+
+    def _resolve_candidates(
+        self,
+        candidates: list[BoundaryCandidate],
+    ) -> tuple[StreamingCandidateResult, ...]:
         completed: list[StreamingCandidateResult] = []
 
-        for candidate in ready:
+        for candidate in candidates:
             resolution = self._resolver.resolve_candidate(
                 candidate=candidate,
                 timeline=self._ingestor.timeline,
