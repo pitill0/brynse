@@ -1333,3 +1333,54 @@ def test_generic_cli_reports_track_finalization_failure_as_operational_error(
     assert "FFmpeg MP3 finalization failed" in captured.err
     assert "Traceback" not in captured.err
     assert captured.out == ""
+
+
+def test_generic_cli_handles_broken_stdout_pipe_cleanly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import builtins
+
+    import fluxtuner_ripper.generic_cli as generic_cli
+
+    monkeypatch.setattr(
+        generic_cli,
+        "_validate_args",
+        lambda args: None,
+    )
+    monkeypatch.setattr(
+        generic_cli,
+        "_iter_input",
+        lambda input_value: iter((b"data",)),
+    )
+    monkeypatch.setattr(
+        generic_cli,
+        "_run_generic_pipeline",
+        lambda **kwargs: {
+            "bytes_ingested": 4,
+            "codec": "mp3",
+            "provider": "fixed_interval",
+            "interval_seconds": 30.0,
+            "boundaries": [],
+        },
+    )
+
+    real_print = builtins.print
+
+    def broken_stdout_print(*args: object, **kwargs: object) -> None:
+        if kwargs.get("file") is None:
+            raise BrokenPipeError("downstream closed pipe")
+        real_print(*args, **kwargs)
+
+    monkeypatch.setattr(builtins, "print", broken_stdout_print)
+
+    result = generic_cli.main(
+        [
+            "-",
+            "--codec",
+            "mp3",
+            "--interval",
+            "30",
+        ]
+    )
+
+    assert result == 1

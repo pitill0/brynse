@@ -378,7 +378,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("Interrupted.", file=sys.stderr)
         return 130
 
-    print(json.dumps(payload, indent=2, sort_keys=True))
+    try:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    except BrokenPipeError:
+        return 1
+
     return 0
 
 
