@@ -227,3 +227,48 @@ def test_radio_cli_handles_keyboard_interrupt_cleanly(
     assert "stopped" in captured.err.lower()
     assert "Traceback" not in captured.err
     assert captured.out == ""
+
+
+def test_radio_cli_handles_broken_stdout_pipe_cleanly(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import builtins
+    from types import SimpleNamespace
+
+    import fluxtuner_ripper.cli as cli
+
+    class FakeRunner:
+        current_track_title = None
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def run(self, **kwargs: object) -> object:
+            on_started = kwargs["on_started"]
+            on_started("mp3", 16000)
+            return SimpleNamespace(codec="mp3", metaint=16000)
+
+        def stop(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "RippingRunner", FakeRunner)
+
+    real_print = builtins.print
+
+    def broken_stdout_print(*args: object, **kwargs: object) -> None:
+        if kwargs.get("file") is None:
+            raise BrokenPipeError("downstream closed pipe")
+        real_print(*args, **kwargs)
+
+    monkeypatch.setattr(builtins, "print", broken_stdout_print)
+
+    result = cli.main(
+        [
+            "https://example.invalid/stream",
+            "--output",
+            str(tmp_path / "tracks"),
+        ]
+    )
+
+    assert result == 1

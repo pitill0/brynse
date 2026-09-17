@@ -167,6 +167,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         return _run_stream(args)
+    except BrokenPipeError:
+        return 1
     except RippingRunError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
