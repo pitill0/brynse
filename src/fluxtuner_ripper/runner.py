@@ -69,8 +69,7 @@ class RippingRunResult:
     incomplete_track_title: str | None
 
 
-LegacyStream = tuple[BinaryIO, Mapping[str, str]]
-StreamOpener = Callable[[str], StreamSource | LegacyStream]
+StreamOpener = Callable[[str], StreamSource]
 MetadataCallback = Callable[[TimedMetadataEvent], None]
 TrackCallback = Callable[[WrittenTrack], None]
 StartedCallback = Callable[[str, int], None]
@@ -235,17 +234,7 @@ class RippingRunner:
         config.output_directory.mkdir(parents=True, exist_ok=True)
         self._stop_event.clear()
 
-        opened = self._stream_opener(config.url)
-
-        if isinstance(opened, tuple):
-            stream, headers = opened
-            source: StreamSource = BinaryIOStreamSource(
-                stream,
-                metadata=headers,
-            )
-        else:
-            source = opened
-
+        source = self._stream_opener(config.url)
         self._stream = source
         spool = None
 

@@ -11,6 +11,14 @@ from fluxtuner_ripper.runner import (
     resolve_codec,
     resolve_metaint,
 )
+from fluxtuner_ripper.source import BinaryIOStreamSource
+
+
+def _stream_source(stream: object, metadata: dict[str, str]) -> BinaryIOStreamSource:
+    return BinaryIOStreamSource(
+        stream,  # type: ignore[arg-type]
+        metadata=metadata,
+    )
 
 
 def test_runner_rejects_non_positive_ring(tmp_path: Path) -> None:
@@ -59,7 +67,7 @@ def test_runner_treats_read_failure_after_stop_as_clean_shutdown(
             output_directory=tmp_path,
             codec="mp3",
         ),
-        stream_opener=lambda url: (
+        stream_opener=lambda url: _stream_source(
             stream,
             {"Content-Type": "audio/mpeg", "icy-metaint": "417"},
         ),
@@ -88,7 +96,7 @@ def test_runner_propagates_read_failure_without_stop(
             output_directory=tmp_path,
             codec="mp3",
         ),
-        stream_opener=lambda url: (
+        stream_opener=lambda url: _stream_source(
             FailingStream(),
             {"Content-Type": "audio/mpeg", "icy-metaint": "417"},
         ),
@@ -132,7 +140,7 @@ def test_runner_shadow_callback_is_parallel_and_optional(tmp_path: Path) -> None
             output_directory=tmp_path,
             codec="mp3",
         ),
-        stream_opener=lambda url: (
+        stream_opener=lambda url: _stream_source(
             stream,
             {"Content-Type": "audio/mpeg", "icy-metaint": str(frame_length)},
         ),
@@ -201,7 +209,7 @@ def test_runner_retains_clean_audio_in_safe_streaming_spool(
             output_directory=tmp_path,
             codec="mp3",
         ),
-        stream_opener=lambda url: (
+        stream_opener=lambda url: _stream_source(
             FakeStream(),
             {
                 "Content-Type": "audio/mpeg",
@@ -297,7 +305,7 @@ def test_runner_discards_spool_before_next_retained_track_offset(
             output_directory=tmp_path,
             codec="mp3",
         ),
-        stream_opener=lambda url: (
+        stream_opener=lambda url: _stream_source(
             FakeStream(),
             {
                 "Content-Type": "audio/mpeg",
@@ -362,7 +370,7 @@ def test_runner_closes_spool_when_output_writer_construction_fails(
             output_directory=tmp_path,
             codec="mp3",
         ),
-        stream_opener=lambda url: (
+        stream_opener=lambda url: _stream_source(
             FakeStream(),
             {
                 "Content-Type": "audio/mpeg",
@@ -445,7 +453,7 @@ def test_runner_closes_spool_when_append_fails(
             output_directory=tmp_path,
             codec="mp3",
         ),
-        stream_opener=lambda url: (
+        stream_opener=lambda url: _stream_source(
             FakeStream(),
             {
                 "Content-Type": "audio/mpeg",
@@ -540,7 +548,7 @@ def test_runner_does_not_discard_spool_when_track_write_fails(
             output_directory=tmp_path,
             codec="mp3",
         ),
-        stream_opener=lambda url: (
+        stream_opener=lambda url: _stream_source(
             FakeStream(),
             {
                 "Content-Type": "audio/mpeg",
@@ -636,7 +644,7 @@ def test_runner_closes_spool_when_discard_fails(
             output_directory=tmp_path,
             codec="mp3",
         ),
-        stream_opener=lambda url: (
+        stream_opener=lambda url: _stream_source(
             FakeStream(),
             {
                 "Content-Type": "audio/mpeg",

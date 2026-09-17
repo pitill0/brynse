@@ -12,6 +12,7 @@ from fluxtuner_ripper.cli import (
     _resolve_metaint,
     main,
 )
+from fluxtuner_ripper.source import BinaryIOStreamSource
 
 
 def test_cli_resolves_mp3_codec_from_content_type() -> None:
@@ -76,7 +77,14 @@ def test_cli_main_ingests_mock_stream(
         "icy-metaint": str(frame_length),
     }
 
-    monkeypatch.setattr(cli, "_open_stream", lambda url: (stream, headers))
+    monkeypatch.setattr(
+        cli,
+        "_open_stream",
+        lambda url: BinaryIOStreamSource(
+            stream,
+            metadata=headers,
+        ),
+    )
 
     result = main(
         [
@@ -284,7 +292,11 @@ def test_radio_cli_reports_stream_open_failure_as_operational_error(
     def fail_open_stream(url: str) -> object:
         raise cli.RippingRunError("connection refused")
 
-    monkeypatch.setattr(cli, "open_stream", fail_open_stream)
+    monkeypatch.setattr(
+        cli,
+        "open_stream_source",
+        fail_open_stream,
+    )
 
     class FakeRunner:
         current_track_title = None
@@ -320,3 +332,37 @@ def test_radio_cli_reports_stream_open_failure_as_operational_error(
     assert "connection refused" in captured.err
     assert "Traceback" not in captured.err
     assert captured.out == ""
+
+
+def test_radio_cli_open_stream_returns_stream_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from collections.abc import Mapping
+
+    import fluxtuner_ripper.cli as cli
+
+    class FakeSource:
+        @property
+        def metadata(self) -> Mapping[str, str]:
+            return {
+                "Content-Type": "audio/mpeg",
+                "icy-metaint": "16000",
+            }
+
+        def read(self, max_bytes: int) -> bytes:
+            return b""
+
+        def close(self) -> None:
+            pass
+
+    source = FakeSource()
+
+    monkeypatch.setattr(
+        cli,
+        "open_stream_source",
+        lambda url: source,
+    )
+
+    opened = cli._open_stream("https://example.invalid/stream")
+
+    assert opened is source

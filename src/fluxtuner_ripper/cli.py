@@ -6,7 +6,6 @@ import argparse
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import BinaryIO
 
 from fluxtuner_ripper.models import TimedMetadataEvent
 from fluxtuner_ripper.runner import (
@@ -14,11 +13,12 @@ from fluxtuner_ripper.runner import (
     RippingRunError,
     RippingRunner,
     normalized_content_type,
-    open_stream,
+    open_stream_source,
     resolve_codec,
     resolve_metaint,
 )
 from fluxtuner_ripper.session_output import WrittenTrack
+from fluxtuner_ripper.source import StreamSource
 
 
 class CliError(RuntimeError):
@@ -93,8 +93,8 @@ def _resolve_metaint(headers: Mapping[str, str]) -> int:
         raise CliError(str(exc)) from exc
 
 
-def _open_stream(url: str) -> tuple[BinaryIO, Mapping[str, str]]:
-    return open_stream(url)
+def _open_stream(url: str) -> StreamSource:
+    return open_stream_source(url)
 
 
 def _validate_args(args: argparse.Namespace) -> None:
