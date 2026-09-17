@@ -148,26 +148,20 @@ def _iter_input(
     *,
     chunk_size: int = 64 * 1024,
 ) -> Iterator[bytes]:
-    """Yield encoded input incrementally from a file or stdin."""
+    """Yield encoded input incrementally from a StreamSource."""
     if chunk_size <= 0:
         raise ValueError("chunk_size must be greater than zero")
 
-    if input_value == "-":
-        stream = sys.stdin.buffer
-        while True:
-            chunk = stream.read(chunk_size)
-            if not chunk:
-                break
-            yield chunk
-        return
+    source = _open_input_source(input_value)
 
-    path = Path(input_value)
-    with path.open("rb") as stream:
+    try:
         while True:
-            chunk = stream.read(chunk_size)
+            chunk = source.read(chunk_size)
             if not chunk:
                 break
             yield chunk
+    finally:
+        source.close()
 
 
 def _read_input(input_name: str) -> bytes:

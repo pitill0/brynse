@@ -142,3 +142,43 @@ def test_generic_cli_opens_stdin_as_non_closing_stream_source(
     source.close()
 
     assert stream.closed is False
+
+
+def test_iter_input_reads_through_stream_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import fluxtuner_ripper.generic_cli as generic_cli
+
+    class FakeSource:
+        def __init__(self) -> None:
+            self._chunks = [b"abc", b"def", b""]
+            self.closed = False
+
+        @property
+        def metadata(self) -> dict[str, str]:
+            return {}
+
+        def read(self, max_bytes: int) -> bytes:
+            assert max_bytes == 3
+            return self._chunks.pop(0)
+
+        def close(self) -> None:
+            self.closed = True
+
+    source = FakeSource()
+
+    monkeypatch.setattr(
+        generic_cli,
+        "_open_input_source",
+        lambda input_value: source,
+    )
+
+    chunks = list(
+        generic_cli._iter_input(
+            "ignored-input",
+            chunk_size=3,
+        )
+    )
+
+    assert chunks == [b"abc", b"def"]
+    assert source.closed is True
