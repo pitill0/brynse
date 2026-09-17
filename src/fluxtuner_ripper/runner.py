@@ -69,7 +69,8 @@ class RippingRunResult:
     incomplete_track_title: str | None
 
 
-StreamOpener = Callable[[str], tuple[BinaryIO, Mapping[str, str]]]
+LegacyStream = tuple[BinaryIO, Mapping[str, str]]
+StreamOpener = Callable[[str], StreamSource | LegacyStream]
 MetadataCallback = Callable[[TimedMetadataEvent], None]
 TrackCallback = Callable[[WrittenTrack], None]
 StartedCallback = Callable[[str, int], None]
@@ -156,7 +157,7 @@ class RippingRunner:
         self,
         config: RippingRunConfig,
         *,
-        stream_opener: StreamOpener = open_stream,
+        stream_opener: StreamOpener = open_stream_source,
         shadow_observer_factory: ShadowObserverFactory | None = None,
     ) -> None:
         self._config = config
@@ -167,7 +168,7 @@ class RippingRunner:
             else lambda ffmpeg_binary: LiveShadowBoundaryObserver(ffmpeg_binary=ffmpeg_binary)
         )
         self._stop_event = threading.Event()
-        self._stream: BinaryIO | None = None
+        self._stream: StreamSource | None = None
         self._session: RippingSession | None = None
 
     @property
@@ -234,13 +235,23 @@ class RippingRunner:
         config.output_directory.mkdir(parents=True, exist_ok=True)
         self._stop_event.clear()
 
-        stream, headers = self._stream_opener(config.url)
-        self._stream = stream
+        opened = self._stream_opener(config.url)
+
+        if isinstance(opened, tuple):
+            stream, headers = opened
+            source: StreamSource = BinaryIOStreamSource(
+                stream,
+                metadata=headers,
+            )
+        else:
+            source = opened
+
+        self._stream = source
         spool = None
 
         try:
-            codec = resolve_codec(config.codec, headers)
-            metaint = resolve_metaint(headers)
+            codec = resolve_codec(config.codec, source.metadata)
+            metaint = resolve_metaint(source.metadata)
 
             ingestor = RippingStreamIngestor(
                 metaint=metaint,
@@ -279,7 +290,7 @@ class RippingRunner:
 
             while not self._stop_event.is_set():
                 try:
-                    chunk = stream.read(_CHUNK_SIZE)
+                    chunk = source.read(_CHUNK_SIZE)
                 except Exception:
                     if self._stop_event.is_set():
                         break
@@ -325,4 +336,4 @@ class RippingRunner:
             if spool is not None:
                 spool.close()
             with suppress(OSError):
-                stream.close()
+                source.close()

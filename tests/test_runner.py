@@ -682,3 +682,44 @@ def test_open_stream_source_wraps_radio_stream_and_headers(
 
     source.close()
     assert stream.closed
+
+
+def test_ripping_runner_consumes_stream_source_directly(tmp_path: Path) -> None:
+    from collections.abc import Mapping
+
+    from fluxtuner_ripper.runner import RippingRunConfig, RippingRunner
+
+    class FakeSource:
+        def __init__(self) -> None:
+            self.closed = False
+
+        @property
+        def metadata(self) -> Mapping[str, str]:
+            return {
+                "Content-Type": "audio/mpeg",
+                "icy-metaint": "16000",
+            }
+
+        def read(self, max_bytes: int) -> bytes:
+            assert max_bytes > 0
+            return b""
+
+        def close(self) -> None:
+            self.closed = True
+
+    source = FakeSource()
+
+    runner = RippingRunner(
+        RippingRunConfig(
+            url="https://example.invalid/stream",
+            output_directory=tmp_path,
+        ),
+        stream_opener=lambda url: source,
+    )
+
+    result = runner.run()
+
+    assert result.codec == "mp3"
+    assert result.metaint == 16000
+    assert result.stopped is False
+    assert source.closed
