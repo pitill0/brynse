@@ -371,7 +371,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     except GenericCliError as exc:
         parser.error(str(exc))
-    except (TrackFinalizeError, TrackFileWriteError) as exc:
+    except (TrackFinalizeError, TrackFileWriteError, OSError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:

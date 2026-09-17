@@ -1384,3 +1384,37 @@ def test_generic_cli_handles_broken_stdout_pipe_cleanly(
     )
 
     assert result == 1
+
+
+def test_generic_cli_reports_input_io_failure_as_operational_error(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import fluxtuner_ripper.generic_cli as generic_cli
+
+    def failing_input(input_value: str):
+        yield b"first-chunk"
+        raise OSError("input read failed")
+
+    monkeypatch.setattr(
+        generic_cli,
+        "_iter_input",
+        failing_input,
+    )
+
+    result = generic_cli.main(
+        [
+            "-",
+            "--codec",
+            "mp3",
+            "--interval",
+            "30",
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert result == 1
+    assert "input read failed" in captured.err
+    assert "Traceback" not in captured.err
+    assert captured.out == ""
