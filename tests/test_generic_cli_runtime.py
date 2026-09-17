@@ -971,6 +971,191 @@ def test_run_generic_pipeline_merges_short_tail_after_eof_boundary(
     ]
 
 
+def test_run_generic_pipeline_streams_segment_larger_than_ring_from_spool(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+
+    import fluxtuner_ripper.generic_cli as generic_cli
+    import fluxtuner_ripper.streaming_sink as streaming_sink
+    from fluxtuner_ripper.models import SplitDecision, SplitKind
+    from fluxtuner_ripper.output import TrackOutputService
+    from fluxtuner_ripper.spooling_ingest import SpoolingEncodedStreamIngestor
+    from fluxtuner_ripper.streaming_spool import StreamingSpool
+
+    def adts_frame(
+        *,
+        frame_length: int = 100,
+        payload_byte: int = 7,
+    ) -> bytes:
+        profile = 1
+        channel_config = 2
+        sample_rate_index = 4
+
+        b0 = 0xFF
+        b1 = 0xF1
+        b2 = (profile << 6) | (sample_rate_index << 2) | (channel_config >> 2)
+        b3 = ((channel_config & 0x03) << 6) | ((frame_length >> 11) & 0x03)
+        b4 = (frame_length >> 3) & 0xFF
+        b5 = ((frame_length & 0x07) << 5) | 0x1F
+        b6 = 0xFC
+
+        return bytes((b0, b1, b2, b3, b4, b5, b6)) + bytes([payload_byte]) * (frame_length - 7)
+
+    frame = adts_frame()
+    frame_count = 1500
+    total_bytes = len(frame) * frame_count
+    ring_max_bytes = 40_000
+
+    observed: dict[str, object] = {}
+
+    class _Resolver:
+        def resolve_candidate(
+            self,
+            *,
+            candidate: object,
+            timeline: object,
+            ring_buffer: object,
+        ) -> object:
+            candidate_time = candidate.time_seconds  # type: ignore[attr-defined]
+
+            target = next(
+                frame
+                for frame in timeline.frames  # type: ignore[attr-defined]
+                if frame.time_seconds >= candidate_time
+            )
+
+            observed["boundary_offset"] = target.offset
+            observed["ring_start_at_resolution"] = ring_buffer.start_offset  # type: ignore[attr-defined]
+
+            return SimpleNamespace(
+                candidate=candidate,
+                temporal=SimpleNamespace(
+                    incoming_start_seconds=target.time_seconds,
+                ),
+                split=SplitDecision(
+                    kind=SplitKind.HARD_CUT,
+                    incoming_start=target.offset,
+                    outgoing_end=target.offset,
+                ),
+            )
+
+    class _StreamingCopyFinalizer:
+        def __init__(self) -> None:
+            self.chunk_sizes: list[int] = []
+
+        def finalize_stream(
+            self,
+            *,
+            chunks: object,
+            output_path: Path,
+            timeout_seconds: float | None = None,
+        ) -> None:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+            with output_path.open("wb") as handle:
+                for chunk in chunks:  # type: ignore[union-attr]
+                    self.chunk_sizes.append(len(chunk))
+                    handle.write(chunk)
+
+    finalizer = _StreamingCopyFinalizer()
+    output_service = TrackOutputService(
+        aac_finalizer=finalizer,  # type: ignore[arg-type]
+    )
+
+    monkeypatch.setattr(
+        streaming_sink,
+        "create_safe_track_output_service",
+        lambda: output_service,
+    )
+    monkeypatch.setattr(
+        generic_cli,
+        "RippingOrchestrator",
+        _Resolver,
+    )
+    monkeypatch.setattr(
+        generic_cli,
+        "_STREAMING_RING_MAX_BYTES",
+        ring_max_bytes,
+    )
+
+    def create_spooling_ingestor(
+        *,
+        ingestor: object,
+        spool_directory: Path,
+    ) -> object:
+        spool = StreamingSpool(
+            directory=spool_directory / ".spool",
+            storage_chunk_size=4096,
+        )
+        spooling = SpoolingEncodedStreamIngestor(
+            ingestor=ingestor,  # type: ignore[arg-type]
+            spool=spool,
+        )
+        observed["spooling"] = spooling
+        return spooling
+
+    monkeypatch.setattr(
+        generic_cli,
+        "create_safe_spooling_ingestor",
+        create_spooling_ingestor,
+    )
+
+    class _Chunks:
+        def __iter__(self):
+            for _ in range(frame_count):
+                yield frame
+
+    payload = generic_cli._run_generic_pipeline(
+        chunks=_Chunks(),
+        codec="aac",
+        provider_name="manual",
+        boundary_times_seconds=(20.0,),
+        output_directory=tmp_path / "output",
+    )
+
+    assert payload["bytes_ingested"] == total_bytes
+
+    segments = payload["segments"]
+    assert isinstance(segments, list)
+    assert len(segments) == 2
+
+    first = segments[0]
+    second = segments[1]
+
+    assert first["start_offset"] == 0
+    assert first["end_offset"] == observed["boundary_offset"]
+    assert second["start_offset"] == first["end_offset"]
+    assert second["end_offset"] == total_bytes
+
+    first_segment_bytes = first["end_offset"] - first["start_offset"]
+
+    # The closed segment is substantially larger than the analysis ring.
+    assert first_segment_bytes > ring_max_bytes * 2
+
+    # Its beginning had already been evicted from RAM when resolution ran.
+    ring_start = observed["ring_start_at_resolution"]
+    assert isinstance(ring_start, int)
+    assert ring_start > first["start_offset"]
+    assert ring_start < first["end_offset"]
+
+    # Successful materialization therefore came from retained spool bytes.
+    assert Path(first["path"]).stat().st_size == first_segment_bytes
+    assert Path(second["path"]).stat().st_size == (second["end_offset"] - second["start_offset"])
+
+    # TrackOutputService streamed the large range instead of requesting it
+    # as one in-memory byte string.
+    assert finalizer.chunk_sizes
+    assert max(finalizer.chunk_sizes) <= 64 * 1024
+    assert max(finalizer.chunk_sizes) < first_segment_bytes
+
+    # The prefix closed by the boundary was reclaimed from the real spool.
+    spooling = observed["spooling"]
+    assert spooling.spool.start_offset == first["end_offset"]
+    assert spooling.spool.end_offset == total_bytes
+
+
 def test_main_streams_input_chunks_into_generic_pipeline(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
