@@ -261,12 +261,35 @@ def _run_generic_pipeline(
                     completed.append(streaming_result.resolution)
                     materialized.append(sink.accept(streaming_result.resolution))
 
+            eof_resolutions: list[CandidateResolution] = []
+
             for streaming_result in streaming_runner.finalize():
                 if streaming_result.resolution is None:
                     continue
 
-                completed.append(streaming_result.resolution)
-                materialized.append(sink.accept(streaming_result.resolution))
+                eof_resolutions.append(streaming_result.resolution)
+
+            for index, resolution in enumerate(eof_resolutions):
+                completed.append(resolution)
+
+                is_last_resolution = index == len(eof_resolutions) - 1
+
+                if is_last_resolution:
+                    frames = ingestor.timeline.frames
+                    if frames:
+                        last_frame = frames[-1]
+                        stream_end_time_seconds = (
+                            last_frame.time_seconds + last_frame.samples / last_frame.sample_rate
+                        )
+                        tail_seconds = max(
+                            0.0,
+                            stream_end_time_seconds - resolution.temporal.incoming_start_seconds,
+                        )
+
+                        if tail_seconds < minimum_tail_seconds:
+                            continue
+
+                materialized.append(sink.accept(resolution))
 
             tail = sink.finalize()
             if tail is not None:
