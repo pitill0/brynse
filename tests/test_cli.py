@@ -272,3 +272,51 @@ def test_radio_cli_handles_broken_stdout_pipe_cleanly(
     )
 
     assert result == 1
+
+
+def test_radio_cli_reports_stream_open_failure_as_operational_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import fluxtuner_ripper.cli as cli
+
+    def fail_open_stream(url: str) -> object:
+        raise cli.RippingRunError("connection refused")
+
+    monkeypatch.setattr(cli, "open_stream", fail_open_stream)
+
+    class FakeRunner:
+        current_track_title = None
+
+        def __init__(
+            self,
+            config: object,
+            *,
+            stream_opener: object,
+        ) -> None:
+            self.stream_opener = stream_opener
+
+        def run(self, **kwargs: object) -> object:
+            self.stream_opener("https://example.invalid/stream")
+            raise AssertionError("stream opener should have failed")
+
+        def stop(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "RippingRunner", FakeRunner)
+
+    result = cli.main(
+        [
+            "https://example.invalid/stream",
+            "--output",
+            str(tmp_path / "tracks"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert result == 1
+    assert "connection refused" in captured.err
+    assert "Traceback" not in captured.err
+    assert captured.out == ""

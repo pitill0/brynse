@@ -94,10 +94,7 @@ def _resolve_metaint(headers: Mapping[str, str]) -> int:
 
 
 def _open_stream(url: str) -> tuple[BinaryIO, Mapping[str, str]]:
-    try:
-        return open_stream(url)
-    except RippingRunError as exc:
-        raise CliError(str(exc)) from exc
+    return open_stream(url)
 
 
 def _validate_args(args: argparse.Namespace) -> None:
