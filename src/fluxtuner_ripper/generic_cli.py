@@ -120,9 +120,24 @@ def _validate_args(args: argparse.Namespace) -> None:
             raise GenericCliError(f"input path is not a file: {path}")
 
 
+class _NonClosingStreamSource:
+    def __init__(self, stream: object) -> None:
+        self._stream = stream
+
+    @property
+    def metadata(self) -> dict[str, str]:
+        return {}
+
+    def read(self, max_bytes: int) -> bytes:
+        return self._stream.read(max_bytes)  # type: ignore[attr-defined]
+
+    def close(self) -> None:
+        pass
+
+
 def _open_input_source(input_value: str) -> StreamSource:
     if input_value == "-":
-        raise GenericCliError("stdin source is not implemented yet")
+        return _NonClosingStreamSource(sys.stdin.buffer)
 
     path = Path(input_value)
     return BinaryIOStreamSource(path.open("rb"))

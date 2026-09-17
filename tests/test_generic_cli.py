@@ -116,3 +116,29 @@ def test_generic_cli_opens_file_as_stream_source(tmp_path: Path) -> None:
     assert source.metadata == {}
 
     source.close()
+
+
+def test_generic_cli_opens_stdin_as_non_closing_stream_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from io import BytesIO
+    from types import SimpleNamespace
+
+    import fluxtuner_ripper.generic_cli as generic_cli
+
+    stream = BytesIO(b"stdin-data")
+
+    monkeypatch.setattr(
+        generic_cli.sys,
+        "stdin",
+        SimpleNamespace(buffer=stream),
+    )
+
+    source = generic_cli._open_input_source("-")
+
+    assert source.read(5) == b"stdin"
+    assert source.metadata == {}
+
+    source.close()
+
+    assert stream.closed is False
