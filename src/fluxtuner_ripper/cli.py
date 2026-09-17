@@ -156,9 +156,6 @@ def _run_stream(args: argparse.Namespace) -> int:
             )
         print("stopped", file=sys.stderr)
         return 130
-    except RippingRunError as exc:
-        raise CliError(str(exc)) from exc
-
     print(f"codec: {result.codec}")
     print(f"icy-metaint: {result.metaint}")
     return 0
@@ -170,6 +167,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         return _run_stream(args)
+    except RippingRunError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     except CliError as exc:
         parser.error(str(exc))
 
