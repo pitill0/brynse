@@ -190,3 +190,40 @@ def test_cli_reports_runtime_ripping_failure_as_operational_error(
     assert "stream read failed" in captured.err
     assert "Traceback" not in captured.err
     assert captured.out == ""
+
+
+def test_radio_cli_handles_keyboard_interrupt_cleanly(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import fluxtuner_ripper.cli as cli
+
+    class FakeRunner:
+        current_track_title = None
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def run(self, **kwargs: object) -> object:
+            raise KeyboardInterrupt
+
+        def stop(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "RippingRunner", FakeRunner)
+
+    result = cli.main(
+        [
+            "https://example.invalid/stream",
+            "--output",
+            str(tmp_path / "tracks"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert result == 130
+    assert "stopped" in captured.err.lower()
+    assert "Traceback" not in captured.err
+    assert captured.out == ""
