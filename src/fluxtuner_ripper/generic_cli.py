@@ -23,6 +23,7 @@ from fluxtuner_ripper.providers import (
     FixedIntervalBoundaryProvider,
     ManualBoundaryProvider,
 )
+from fluxtuner_ripper.source import BinaryIOStreamSource, StreamSource
 from fluxtuner_ripper.spooling_ingest import create_safe_spooling_ingestor
 from fluxtuner_ripper.streaming_runner import StreamingGenericRunner
 from fluxtuner_ripper.streaming_sink import StreamingSegmentSink
@@ -117,6 +118,14 @@ def _validate_args(args: argparse.Namespace) -> None:
 
         if not path.is_file():
             raise GenericCliError(f"input path is not a file: {path}")
+
+
+def _open_input_source(input_value: str) -> StreamSource:
+    if input_value == "-":
+        raise GenericCliError("stdin source is not implemented yet")
+
+    path = Path(input_value)
+    return BinaryIOStreamSource(path.open("rb"))
 
 
 def _iter_input(

@@ -102,3 +102,17 @@ def test_external_provider_requires_boundaries_file(
         match="--boundaries-file is required when --provider=external",
     ):
         _validate_args(args)
+
+
+def test_generic_cli_opens_file_as_stream_source(tmp_path: Path) -> None:
+    import fluxtuner_ripper.generic_cli as generic_cli
+
+    input_path = tmp_path / "input.mp3"
+    input_path.write_bytes(b"encoded-data")
+
+    source = generic_cli._open_input_source(str(input_path))
+
+    assert source.read(7) == b"encoded"
+    assert source.metadata == {}
+
+    source.close()
