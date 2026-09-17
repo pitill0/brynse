@@ -1288,3 +1288,48 @@ def test_generic_cli_handles_keyboard_interrupt_cleanly(
     assert "interrupted" in captured.err.lower()
     assert "Traceback" not in captured.err
     assert captured.out == ""
+
+
+def test_generic_cli_reports_track_finalization_failure_as_operational_error(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import fluxtuner_ripper.generic_cli as generic_cli
+    from fluxtuner_ripper.output import TrackFinalizeError
+
+    monkeypatch.setattr(
+        generic_cli,
+        "_validate_args",
+        lambda args: None,
+    )
+    monkeypatch.setattr(
+        generic_cli,
+        "_iter_input",
+        lambda input_value: iter((b"data",)),
+    )
+
+    def fail_pipeline(**kwargs: object) -> dict[str, object]:
+        raise TrackFinalizeError("FFmpeg MP3 finalization failed")
+
+    monkeypatch.setattr(
+        generic_cli,
+        "_run_generic_pipeline",
+        fail_pipeline,
+    )
+
+    result = generic_cli.main(
+        [
+            "-",
+            "--codec",
+            "mp3",
+            "--interval",
+            "30",
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert result == 1
+    assert "FFmpeg MP3 finalization failed" in captured.err
+    assert "Traceback" not in captured.err
+    assert captured.out == ""
