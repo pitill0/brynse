@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Protocol
+from typing import BinaryIO, Protocol
 
 
 class StreamSource(Protocol):
@@ -21,3 +21,26 @@ class StreamSource(Protocol):
     def close(self) -> None:
         """Close the source and release or unblock its underlying resource."""
         ...
+
+
+class BinaryIOStreamSource:
+    """Adapt an existing binary stream to the StreamSource contract."""
+
+    def __init__(
+        self,
+        stream: BinaryIO,
+        *,
+        metadata: Mapping[str, str] | None = None,
+    ) -> None:
+        self._stream = stream
+        self._metadata = dict(metadata or {})
+
+    @property
+    def metadata(self) -> Mapping[str, str]:
+        return self._metadata
+
+    def read(self, max_bytes: int) -> bytes:
+        return self._stream.read(max_bytes)
+
+    def close(self) -> None:
+        self._stream.close()
