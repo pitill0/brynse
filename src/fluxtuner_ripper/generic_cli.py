@@ -370,6 +370,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     except GenericCliError as exc:
         parser.error(str(exc))
+    except KeyboardInterrupt:
+        print("Interrupted.", file=sys.stderr)
+        return 130
 
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0

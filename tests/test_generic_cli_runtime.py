@@ -1244,3 +1244,47 @@ def test_generic_cli_reports_pipeline_failure_without_traceback(
     assert "segment materialization failed" in captured.err
     assert "Traceback" not in captured.err
     assert captured.out == ""
+
+
+def test_generic_cli_handles_keyboard_interrupt_cleanly(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import fluxtuner_ripper.generic_cli as generic_cli
+
+    monkeypatch.setattr(
+        generic_cli,
+        "_validate_args",
+        lambda args: None,
+    )
+    monkeypatch.setattr(
+        generic_cli,
+        "_iter_input",
+        lambda input_value: iter((b"data",)),
+    )
+
+    def interrupt_pipeline(**kwargs: object) -> dict[str, object]:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        generic_cli,
+        "_run_generic_pipeline",
+        interrupt_pipeline,
+    )
+
+    result = generic_cli.main(
+        [
+            "-",
+            "--codec",
+            "mp3",
+            "--interval",
+            "30",
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert result == 130
+    assert "interrupted" in captured.err.lower()
+    assert "Traceback" not in captured.err
+    assert captured.out == ""
