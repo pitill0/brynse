@@ -27,6 +27,7 @@ from fluxtuner_ripper.ripping import RippingStreamIngestor
 from fluxtuner_ripper.session import RippingSession
 from fluxtuner_ripper.session_output import SessionOutputWriter, WrittenTrack
 from fluxtuner_ripper.shadow import ShadowBoundaryAnalysis
+from fluxtuner_ripper.source import BinaryIOStreamSource, StreamSource
 from fluxtuner_ripper.streaming_spool import create_safe_streaming_spool
 from fluxtuner_ripper.transient import ConservativeTransientExclusionPolicy
 
@@ -136,6 +137,16 @@ def open_stream(url: str) -> tuple[BinaryIO, Mapping[str, str]]:
         raise RippingRunError(f"could not open stream: {exc}") from exc
 
     return response, response.headers
+
+
+def open_stream_source(url: str) -> StreamSource:
+    """Open a radio stream as a StreamSource."""
+
+    stream, headers = open_stream(url)
+    return BinaryIOStreamSource(
+        stream,
+        metadata=headers,
+    )
 
 
 class RippingRunner:

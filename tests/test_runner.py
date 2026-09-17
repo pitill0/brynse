@@ -652,3 +652,33 @@ def test_runner_closes_spool_when_discard_fails(
 
     assert written_callbacks == []
     assert spool.closed is True
+
+
+def test_open_stream_source_wraps_radio_stream_and_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from io import BytesIO
+
+    import fluxtuner_ripper.runner as runner
+
+    stream = BytesIO(b"radio-audio")
+    headers = {
+        "content-type": "audio/mpeg",
+        "icy-metaint": "16000",
+    }
+
+    monkeypatch.setattr(
+        runner,
+        "open_stream",
+        lambda url: (stream, headers),
+    )
+
+    source = runner.open_stream_source(
+        "https://example.invalid/stream",
+    )
+
+    assert source.read(5) == b"radio"
+    assert source.metadata == headers
+
+    source.close()
+    assert stream.closed
