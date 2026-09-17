@@ -398,6 +398,156 @@ def test_run_generic_pipeline_accepts_incremental_chunks(
     assert payload["bytes_ingested"] == 12
 
 
+def test_run_generic_pipeline_materializes_completed_boundary_before_input_eof(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+
+    import fluxtuner_ripper.generic_cli as generic_cli
+
+    events: list[str] = []
+
+    resolution = SimpleNamespace(
+        candidate=SimpleNamespace(
+            time_seconds=30.0,
+            source="fixed_interval",
+        ),
+        temporal=SimpleNamespace(
+            incoming_start_seconds=30.0,
+        ),
+        split=SimpleNamespace(
+            incoming_start=1000,
+            outgoing_end=1000,
+            kind=SimpleNamespace(value="hard_cut"),
+        ),
+    )
+
+    class _Ingestor:
+        def __init__(self, *, codec: str, ring_max_bytes: int) -> None:
+            self.codec = codec
+            self.ring_max_bytes = ring_max_bytes
+
+    class _Provider:
+        def __init__(self, *, interval_seconds: float) -> None:
+            self.interval_seconds = interval_seconds
+
+    class _Resolver:
+        pass
+
+    class _BatchRunner:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def run(self, chunks: object) -> object:
+            bytes_ingested = 0
+
+            for chunk in chunks:
+                events.append(f"feed:{chunk.decode()}")
+                bytes_ingested += len(chunk)
+
+            return SimpleNamespace(
+                bytes_ingested=bytes_ingested,
+                resolutions=(resolution,),
+            )
+
+    class _BatchWriter:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def write(self, resolutions: object) -> object:
+            assert tuple(resolutions) == (resolution,)
+            events.append("accept")
+            return ()
+
+    class _Spool:
+        def close(self) -> None:
+            events.append("close")
+
+    class _SpoolingIngestor:
+        def __init__(self) -> None:
+            self.spool = _Spool()
+
+    class _StreamingRunner:
+        def __init__(self, **kwargs: object) -> None:
+            assert kwargs["provider"] is not None
+            self.feed_count = 0
+
+        def feed(self, chunk: bytes) -> tuple[object, ...]:
+            self.feed_count += 1
+            events.append(f"feed:{chunk.decode()}")
+
+            if self.feed_count == 2:
+                return (SimpleNamespace(resolution=resolution),)
+
+            return ()
+
+    class _StreamingSink:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def accept(self, received_resolution: object) -> object:
+            assert received_resolution is resolution
+            events.append("accept")
+
+            return SimpleNamespace(
+                index=1,
+                start_offset=0,
+                end_offset=1000,
+                path=tmp_path / "segment-0001.mp3",
+            )
+
+    monkeypatch.setattr(generic_cli, "EncodedStreamIngestor", _Ingestor)
+    monkeypatch.setattr(generic_cli, "FixedIntervalBoundaryProvider", _Provider)
+    monkeypatch.setattr(generic_cli, "RippingOrchestrator", _Resolver)
+    monkeypatch.setattr(generic_cli, "GenericRunner", _BatchRunner)
+    monkeypatch.setattr(generic_cli, "GenericSegmentWriter", _BatchWriter)
+
+    monkeypatch.setattr(
+        generic_cli,
+        "create_safe_spooling_ingestor",
+        lambda **kwargs: _SpoolingIngestor(),
+    )
+    monkeypatch.setattr(
+        generic_cli,
+        "StreamingGenericRunner",
+        _StreamingRunner,
+    )
+    monkeypatch.setattr(
+        generic_cli,
+        "StreamingSegmentSink",
+        _StreamingSink,
+    )
+
+    def chunks():
+        yield b"one"
+        yield b"two"
+
+        assert "accept" in events
+
+        yield b"three"
+
+    payload = generic_cli._run_generic_pipeline(
+        chunks=chunks(),
+        codec="mp3",
+        interval_seconds=30.0,
+        output_directory=tmp_path,
+    )
+
+    assert payload["bytes_ingested"] == 11
+    assert payload["segments"] == [
+        {
+            "index": 1,
+            "start_offset": 0,
+            "end_offset": 1000,
+            "path": str(tmp_path / "segment-0001.mp3"),
+        }
+    ]
+
+    assert events.index("accept") < events.index("feed:three")
+    assert events[-1] == "close"
+
+
 def test_main_streams_input_chunks_into_generic_pipeline(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

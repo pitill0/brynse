@@ -12,18 +12,22 @@ from fluxtuner_ripper.external_boundaries import (
     ExternalBoundaryParseError,
     load_external_boundaries,
 )
-from fluxtuner_ripper.generic_output import GenericSegmentWriter
+from fluxtuner_ripper.generic_output import GenericSegmentWriter, MaterializedSegment
 from fluxtuner_ripper.generic_runner import GenericRunner
 from fluxtuner_ripper.ingest import EncodedStreamIngestor
-from fluxtuner_ripper.orchestrator import RippingOrchestrator
+from fluxtuner_ripper.orchestrator import CandidateResolution, RippingOrchestrator
 from fluxtuner_ripper.providers import (
     BoundaryProvider,
     ExternalBoundaryProvider,
     FixedIntervalBoundaryProvider,
     ManualBoundaryProvider,
 )
+from fluxtuner_ripper.spooling_ingest import create_safe_spooling_ingestor
+from fluxtuner_ripper.streaming_runner import StreamingGenericRunner
+from fluxtuner_ripper.streaming_sink import StreamingSegmentSink
 
 _STREAMING_RING_MAX_BYTES = 16 * 1024 * 1024
+_STREAMING_SETTLE_SECONDS = 8.0
 
 
 class GenericCliError(RuntimeError):
@@ -220,16 +224,69 @@ def _run_generic_pipeline(
         raise GenericCliError(f"unsupported provider: {provider_name}")
     resolver = RippingOrchestrator()
 
-    runner = GenericRunner(
-        ingestor=ingestor,
-        provider=provider,
-        resolver=resolver,
-    )
+    resolutions: tuple[CandidateResolution, ...]
+    segments: tuple[MaterializedSegment, ...] | None = None
 
-    result = runner.run(input_chunks)
+    if output_directory is not None and chunks is not None:
+        spooling_ingestor = create_safe_spooling_ingestor(
+            ingestor=ingestor,
+            spool_directory=output_directory,
+        )
+        streaming_runner = StreamingGenericRunner(
+            ingestor=spooling_ingestor,
+            resolver=resolver,
+            settle_seconds=_STREAMING_SETTLE_SECONDS,
+            provider=provider,
+        )
+        sink = StreamingSegmentSink(
+            ingestor=ingestor,
+            directory=output_directory,
+            codec=codec,
+            spool=spooling_ingestor.spool,
+            initial_start_source=spooling_ingestor,
+        )
+
+        bytes_ingested = 0
+        completed: list[CandidateResolution] = []
+        materialized: list[MaterializedSegment] = []
+
+        try:
+            for chunk in input_chunks:
+                bytes_ingested += len(chunk)
+
+                for streaming_result in streaming_runner.feed(chunk):
+                    if streaming_result.resolution is None:
+                        continue
+
+                    completed.append(streaming_result.resolution)
+                    materialized.append(sink.accept(streaming_result.resolution))
+        finally:
+            spooling_ingestor.spool.close()
+
+        resolutions = tuple(completed)
+        segments = tuple(materialized)
+    else:
+        batch_runner = GenericRunner(
+            ingestor=ingestor,
+            provider=provider,
+            resolver=resolver,
+        )
+
+        batch_result = batch_runner.run(input_chunks)
+        bytes_ingested = batch_result.bytes_ingested
+        resolutions = batch_result.resolutions
+
+        if output_directory is not None:
+            writer = GenericSegmentWriter(
+                ingestor=ingestor,
+                directory=output_directory,
+                codec=codec,
+                minimum_tail_seconds=minimum_tail_seconds,
+            )
+            segments = writer.write(resolutions)
 
     payload: dict[str, object] = {
-        "bytes_ingested": result.bytes_ingested,
+        "bytes_ingested": bytes_ingested,
         "codec": codec,
         "provider": ("fixed_interval" if provider_name == "fixed" else provider_name),
         "interval_seconds": interval_seconds,
@@ -242,19 +299,11 @@ def _run_generic_pipeline(
                 "outgoing_end_offset": resolution.split.outgoing_end,
                 "split_kind": resolution.split.kind.value,
             }
-            for resolution in result.resolutions
+            for resolution in resolutions
         ],
     }
 
-    if output_directory is not None:
-        writer = GenericSegmentWriter(
-            ingestor=ingestor,
-            directory=output_directory,
-            codec=codec,
-            minimum_tail_seconds=minimum_tail_seconds,
-        )
-        segments = writer.write(result.resolutions)
-
+    if segments is not None:
         payload["segments"] = [
             {
                 "index": segment.index,
