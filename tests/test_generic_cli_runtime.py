@@ -1199,3 +1199,48 @@ def test_main_streams_input_chunks_into_generic_pipeline(
 
     assert generic_cli.main() == 0
     assert b"".join(received_chunks) == b"abcdefghij"
+
+
+def test_generic_cli_reports_pipeline_failure_without_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import fluxtuner_ripper.generic_cli as generic_cli
+
+    monkeypatch.setattr(
+        generic_cli,
+        "_validate_args",
+        lambda args: None,
+    )
+    monkeypatch.setattr(
+        generic_cli,
+        "_iter_input",
+        lambda input_value: iter((b"data",)),
+    )
+
+    def fail_pipeline(**kwargs: object) -> dict[str, object]:
+        raise generic_cli.GenericCliError("segment materialization failed")
+
+    monkeypatch.setattr(
+        generic_cli,
+        "_run_generic_pipeline",
+        fail_pipeline,
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        generic_cli.main(
+            [
+                "-",
+                "--codec",
+                "mp3",
+                "--interval",
+                "30",
+            ]
+        )
+
+    captured = capsys.readouterr()
+
+    assert excinfo.value.code == 2
+    assert "segment materialization failed" in captured.err
+    assert "Traceback" not in captured.err
+    assert captured.out == ""
