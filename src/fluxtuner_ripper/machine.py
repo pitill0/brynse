@@ -28,11 +28,20 @@ class SegmentRequest:
 def segment_source(
     *,
     source: StreamSource,
-    codec: str,
+    request: SegmentRequest | None = None,
+    codec: str | None = None,
     provider_name: str = "fixed",
     interval_seconds: float | None = None,
 ) -> dict[str, object]:
     """Segment one encoded StreamSource without CLI/stdin/stdout coupling."""
+
+    if request is not None:
+        codec = request.codec
+        provider_name = request.provider
+        interval_seconds = request.interval_seconds
+
+    if codec is None:
+        raise ValueError("codec is required")
 
     def chunks() -> Iterator[bytes]:
         try:
