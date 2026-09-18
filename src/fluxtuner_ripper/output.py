@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Protocol
 
 from fluxtuner_ripper.models import (
+    SegmentByteRange,
     SplitDecision,
     SplitKind,
     TrackByteRange,
@@ -793,13 +794,9 @@ class AacTrackFinalizer:
                     temp_path.unlink(missing_ok=True)
 
 
-def create_safe_track_output_service() -> TrackOutputService:
-    """Create the default runtime output service.
-
-    Runtime safety policy is centralized here so application paths do not
-    instantiate a bare TrackOutputService directly.
-    """
-    return TrackOutputService(
+def create_safe_segment_output_service() -> SegmentOutputService:
+    """Create the default runtime segment output service."""
+    return SegmentOutputService(
         min_free_output_bytes=512 * 1024 * 1024,
         output_space_factor=1.25,
         finalize_base_timeout_seconds=30.0,
@@ -807,7 +804,12 @@ def create_safe_track_output_service() -> TrackOutputService:
     )
 
 
-class TrackOutputService:
+def create_safe_track_output_service() -> TrackOutputService:
+    """Backward-compatible radio-oriented output factory."""
+    return create_safe_segment_output_service()
+
+
+class SegmentOutputService:
     """Compose range extraction, codec finalization, and atomic persistence."""
 
     _MAX_CHUNK_SIZE = 4 * 1024 * 1024
@@ -857,11 +859,11 @@ class TrackOutputService:
         self._finalize_base_timeout_seconds = finalize_base_timeout_seconds
         self._finalize_throughput_bytes_per_second = finalize_throughput_bytes_per_second
 
-    def write_track(
+    def write_segment(
         self,
         *,
         source: EncodedByteSource,
-        byte_range: TrackByteRange,
+        byte_range: SegmentByteRange,
         directory: Path,
         stem: str,
         codec: str,
@@ -961,6 +963,26 @@ class TrackOutputService:
             data=finalized,
         )
 
+    def write_track(
+        self,
+        *,
+        source: EncodedByteSource,
+        byte_range: TrackByteRange,
+        directory: Path,
+        stem: str,
+        codec: str,
+        chunk_size: int = 64 * 1024,
+    ) -> Path:
+        """Backward-compatible radio-oriented output method."""
+        return self.write_segment(
+            source=source,
+            byte_range=byte_range,
+            directory=directory,
+            stem=stem,
+            codec=codec,
+            chunk_size=chunk_size,
+        )
+
     def _write_finalized(
         self,
         *,
@@ -1023,3 +1045,6 @@ class TrackOutputService:
                 with suppress(OSError):
                     temp_path.unlink(missing_ok=True)
             raise TrackFileWriteError(f"failed to write track file: {target}") from exc
+
+
+TrackOutputService = SegmentOutputService

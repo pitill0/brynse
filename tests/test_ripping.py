@@ -3463,7 +3463,7 @@ def test_generic_segment_writer_uses_safe_output_service_factory_by_default(
     monkeypatch,
 ) -> None:
     import fluxtuner_ripper.generic_output as generic_output
-    from fluxtuner_ripper.output import TrackOutputService
+    from fluxtuner_ripper.output import SegmentOutputService
 
     class _FakeIngestor:
         pass
@@ -3478,7 +3478,7 @@ def test_generic_segment_writer_uses_safe_output_service_factory_by_default(
 
     monkeypatch.setattr(
         generic_output,
-        "create_safe_track_output_service",
+        "create_safe_segment_output_service",
         fake_factory,
     )
 
@@ -3490,7 +3490,7 @@ def test_generic_segment_writer_uses_safe_output_service_factory_by_default(
 
     assert calls == 1
     assert writer._output_service is sentinel
-    assert not isinstance(writer._output_service, TrackOutputService)
+    assert not isinstance(writer._output_service, SegmentOutputService)
 
 
 def test_session_output_writer_uses_safe_output_service_factory_by_default(

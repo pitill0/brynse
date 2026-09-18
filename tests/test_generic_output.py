@@ -9,7 +9,7 @@ class _OutputService:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
 
-    def write_track(
+    def write_segment(
         self,
         *,
         source: object,
@@ -196,3 +196,12 @@ def test_generic_output_uses_segment_range_planner() -> None:
 
     assert "TrackRangePlanner" not in source
     assert "SegmentRangePlanner" in source
+
+
+def test_generic_output_uses_segment_output_service_contract() -> None:
+    source = Path("src/fluxtuner_ripper/generic_output.py").read_text()
+
+    assert "TrackOutputService" not in source
+    assert "write_track" not in source
+    assert "SegmentOutputService" in source
+    assert "write_segment" in source

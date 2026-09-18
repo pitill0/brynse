@@ -9,9 +9,9 @@ from fluxtuner_ripper.ingest import EncodedStreamIngestor
 from fluxtuner_ripper.models import SegmentByteRange
 from fluxtuner_ripper.orchestrator import CandidateResolution
 from fluxtuner_ripper.output import (
+    SegmentOutputService,
     SegmentRangePlanner,
-    TrackOutputService,
-    create_safe_track_output_service,
+    create_safe_segment_output_service,
 )
 
 
@@ -36,7 +36,7 @@ class GenericSegmentWriter:
         codec: str,
         minimum_tail_seconds: float = 1.0,
         range_planner: SegmentRangePlanner | None = None,
-        output_service: TrackOutputService | None = None,
+        output_service: SegmentOutputService | None = None,
     ) -> None:
         if codec not in {"mp3", "aac"}:
             raise ValueError("codec must be 'mp3' or 'aac'")
@@ -48,7 +48,7 @@ class GenericSegmentWriter:
         self._codec = codec
         self._minimum_tail_seconds = minimum_tail_seconds
         self._range_planner = range_planner or SegmentRangePlanner()
-        self._output_service = output_service or create_safe_track_output_service()
+        self._output_service = output_service or create_safe_segment_output_service()
 
     def write(
         self,
@@ -87,7 +87,7 @@ class GenericSegmentWriter:
                         end_offset=stream_end_offset,
                     )
 
-                    path = self._output_service.write_track(
+                    path = self._output_service.write_segment(
                         source=self._ingestor.ring_buffer,
                         byte_range=final_range,
                         directory=self._directory,
@@ -113,7 +113,7 @@ class GenericSegmentWriter:
                 decision=decision,
             )
 
-            path = self._output_service.write_track(
+            path = self._output_service.write_segment(
                 source=self._ingestor.ring_buffer,
                 byte_range=plan.outgoing,
                 directory=self._directory,
@@ -139,7 +139,7 @@ class GenericSegmentWriter:
                 end_offset=stream_end_offset,
             )
 
-            path = self._output_service.write_track(
+            path = self._output_service.write_segment(
                 source=self._ingestor.ring_buffer,
                 byte_range=final_range,
                 directory=self._directory,
