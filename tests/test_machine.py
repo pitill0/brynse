@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+import pytest
+
 
 def test_machine_segment_source_consumes_stream_source() -> None:
-    from fluxtuner_ripper.machine import segment_source
+    from fluxtuner_ripper.machine import SegmentRequest, segment_source
 
     class FakeSource:
         def __init__(self) -> None:
@@ -26,9 +28,11 @@ def test_machine_segment_source_consumes_stream_source() -> None:
 
     result = segment_source(
         source=source,
-        codec="mp3",
-        provider_name="fixed",
-        interval_seconds=10.0,
+        request=SegmentRequest(
+            codec="mp3",
+            provider="fixed",
+            interval_seconds=10.0,
+        ),
     )
 
     assert isinstance(result, dict)
@@ -89,3 +93,27 @@ def test_segment_source_accepts_segment_request() -> None:
 
     assert isinstance(result, dict)
     assert source.closed is True
+
+
+def test_segment_source_rejects_legacy_parameters() -> None:
+
+    from fluxtuner_ripper.machine import segment_source
+
+    class FakeSource:
+        @property
+        def metadata(self) -> Mapping[str, str]:
+            return {}
+
+        def read(self, max_bytes: int) -> bytes:
+            return b""
+
+        def close(self) -> None:
+            pass
+
+    with pytest.raises(TypeError):
+        segment_source(
+            source=FakeSource(),
+            codec="mp3",
+            provider_name="fixed",
+            interval_seconds=10.0,
+        )

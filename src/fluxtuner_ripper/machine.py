@@ -28,20 +28,9 @@ class SegmentRequest:
 def segment_source(
     *,
     source: StreamSource,
-    request: SegmentRequest | None = None,
-    codec: str | None = None,
-    provider_name: str = "fixed",
-    interval_seconds: float | None = None,
+    request: SegmentRequest,
 ) -> dict[str, object]:
-    """Segment one encoded StreamSource without CLI/stdin/stdout coupling."""
-
-    if request is not None:
-        codec = request.codec
-        provider_name = request.provider
-        interval_seconds = request.interval_seconds
-
-    if codec is None:
-        raise ValueError("codec is required")
+    """Segment one encoded StreamSource from a structured request."""
 
     def chunks() -> Iterator[bytes]:
         try:
@@ -55,7 +44,7 @@ def segment_source(
 
     return _run_generic_pipeline(
         chunks=chunks(),
-        codec=codec,
-        provider_name=provider_name,
-        interval_seconds=interval_seconds,
+        codec=request.codec,
+        provider_name=request.provider,
+        interval_seconds=request.interval_seconds,
     )
