@@ -216,3 +216,24 @@ def test_machine_classifies_validation_error() -> None:
         message="--interval must be greater than zero",
         kind="validation",
     )
+
+
+@pytest.mark.parametrize(
+    ("exc", "code"),
+    [
+        (OSError("disk full"), "io_error"),
+    ],
+)
+def test_machine_classifies_operational_errors(
+    exc: Exception,
+    code: str,
+) -> None:
+    from fluxtuner_ripper.machine import MachineError, classify_machine_error
+
+    error = classify_machine_error(exc)
+
+    assert error == MachineError(
+        code=code,
+        message=str(exc),
+        kind="operational",
+    )
