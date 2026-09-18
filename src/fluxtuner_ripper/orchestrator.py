@@ -13,6 +13,7 @@ from fluxtuner_ripper.acoustic import (
 )
 from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
 from fluxtuner_ripper.frames import IncrementalFrameTimeline
+from fluxtuner_ripper.hybrid import HybridAcousticSplitResolver
 from fluxtuner_ripper.matching import (
     BoundaryRelationClassifier,
     NearestBoundaryMatcher,
@@ -144,4 +145,60 @@ class DefaultCandidateResolver:
             split=split,
             acoustic=selected,
             relation=relation,
+        )
+
+
+class HybridCandidateResolver:
+    """Resolve generic boundary candidates using the hybrid acoustic strategy."""
+
+    def __init__(
+        self,
+        *,
+        window_extractor: AcousticWindowExtractor | None = None,
+        decoder: FfmpegAcousticDecoder | None = None,
+        analyzer: RmsAcousticAnalyzer | None = None,
+        resolver: HybridAcousticSplitResolver | None = None,
+        split_aligner: TemporalSplitAligner | None = None,
+    ) -> None:
+        self._window_extractor = window_extractor or AcousticWindowExtractor()
+        self._decoder = decoder or FfmpegAcousticDecoder()
+        self._analyzer = analyzer or RmsAcousticAnalyzer(window_seconds=0.05)
+        self._resolver = resolver or HybridAcousticSplitResolver()
+        self._split_aligner = split_aligner or TemporalSplitAligner()
+
+    def resolve_candidate(
+        self,
+        *,
+        candidate: BoundaryCandidate,
+        timeline: IncrementalFrameTimeline,
+        ring_buffer: EncodedAudioRingBuffer,
+    ) -> CandidateResolution | None:
+        window = self._window_extractor.extract(
+            candidate_time_seconds=candidate.time_seconds,
+            timeline=timeline,
+            ring_buffer=ring_buffer,
+        )
+        if window is None:
+            return None
+
+        pcm = self._decoder.decode(window)
+        profile = self._analyzer.analyze(pcm)
+
+        temporal = self._resolver.resolve(
+            profile=profile,
+            window=window,
+            semantic_time_seconds=candidate.time_seconds,
+        )
+        if temporal is None:
+            return None
+
+        split = self._split_aligner.align(
+            decision=temporal,
+            timeline=timeline,
+        )
+
+        return CandidateResolution(
+            candidate=candidate,
+            temporal=temporal,
+            split=split,
         )

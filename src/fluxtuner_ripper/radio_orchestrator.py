@@ -5,15 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from fluxtuner_ripper.acoustic import (
-    AcousticWindowExtractor,
-    FfmpegAcousticDecoder,
-    RmsAcousticAnalyzer,
-)
 from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
 from fluxtuner_ripper.frames import IncrementalFrameTimeline
-from fluxtuner_ripper.hybrid import HybridAcousticSplitResolver
-from fluxtuner_ripper.matching import TemporalSplitAligner
 from fluxtuner_ripper.models import (
     BoundaryMatch,
     BoundaryRelationResult,
@@ -21,7 +14,11 @@ from fluxtuner_ripper.models import (
     TemporalSplitDecision,
     TrackCandidate,
 )
-from fluxtuner_ripper.orchestrator import DefaultCandidateResolver
+from fluxtuner_ripper.orchestrator import (
+    AcousticCandidateResolution,
+    CandidateResolver,
+    DefaultCandidateResolver,
+)
 
 
 @dataclass(frozen=True)
@@ -80,23 +77,11 @@ class RippingOrchestrator(DefaultCandidateResolver):
         )
 
 
-class HybridRippingOrchestrator:
-    """Resolve AAC radio transitions using the hybrid acoustic strategy."""
+class CandidateBoundaryResolver:
+    """Adapt a generic candidate resolver to the radio track boundary contract."""
 
-    def __init__(
-        self,
-        *,
-        window_extractor: AcousticWindowExtractor | None = None,
-        decoder: FfmpegAcousticDecoder | None = None,
-        analyzer: RmsAcousticAnalyzer | None = None,
-        resolver: HybridAcousticSplitResolver | None = None,
-        split_aligner: TemporalSplitAligner | None = None,
-    ) -> None:
-        self._window_extractor = window_extractor or AcousticWindowExtractor()
-        self._decoder = decoder or FfmpegAcousticDecoder()
-        self._analyzer = analyzer or RmsAcousticAnalyzer(window_seconds=0.05)
-        self._resolver = resolver or HybridAcousticSplitResolver()
-        self._split_aligner = split_aligner or TemporalSplitAligner()
+    def __init__(self, resolver: CandidateResolver) -> None:
+        self._resolver = resolver
 
     def resolve_boundary(
         self,
@@ -105,34 +90,29 @@ class HybridRippingOrchestrator:
         timeline: IncrementalFrameTimeline,
         ring_buffer: EncodedAudioRingBuffer,
     ) -> BoundaryResolution | None:
-        window = self._window_extractor.extract(
-            candidate_time_seconds=track.start_time_seconds,
+        resolved = self._resolver.resolve_candidate(
+            candidate=track.as_boundary_candidate(),
             timeline=timeline,
             ring_buffer=ring_buffer,
         )
-        if window is None:
+        if resolved is None:
             return None
 
-        pcm = self._decoder.decode(window)
-        profile = self._analyzer.analyze(pcm)
+        match = None
+        relation = None
 
-        temporal = self._resolver.resolve(
-            profile=profile,
-            window=window,
-            semantic_time_seconds=track.start_time_seconds,
-        )
-        if temporal is None:
-            return None
-
-        split = self._split_aligner.align(
-            decision=temporal,
-            timeline=timeline,
-        )
+        if isinstance(resolved, AcousticCandidateResolution):
+            match = BoundaryMatch(
+                track=track,
+                acoustic=resolved.acoustic,
+                delta_seconds=abs(resolved.acoustic.time_seconds - track.start_time_seconds),
+            )
+            relation = resolved.relation
 
         return BoundaryResolution(
             track=track,
-            match=None,
-            relation=None,
-            temporal=temporal,
-            split=split,
+            match=match,
+            relation=relation,
+            temporal=resolved.temporal,
+            split=resolved.split,
         )

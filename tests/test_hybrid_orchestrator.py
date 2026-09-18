@@ -3,14 +3,14 @@ from __future__ import annotations
 from fluxtuner_ripper.models import (
     AcousticProfile,
     AcousticWindow,
+    BoundaryCandidate,
     DecodedPcm,
     SplitDecision,
     SplitKind,
     TemporalSplitDecision,
     TemporalSplitKind,
-    TrackCandidate,
 )
-from fluxtuner_ripper.radio_orchestrator import HybridRippingOrchestrator
+from fluxtuner_ripper.orchestrator import HybridCandidateResolver
 
 
 class _WindowExtractor:
@@ -52,13 +52,10 @@ class _Aligner:
         return self.decision
 
 
-def _track() -> TrackCandidate:
-    return TrackCandidate(
-        title="Artist - Track",
-        start_offset=1000,
-        start_time_seconds=10.0,
-        confirmed_at_offset=2000,
-        confirmed_at_time_seconds=12.0,
+def _candidate() -> BoundaryCandidate:
+    return BoundaryCandidate(
+        time_seconds=10.0,
+        source="test",
     )
 
 
@@ -72,14 +69,14 @@ def _window() -> AcousticWindow:
     )
 
 
-def test_hybrid_orchestrator_returns_none_without_acoustic_window() -> None:
-    orchestrator = HybridRippingOrchestrator(
+def test_hybrid_candidate_resolver_returns_none_without_acoustic_window() -> None:
+    resolver = HybridCandidateResolver(
         window_extractor=_WindowExtractor(None),
     )
 
     assert (
-        orchestrator.resolve_boundary(
-            track=_track(),
+        resolver.resolve_candidate(
+            candidate=_candidate(),
             timeline=object(),
             ring_buffer=object(),
         )
@@ -87,8 +84,8 @@ def test_hybrid_orchestrator_returns_none_without_acoustic_window() -> None:
     )
 
 
-def test_hybrid_orchestrator_returns_none_without_temporal_resolution() -> None:
-    orchestrator = HybridRippingOrchestrator(
+def test_hybrid_candidate_resolver_returns_none_without_temporal_resolution() -> None:
+    resolver = HybridCandidateResolver(
         window_extractor=_WindowExtractor(_window()),
         decoder=_Decoder(),
         analyzer=_Analyzer(),
@@ -96,8 +93,8 @@ def test_hybrid_orchestrator_returns_none_without_temporal_resolution() -> None:
     )
 
     assert (
-        orchestrator.resolve_boundary(
-            track=_track(),
+        resolver.resolve_candidate(
+            candidate=_candidate(),
             timeline=object(),
             ring_buffer=object(),
         )
@@ -105,8 +102,8 @@ def test_hybrid_orchestrator_returns_none_without_temporal_resolution() -> None:
     )
 
 
-def test_hybrid_orchestrator_composes_independent_crossfade_edges() -> None:
-    track = _track()
+def test_hybrid_candidate_resolver_composes_independent_crossfade_edges() -> None:
+    candidate = _candidate()
     temporal = TemporalSplitDecision(
         kind=TemporalSplitKind.CROSSFADE,
         incoming_start_seconds=9.0,
@@ -118,7 +115,7 @@ def test_hybrid_orchestrator_composes_independent_crossfade_edges() -> None:
         outgoing_end=4580,
     )
 
-    orchestrator = HybridRippingOrchestrator(
+    resolver = HybridCandidateResolver(
         window_extractor=_WindowExtractor(_window()),
         decoder=_Decoder(),
         analyzer=_Analyzer(),
@@ -126,15 +123,13 @@ def test_hybrid_orchestrator_composes_independent_crossfade_edges() -> None:
         split_aligner=_Aligner(split),
     )
 
-    resolution = orchestrator.resolve_boundary(
-        track=track,
+    resolution = resolver.resolve_candidate(
+        candidate=candidate,
         timeline=object(),
         ring_buffer=object(),
     )
 
     assert resolution is not None
-    assert resolution.track == track
-    assert resolution.match is None
-    assert resolution.relation is None
+    assert resolution.candidate == candidate
     assert resolution.temporal == temporal
     assert resolution.split == split
