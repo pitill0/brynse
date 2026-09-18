@@ -237,3 +237,38 @@ def test_machine_classifies_operational_errors(
         message=str(exc),
         kind="operational",
     )
+
+
+def test_run_segment_source_returns_structured_error() -> None:
+
+    from fluxtuner_ripper.machine import (
+        MachineError,
+        SegmentRequest,
+        run_segment_source,
+    )
+
+    class EmptySource:
+        @property
+        def metadata(self) -> Mapping[str, str]:
+            return {}
+
+        def read(self, max_bytes: int) -> bytes:
+            return b""
+
+        def close(self) -> None:
+            pass
+
+    result = run_segment_source(
+        source=EmptySource(),
+        request=SegmentRequest(
+            codec="mp3",
+            provider="fixed",
+            interval_seconds=10.0,
+        ),
+    )
+
+    assert result == MachineError(
+        code="invalid_request",
+        message="input contains no encoded data",
+        kind="validation",
+    )

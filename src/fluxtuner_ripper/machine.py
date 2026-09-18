@@ -97,6 +97,20 @@ class SegmentResult:
         }
 
 
+def run_segment_source(
+    *,
+    source: StreamSource,
+    request: SegmentRequest,
+) -> SegmentResult | MachineError:
+    try:
+        return segment_source(
+            source=source,
+            request=request,
+        )
+    except Exception as exc:
+        return classify_machine_error(exc)
+
+
 def segment_source(
     *,
     source: StreamSource,
