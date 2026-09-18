@@ -13,6 +13,20 @@ _CHUNK_SIZE = 64 * 1024
 
 
 @dataclass(frozen=True)
+class MachineError:
+    code: str
+    message: str
+    kind: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "kind": self.kind,
+        }
+
+
+@dataclass(frozen=True)
 class SegmentRequest:
     codec: str
     provider: str

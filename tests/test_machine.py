@@ -182,3 +182,24 @@ def test_segment_source_returns_segment_result() -> None:
 
     assert isinstance(result, SegmentResult)
     assert source.closed is True
+
+
+def test_machine_error_is_json_serializable() -> None:
+    import json
+
+    from fluxtuner_ripper.machine import MachineError
+
+    error = MachineError(
+        code="invalid_request",
+        message="codec is required",
+        kind="validation",
+    )
+
+    payload = error.to_dict()
+
+    assert payload == {
+        "code": "invalid_request",
+        "message": "codec is required",
+        "kind": "validation",
+    }
+    assert json.loads(json.dumps(payload)) == payload
