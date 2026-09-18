@@ -324,3 +324,22 @@ def test_segment_request_from_json() -> None:
         provider="fixed",
         interval_seconds=10.0,
     )
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "{",
+        '{"provider":"fixed","interval_seconds":10.0}',
+    ],
+)
+def test_segment_request_from_json_returns_machine_error_for_invalid_input(
+    raw: str,
+) -> None:
+    from fluxtuner_ripper.machine import MachineError, segment_request_from_json
+
+    result = segment_request_from_json(raw)
+
+    assert isinstance(result, MachineError)
+    assert result.code == "invalid_request"
+    assert result.kind == "validation"

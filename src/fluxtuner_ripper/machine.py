@@ -64,12 +64,36 @@ def classify_machine_error(exc: Exception) -> MachineError:
     )
 
 
-def segment_request_from_json(raw: str) -> SegmentRequest:
-    payload = json.loads(raw)
+def segment_request_from_json(raw: str) -> SegmentRequest | MachineError:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return MachineError(
+            code="invalid_request",
+            message=str(exc),
+            kind="validation",
+        )
+
+    if not isinstance(payload, dict):
+        return MachineError(
+            code="invalid_request",
+            message="request JSON must be an object",
+            kind="validation",
+        )
+
+    try:
+        codec = payload["codec"]
+        provider = payload["provider"]
+    except KeyError as exc:
+        return MachineError(
+            code="invalid_request",
+            message=f"missing required field: {exc.args[0]}",
+            kind="validation",
+        )
 
     return SegmentRequest(
-        codec=payload["codec"],
-        provider=payload["provider"],
+        codec=codec,
+        provider=provider,
         interval_seconds=payload.get("interval_seconds"),
     )
 
