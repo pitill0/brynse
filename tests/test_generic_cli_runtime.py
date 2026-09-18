@@ -1066,7 +1066,7 @@ def test_run_generic_pipeline_streams_segment_larger_than_ring_from_spool(
 
     monkeypatch.setattr(
         streaming_sink,
-        "create_safe_track_output_service",
+        "create_safe_segment_output_service",
         lambda: output_service,
     )
     monkeypatch.setattr(

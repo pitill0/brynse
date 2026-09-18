@@ -11,9 +11,9 @@ from fluxtuner_ripper.models import SegmentByteRange
 from fluxtuner_ripper.orchestrator import CandidateResolution
 from fluxtuner_ripper.output import (
     EncodedByteSource,
+    SegmentOutputService,
     SegmentRangePlanner,
-    TrackOutputService,
-    create_safe_track_output_service,
+    create_safe_segment_output_service,
 )
 from fluxtuner_ripper.streaming_spool import StreamingSpool
 
@@ -38,7 +38,7 @@ class StreamingSegmentSink:
         initial_start_offset: int | None = None,
         initial_start_source: InitialStartOffsetSource | None = None,
         range_planner: SegmentRangePlanner | None = None,
-        output_service: TrackOutputService | None = None,
+        output_service: SegmentOutputService | None = None,
     ) -> None:
         if codec not in {"mp3", "aac"}:
             raise ValueError("codec must be 'mp3' or 'aac'")
@@ -51,7 +51,7 @@ class StreamingSegmentSink:
         self._initial_start_offset = initial_start_offset
         self._initial_start_source = initial_start_source
         self._range_planner = range_planner or SegmentRangePlanner()
-        self._output_service = output_service or create_safe_track_output_service()
+        self._output_service = output_service or create_safe_segment_output_service()
 
         self._current_start_offset: int | None = None
         self._next_index = 1
@@ -157,7 +157,7 @@ class StreamingSegmentSink:
 
         index = self._next_index
 
-        path = self._output_service.write_track(
+        path = self._output_service.write_segment(
             source=self._source,
             byte_range=byte_range,
             directory=self._directory,

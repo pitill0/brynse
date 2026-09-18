@@ -25,7 +25,7 @@ class _OutputService:
     def __init__(self) -> None:
         self.calls: list[object] = []
 
-    def write_track(
+    def write_segment(
         self,
         *,
         source: object,
@@ -368,3 +368,15 @@ def test_streaming_sink_uses_generic_segment_range_contracts() -> None:
     assert "TrackRangePlanner" not in source
     assert "SegmentByteRange" in source
     assert "SegmentRangePlanner" in source
+
+
+def test_streaming_sink_uses_segment_output_service_contract() -> None:
+    source = Path("src/fluxtuner_ripper/streaming_sink.py").read_text()
+
+    assert "TrackOutputService" not in source
+    assert "create_safe_track_output_service" not in source
+    assert "write_track" not in source
+
+    assert "SegmentOutputService" in source
+    assert "create_safe_segment_output_service" in source
+    assert "write_segment" in source
