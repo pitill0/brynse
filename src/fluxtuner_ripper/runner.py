@@ -18,7 +18,7 @@ from fluxtuner_ripper.matching import NearestBoundaryMatcher
 from fluxtuner_ripper.metadata import MetadataSemanticTracker
 from fluxtuner_ripper.models import TimedMetadataEvent
 from fluxtuner_ripper.mp3_refinement import Mp3BoundaryRefiner
-from fluxtuner_ripper.orchestrator import (
+from fluxtuner_ripper.radio_orchestrator import (
     BoundaryResolver,
     HybridRippingOrchestrator,
     RippingOrchestrator,

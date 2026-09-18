@@ -4,7 +4,7 @@ from fluxtuner_ripper.models import (
     AcousticBoundaryCandidate,
     SplitKind,
 )
-from fluxtuner_ripper.orchestrator import RippingOrchestrator
+from fluxtuner_ripper.orchestrator import DefaultCandidateResolver
 from fluxtuner_ripper.providers import FixedIntervalBoundaryProvider
 
 
@@ -86,7 +86,7 @@ def test_non_radio_stream_reaches_frame_aligned_split() -> None:
     assert candidate.source == "fixed_interval"
     assert candidate.time_seconds == 0.05
 
-    orchestrator = RippingOrchestrator(
+    orchestrator = DefaultCandidateResolver(
         window_extractor=AcousticWindowExtractor(
             search_radius_seconds=0.04,
         ),

@@ -14,7 +14,7 @@ from fluxtuner_ripper.models import (
     TemporalSplitKind,
     TrackCandidate,
 )
-from fluxtuner_ripper.orchestrator import RippingOrchestrator
+from fluxtuner_ripper.radio_orchestrator import RippingOrchestrator
 
 
 class _WindowExtractor:

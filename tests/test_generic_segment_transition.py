@@ -6,7 +6,7 @@ from fluxtuner_ripper.models import (
     TemporalSplitKind,
     TrackCandidate,
 )
-from fluxtuner_ripper.orchestrator import BoundaryResolution
+from fluxtuner_ripper.radio_orchestrator import BoundaryResolution
 from fluxtuner_ripper.session import SegmentTransition, TrackTransition
 
 
