@@ -35,10 +35,16 @@ class CandidateResolution:
     """Resolved source-agnostic boundary candidate and its split decision."""
 
     candidate: BoundaryCandidate
-    acoustic: AcousticBoundaryCandidate
-    relation: BoundaryRelationResult
     temporal: TemporalSplitDecision
     split: SplitDecision
+
+
+@dataclass(frozen=True)
+class AcousticCandidateResolution(CandidateResolution):
+    """Candidate resolution enriched with acoustic matching evidence."""
+
+    acoustic: AcousticBoundaryCandidate
+    relation: BoundaryRelationResult
 
 
 class CandidateResolver(Protocol):
@@ -88,7 +94,7 @@ class DefaultCandidateResolver:
         candidate: BoundaryCandidate,
         timeline: IncrementalFrameTimeline,
         ring_buffer: EncodedAudioRingBuffer,
-    ) -> CandidateResolution | None:
+    ) -> AcousticCandidateResolution | None:
         """Resolve one generic boundary candidate into a frame-aligned split."""
 
         window = self._window_extractor.extract(
@@ -132,10 +138,10 @@ class DefaultCandidateResolver:
             timeline=timeline,
         )
 
-        return CandidateResolution(
+        return AcousticCandidateResolution(
             candidate=candidate,
-            acoustic=selected,
-            relation=relation,
             temporal=temporal,
             split=split,
+            acoustic=selected,
+            relation=relation,
         )

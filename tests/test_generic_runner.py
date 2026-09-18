@@ -1,10 +1,7 @@
 from fluxtuner_ripper.generic_runner import GenericRunner, GenericRunResult
 from fluxtuner_ripper.ingest import EncodedStreamIngestor
 from fluxtuner_ripper.models import (
-    AcousticBoundaryCandidate,
     BoundaryCandidate,
-    BoundaryRelation,
-    BoundaryRelationResult,
     SplitDecision,
     SplitKind,
     TemporalSplitDecision,
@@ -87,17 +84,6 @@ class _Resolver:
 
         return CandidateResolution(
             candidate=candidate,
-            acoustic=AcousticBoundaryCandidate(
-                time_seconds=candidate.time_seconds,
-                rms=0.1,
-                relative_time_seconds=0.0,
-            ),
-            relation=BoundaryRelationResult(
-                relation=BoundaryRelation.AGREEMENT,
-                semantic_time_seconds=candidate.time_seconds,
-                acoustic_time_seconds=candidate.time_seconds,
-                signed_delta_seconds=0.0,
-            ),
             temporal=temporal,
             split=split,
         )
