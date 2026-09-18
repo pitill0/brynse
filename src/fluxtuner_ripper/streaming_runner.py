@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
+from fluxtuner_ripper.frames import IncrementalFrameTimeline
 from fluxtuner_ripper.models import BoundaryCandidate
 from fluxtuner_ripper.orchestrator import CandidateResolution, CandidateResolver
 from fluxtuner_ripper.providers import BoundaryProvider
-from fluxtuner_ripper.ripping import IncrementalFrameTimeline
 
 
 class StreamingIngestor(Protocol):

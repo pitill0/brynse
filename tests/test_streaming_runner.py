@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -312,3 +313,9 @@ def test_streaming_runner_finalize_resolves_pending_candidate_at_eof() -> None:
     # EOF finalization must not resolve the same candidate twice.
     assert runner.finalize() == ()
     assert resolver.calls == [completed[0].candidate]
+
+
+def test_streaming_runner_does_not_depend_on_ripping_compatibility_module() -> None:
+    source = Path("src/fluxtuner_ripper/streaming_runner.py").read_text()
+
+    assert "from fluxtuner_ripper.ripping import" not in source
