@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import cast
@@ -60,6 +61,16 @@ def classify_machine_error(exc: Exception) -> MachineError:
         code="internal_error",
         message=str(exc),
         kind="internal",
+    )
+
+
+def segment_request_from_json(raw: str) -> SegmentRequest:
+    payload = json.loads(raw)
+
+    return SegmentRequest(
+        codec=payload["codec"],
+        provider=payload["provider"],
+        interval_seconds=payload.get("interval_seconds"),
     )
 
 

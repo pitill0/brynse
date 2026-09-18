@@ -310,3 +310,17 @@ def test_run_segment_source_returns_segment_result() -> None:
 
     assert isinstance(result, SegmentResult)
     assert source.closed is True
+
+
+def test_segment_request_from_json() -> None:
+    from fluxtuner_ripper.machine import SegmentRequest, segment_request_from_json
+
+    request = segment_request_from_json(
+        '{"codec":"mp3","provider":"fixed","interval_seconds":10.0}'
+    )
+
+    assert request == SegmentRequest(
+        codec="mp3",
+        provider="fixed",
+        interval_seconds=10.0,
+    )
