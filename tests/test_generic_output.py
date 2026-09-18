@@ -182,3 +182,10 @@ def test_generic_segment_writer_does_not_create_empty_final_segment(
     assert len(written) == 1
     assert written[0].start_offset == 0
     assert written[0].end_offset == 400
+
+
+def test_generic_output_uses_segment_byte_range_contract() -> None:
+    source = Path("src/fluxtuner_ripper/generic_output.py").read_text()
+
+    assert "TrackByteRange" not in source
+    assert "SegmentByteRange" in source

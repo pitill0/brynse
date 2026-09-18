@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fluxtuner_ripper.ingest import EncodedStreamIngestor
-from fluxtuner_ripper.models import TrackByteRange
+from fluxtuner_ripper.models import SegmentByteRange
 from fluxtuner_ripper.orchestrator import CandidateResolution
 from fluxtuner_ripper.output import (
     TrackOutputService,
@@ -82,7 +82,7 @@ class GenericSegmentWriter:
                 )
 
                 if tail_seconds < self._minimum_tail_seconds:
-                    final_range = TrackByteRange(
+                    final_range = SegmentByteRange(
                         start_offset=current_start_offset,
                         end_offset=stream_end_offset,
                     )
@@ -134,7 +134,7 @@ class GenericSegmentWriter:
 
         if current_start_offset < stream_end_offset:
             final_index = len(written) + 1
-            final_range = TrackByteRange(
+            final_range = SegmentByteRange(
                 start_offset=current_start_offset,
                 end_offset=stream_end_offset,
             )

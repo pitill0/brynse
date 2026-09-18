@@ -336,8 +336,8 @@ class TemporalSplitDecision:
 
 
 @dataclass(frozen=True)
-class TrackByteRange:
-    """Absolute encoded-byte range to materialize for one track."""
+class SegmentByteRange:
+    """Absolute encoded-byte range to materialize for one segment."""
 
     start_offset: int
     end_offset: int
@@ -350,11 +350,16 @@ class TrackByteRange:
 
 
 @dataclass(frozen=True)
-class TrackWritePlan:
-    """Encoded-byte ranges for the outgoing and incoming tracks."""
+class SegmentWritePlan:
+    """Encoded-byte ranges for the outgoing and incoming segments."""
 
-    outgoing: TrackByteRange
-    incoming: TrackByteRange
+    outgoing: SegmentByteRange
+    incoming: SegmentByteRange
+
+
+# Backward-compatible radio/output vocabulary.
+TrackByteRange = SegmentByteRange
+TrackWritePlan = SegmentWritePlan
 
 
 @dataclass(frozen=True)
