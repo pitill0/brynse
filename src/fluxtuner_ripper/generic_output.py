@@ -9,8 +9,8 @@ from fluxtuner_ripper.ingest import EncodedStreamIngestor
 from fluxtuner_ripper.models import SegmentByteRange
 from fluxtuner_ripper.orchestrator import CandidateResolution
 from fluxtuner_ripper.output import (
+    SegmentRangePlanner,
     TrackOutputService,
-    TrackRangePlanner,
     create_safe_track_output_service,
 )
 
@@ -35,7 +35,7 @@ class GenericSegmentWriter:
         directory: Path,
         codec: str,
         minimum_tail_seconds: float = 1.0,
-        range_planner: TrackRangePlanner | None = None,
+        range_planner: SegmentRangePlanner | None = None,
         output_service: TrackOutputService | None = None,
     ) -> None:
         if codec not in {"mp3", "aac"}:
@@ -47,7 +47,7 @@ class GenericSegmentWriter:
         self._directory = directory
         self._codec = codec
         self._minimum_tail_seconds = minimum_tail_seconds
-        self._range_planner = range_planner or TrackRangePlanner()
+        self._range_planner = range_planner or SegmentRangePlanner()
         self._output_service = output_service or create_safe_track_output_service()
 
     def write(

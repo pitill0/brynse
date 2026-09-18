@@ -189,3 +189,10 @@ def test_generic_output_uses_segment_byte_range_contract() -> None:
 
     assert "TrackByteRange" not in source
     assert "SegmentByteRange" in source
+
+
+def test_generic_output_uses_segment_range_planner() -> None:
+    source = Path("src/fluxtuner_ripper/generic_output.py").read_text()
+
+    assert "TrackRangePlanner" not in source
+    assert "SegmentRangePlanner" in source

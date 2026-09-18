@@ -26,7 +26,7 @@ class EncodedByteSource(Protocol):
         """Return one absolute half-open byte range."""
 
 
-class TrackRangePlanner:
+class SegmentRangePlanner:
     """Build overlapping encoded-byte ranges from one split decision."""
 
     def plan(
@@ -63,6 +63,9 @@ class TrackRangePlanner:
                 end_offset=next_end_offset,
             ),
         )
+
+
+TrackRangePlanner = SegmentRangePlanner
 
 
 class EncodedTrackWriter:
