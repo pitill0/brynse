@@ -64,6 +64,23 @@ def classify_machine_error(exc: Exception) -> MachineError:
     )
 
 
+def run_segment_json(
+    *,
+    source: StreamSource,
+    request_json: str,
+) -> str:
+    request = segment_request_from_json(request_json)
+
+    if isinstance(request, MachineError):
+        return machine_response_to_json(request)
+
+    result = run_segment_source(
+        source=source,
+        request=request,
+    )
+    return machine_response_to_json(result)
+
+
 def machine_response_to_json(
     value: SegmentResult | MachineError,
 ) -> str:

@@ -393,3 +393,31 @@ def test_machine_response_to_json(
     raw = machine_response_to_json(value)
 
     assert json.loads(raw) == expected
+
+
+def test_run_segment_json_returns_structured_json_error() -> None:
+    import json
+
+    from fluxtuner_ripper.machine import run_segment_json
+
+    class EmptySource:
+        @property
+        def metadata(self) -> Mapping[str, str]:
+            return {}
+
+        def read(self, max_bytes: int) -> bytes:
+            return b""
+
+        def close(self) -> None:
+            pass
+
+    raw = run_segment_json(
+        source=EmptySource(),
+        request_json='{"codec":"mp3","provider":"fixed","interval_seconds":10.0}',
+    )
+
+    assert json.loads(raw) == {
+        "code": "invalid_request",
+        "kind": "validation",
+        "message": "input contains no encoded data",
+    }
