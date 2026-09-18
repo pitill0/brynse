@@ -4,7 +4,6 @@ from fluxtuner_ripper.frames import IncrementalFrameTimeline
 from fluxtuner_ripper.models import (
     AcousticBoundaryCandidate,
     BoundaryCandidate,
-    BoundaryMatch,
     BoundaryRelation,
     BoundaryRelationResult,
     EncodedAudioFrame,
@@ -12,7 +11,6 @@ from fluxtuner_ripper.models import (
     SplitKind,
     TemporalSplitDecision,
     TemporalSplitKind,
-    TrackCandidate,
 )
 
 
@@ -94,27 +92,6 @@ class NearestBoundaryMatcher:
                     selected = quietest
 
         return selected
-
-    def match(
-        self,
-        *,
-        track: TrackCandidate,
-        acoustic_candidates: tuple[AcousticBoundaryCandidate, ...],
-    ) -> BoundaryMatch | None:
-        """Return the nearest acoustic candidate for a radio track candidate."""
-
-        selected = self.match_candidate(
-            candidate=track.as_boundary_candidate(),
-            acoustic_candidates=acoustic_candidates,
-        )
-        if selected is None:
-            return None
-
-        return BoundaryMatch(
-            track=track,
-            acoustic=selected,
-            delta_seconds=abs(selected.time_seconds - track.start_time_seconds),
-        )
 
 
 class BoundaryRelationClassifier:

@@ -1200,8 +1200,8 @@ def test_nearest_boundary_matcher_selects_closest_candidate() -> None:
     matcher = NearestBoundaryMatcher(search_radius_seconds=8.0)
     track = _track_candidate(start_time_seconds=100.0)
 
-    match = matcher.match(
-        track=track,
+    match = matcher.match_candidate(
+        candidate=track.as_boundary_candidate(),
         acoustic_candidates=(
             _acoustic_candidate(time_seconds=94.0, rms=1.0),
             _acoustic_candidate(time_seconds=99.5, rms=5.0),
@@ -1210,8 +1210,8 @@ def test_nearest_boundary_matcher_selects_closest_candidate() -> None:
     )
 
     assert match is not None
-    assert match.acoustic.time_seconds == pytest.approx(99.5)
-    assert match.delta_seconds == pytest.approx(0.5)
+    assert match.time_seconds == pytest.approx(99.5)
+    assert abs(match.time_seconds - track.start_time_seconds) == pytest.approx(0.5)
 
 
 def test_nearest_boundary_matcher_uses_rms_as_tie_breaker() -> None:
@@ -1220,8 +1220,8 @@ def test_nearest_boundary_matcher_uses_rms_as_tie_breaker() -> None:
     matcher = NearestBoundaryMatcher(search_radius_seconds=8.0)
     track = _track_candidate(start_time_seconds=100.0)
 
-    match = matcher.match(
-        track=track,
+    match = matcher.match_candidate(
+        candidate=track.as_boundary_candidate(),
         acoustic_candidates=(
             _acoustic_candidate(time_seconds=99.0, rms=3.0),
             _acoustic_candidate(time_seconds=101.0, rms=1.0),
@@ -1229,8 +1229,8 @@ def test_nearest_boundary_matcher_uses_rms_as_tie_breaker() -> None:
     )
 
     assert match is not None
-    assert match.acoustic.time_seconds == pytest.approx(101.0)
-    assert match.acoustic.rms == pytest.approx(1.0)
+    assert match.time_seconds == pytest.approx(101.0)
+    assert match.rms == pytest.approx(1.0)
 
 
 def test_nearest_boundary_matcher_returns_none_outside_radius() -> None:
@@ -1239,8 +1239,8 @@ def test_nearest_boundary_matcher_returns_none_outside_radius() -> None:
     matcher = NearestBoundaryMatcher(search_radius_seconds=2.0)
     track = _track_candidate(start_time_seconds=100.0)
 
-    match = matcher.match(
-        track=track,
+    match = matcher.match_candidate(
+        candidate=track.as_boundary_candidate(),
         acoustic_candidates=(
             _acoustic_candidate(time_seconds=97.5, rms=1.0),
             _acoustic_candidate(time_seconds=102.5, rms=1.0),
@@ -1256,7 +1256,10 @@ def test_nearest_boundary_matcher_returns_none_without_candidates() -> None:
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
 
-    assert matcher.match(track=track, acoustic_candidates=()) is None
+    assert (
+        matcher.match_candidate(candidate=track.as_boundary_candidate(), acoustic_candidates=())
+        is None
+    )
 
 
 def test_nearest_boundary_matcher_prefers_earlier_time_after_full_tie() -> None:
@@ -1265,8 +1268,8 @@ def test_nearest_boundary_matcher_prefers_earlier_time_after_full_tie() -> None:
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
 
-    match = matcher.match(
-        track=track,
+    match = matcher.match_candidate(
+        candidate=track.as_boundary_candidate(),
         acoustic_candidates=(
             _acoustic_candidate(time_seconds=99.0, rms=1.0),
             _acoustic_candidate(time_seconds=101.0, rms=1.0),
@@ -1274,7 +1277,7 @@ def test_nearest_boundary_matcher_prefers_earlier_time_after_full_tie() -> None:
     )
 
     assert match is not None
-    assert match.acoustic.time_seconds == pytest.approx(99.0)
+    assert match.time_seconds == pytest.approx(99.0)
 
 
 def test_nearest_boundary_matcher_overrides_late_candidate_for_much_quieter_earlier_boundary() -> (
@@ -1285,8 +1288,8 @@ def test_nearest_boundary_matcher_overrides_late_candidate_for_much_quieter_earl
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
 
-    match = matcher.match(
-        track=track,
+    match = matcher.match_candidate(
+        candidate=track.as_boundary_candidate(),
         acoustic_candidates=(
             _acoustic_candidate(time_seconds=98.5, rms=100.0),
             _acoustic_candidate(time_seconds=100.25, rms=2000.0),
@@ -1294,8 +1297,8 @@ def test_nearest_boundary_matcher_overrides_late_candidate_for_much_quieter_earl
     )
 
     assert match is not None
-    assert match.acoustic.time_seconds == pytest.approx(98.5)
-    assert match.acoustic.rms == pytest.approx(100.0)
+    assert match.time_seconds == pytest.approx(98.5)
+    assert match.rms == pytest.approx(100.0)
 
 
 def test_nearest_boundary_matcher_keeps_late_candidate_when_quiet_ratio_is_too_small() -> None:
@@ -1304,8 +1307,8 @@ def test_nearest_boundary_matcher_keeps_late_candidate_when_quiet_ratio_is_too_s
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
 
-    match = matcher.match(
-        track=track,
+    match = matcher.match_candidate(
+        candidate=track.as_boundary_candidate(),
         acoustic_candidates=(
             _acoustic_candidate(time_seconds=98.5, rms=100.0),
             _acoustic_candidate(time_seconds=100.25, rms=500.0),
@@ -1313,7 +1316,7 @@ def test_nearest_boundary_matcher_keeps_late_candidate_when_quiet_ratio_is_too_s
     )
 
     assert match is not None
-    assert match.acoustic.time_seconds == pytest.approx(100.25)
+    assert match.time_seconds == pytest.approx(100.25)
 
 
 def test_nearest_boundary_matcher_does_not_override_candidate_already_before_metadata() -> None:
@@ -1322,8 +1325,8 @@ def test_nearest_boundary_matcher_does_not_override_candidate_already_before_met
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
 
-    match = matcher.match(
-        track=track,
+    match = matcher.match_candidate(
+        candidate=track.as_boundary_candidate(),
         acoustic_candidates=(
             _acoustic_candidate(time_seconds=98.5, rms=1.0),
             _acoustic_candidate(time_seconds=99.75, rms=1000.0),
@@ -1332,7 +1335,7 @@ def test_nearest_boundary_matcher_does_not_override_candidate_already_before_met
     )
 
     assert match is not None
-    assert match.acoustic.time_seconds == pytest.approx(99.75)
+    assert match.time_seconds == pytest.approx(99.75)
 
 
 def test_nearest_boundary_matcher_ignores_quieter_boundary_outside_override_radius() -> None:
@@ -1341,8 +1344,8 @@ def test_nearest_boundary_matcher_ignores_quieter_boundary_outside_override_radi
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
 
-    match = matcher.match(
-        track=track,
+    match = matcher.match_candidate(
+        candidate=track.as_boundary_candidate(),
         acoustic_candidates=(
             _acoustic_candidate(time_seconds=97.5, rms=0.1),
             _acoustic_candidate(time_seconds=100.25, rms=2000.0),
@@ -1350,7 +1353,7 @@ def test_nearest_boundary_matcher_ignores_quieter_boundary_outside_override_radi
     )
 
     assert match is not None
-    assert match.acoustic.time_seconds == pytest.approx(100.25)
+    assert match.time_seconds == pytest.approx(100.25)
 
 
 def test_boundary_relation_classifier_marks_close_candidates_as_agreement() -> None:
