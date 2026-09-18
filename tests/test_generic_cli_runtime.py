@@ -95,7 +95,7 @@ def test_run_generic_pipeline_returns_machine_readable_payload(
 
     monkeypatch.setattr(generic_cli, "EncodedStreamIngestor", _Ingestor)
     monkeypatch.setattr(generic_cli, "FixedIntervalBoundaryProvider", _Provider)
-    monkeypatch.setattr(generic_cli, "RippingOrchestrator", _Resolver)
+    monkeypatch.setattr(generic_cli, "DefaultCandidateResolver", _Resolver)
     monkeypatch.setattr(generic_cli, "GenericRunner", _Runner)
 
     payload = generic_cli._run_generic_pipeline(
@@ -214,7 +214,7 @@ def test_run_generic_pipeline_materializes_segments_when_output_directory_is_set
 
     monkeypatch.setattr(generic_cli, "EncodedStreamIngestor", _Ingestor)
     monkeypatch.setattr(generic_cli, "FixedIntervalBoundaryProvider", _Provider)
-    monkeypatch.setattr(generic_cli, "RippingOrchestrator", _Resolver)
+    monkeypatch.setattr(generic_cli, "DefaultCandidateResolver", _Resolver)
     monkeypatch.setattr(generic_cli, "GenericRunner", _Runner)
     monkeypatch.setattr(generic_cli, "GenericSegmentWriter", _SegmentWriter)
 
@@ -308,7 +308,7 @@ def test_run_generic_pipeline_uses_external_boundary_provider(
     )
     monkeypatch.setattr(
         generic_cli,
-        "RippingOrchestrator",
+        "DefaultCandidateResolver",
         _Resolver,
     )
     monkeypatch.setattr(
@@ -382,7 +382,7 @@ def test_run_generic_pipeline_accepts_incremental_chunks(
 
     monkeypatch.setattr(generic_cli, "EncodedStreamIngestor", _Ingestor)
     monkeypatch.setattr(generic_cli, "FixedIntervalBoundaryProvider", _Provider)
-    monkeypatch.setattr(generic_cli, "RippingOrchestrator", _Resolver)
+    monkeypatch.setattr(generic_cli, "DefaultCandidateResolver", _Resolver)
     monkeypatch.setattr(generic_cli, "GenericRunner", _Runner)
 
     payload = generic_cli._run_generic_pipeline(
@@ -505,7 +505,7 @@ def test_run_generic_pipeline_materializes_completed_boundary_before_input_eof(
 
     monkeypatch.setattr(generic_cli, "EncodedStreamIngestor", _Ingestor)
     monkeypatch.setattr(generic_cli, "FixedIntervalBoundaryProvider", _Provider)
-    monkeypatch.setattr(generic_cli, "RippingOrchestrator", _Resolver)
+    monkeypatch.setattr(generic_cli, "DefaultCandidateResolver", _Resolver)
     monkeypatch.setattr(generic_cli, "GenericRunner", _BatchRunner)
     monkeypatch.setattr(generic_cli, "GenericSegmentWriter", _BatchWriter)
 
@@ -617,7 +617,7 @@ def test_run_generic_pipeline_finalizes_open_tail_at_eof(
 
     monkeypatch.setattr(generic_cli, "EncodedStreamIngestor", _Ingestor)
     monkeypatch.setattr(generic_cli, "FixedIntervalBoundaryProvider", _Provider)
-    monkeypatch.setattr(generic_cli, "RippingOrchestrator", _Resolver)
+    monkeypatch.setattr(generic_cli, "DefaultCandidateResolver", _Resolver)
     monkeypatch.setattr(
         generic_cli,
         "create_safe_spooling_ingestor",
@@ -758,7 +758,7 @@ def test_run_generic_pipeline_processes_pending_boundary_before_tail_at_eof(
 
     monkeypatch.setattr(generic_cli, "EncodedStreamIngestor", _Ingestor)
     monkeypatch.setattr(generic_cli, "FixedIntervalBoundaryProvider", _Provider)
-    monkeypatch.setattr(generic_cli, "RippingOrchestrator", _Resolver)
+    monkeypatch.setattr(generic_cli, "DefaultCandidateResolver", _Resolver)
     monkeypatch.setattr(
         generic_cli,
         "create_safe_spooling_ingestor",
@@ -917,7 +917,7 @@ def test_run_generic_pipeline_merges_short_tail_after_eof_boundary(
 
     monkeypatch.setattr(generic_cli, "EncodedStreamIngestor", _Ingestor)
     monkeypatch.setattr(generic_cli, "FixedIntervalBoundaryProvider", _Provider)
-    monkeypatch.setattr(generic_cli, "RippingOrchestrator", _Resolver)
+    monkeypatch.setattr(generic_cli, "DefaultCandidateResolver", _Resolver)
     monkeypatch.setattr(
         generic_cli,
         "create_safe_spooling_ingestor",
@@ -1071,7 +1071,7 @@ def test_run_generic_pipeline_streams_segment_larger_than_ring_from_spool(
     )
     monkeypatch.setattr(
         generic_cli,
-        "RippingOrchestrator",
+        "DefaultCandidateResolver",
         _Resolver,
     )
     monkeypatch.setattr(
@@ -1418,3 +1418,9 @@ def test_generic_cli_reports_input_io_failure_as_operational_error(
     assert "input read failed" in captured.err
     assert "Traceback" not in captured.err
     assert captured.out == ""
+
+
+def test_generic_cli_does_not_depend_on_ripping_orchestrator_name() -> None:
+    source = Path("src/fluxtuner_ripper/generic_cli.py").read_text()
+
+    assert "RippingOrchestrator" not in source

@@ -15,7 +15,7 @@ from fluxtuner_ripper.external_boundaries import (
 from fluxtuner_ripper.generic_output import GenericSegmentWriter, MaterializedSegment
 from fluxtuner_ripper.generic_runner import GenericRunner
 from fluxtuner_ripper.ingest import EncodedStreamIngestor
-from fluxtuner_ripper.orchestrator import CandidateResolution, RippingOrchestrator
+from fluxtuner_ripper.orchestrator import CandidateResolution, DefaultCandidateResolver
 from fluxtuner_ripper.output import TrackFileWriteError, TrackFinalizeError
 from fluxtuner_ripper.providers import (
     BoundaryProvider,
@@ -241,7 +241,7 @@ def _run_generic_pipeline(
         )
     else:
         raise GenericCliError(f"unsupported provider: {provider_name}")
-    resolver = RippingOrchestrator()
+    resolver = DefaultCandidateResolver()
 
     resolutions: tuple[CandidateResolution, ...]
     segments: tuple[MaterializedSegment, ...] | None = None

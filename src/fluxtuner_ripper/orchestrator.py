@@ -80,8 +80,8 @@ class BoundaryResolver(Protocol):
     ) -> BoundaryResolution | None: ...
 
 
-class RippingOrchestrator:
-    """Resolve semantic track candidates using bounded acoustic evidence."""
+class DefaultCandidateResolver:
+    """Resolve source-agnostic boundary candidates using bounded acoustic evidence."""
 
     def __init__(
         self,
@@ -196,6 +196,10 @@ class RippingOrchestrator:
             temporal=resolved.temporal,
             split=resolved.split,
         )
+
+
+class RippingOrchestrator(DefaultCandidateResolver):
+    """Backward-compatible radio-oriented candidate resolver name."""
 
 
 class HybridRippingOrchestrator:
