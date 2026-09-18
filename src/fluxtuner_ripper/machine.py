@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from fluxtuner_ripper.generic_cli import GenericCliError, _run_generic_pipeline
-from fluxtuner_ripper.output import TrackFileWriteError, TrackFinalizeError
+from fluxtuner_ripper.output import SegmentFileWriteError, SegmentFinalizeError
 from fluxtuner_ripper.source import StreamSource
 
 _CHUNK_SIZE = 64 * 1024
@@ -36,14 +36,14 @@ def classify_machine_error(exc: Exception) -> MachineError:
             kind="validation",
         )
 
-    if isinstance(exc, TrackFinalizeError):
+    if isinstance(exc, SegmentFinalizeError):
         return MachineError(
             code="finalize_error",
             message=str(exc),
             kind="operational",
         )
 
-    if isinstance(exc, TrackFileWriteError):
+    if isinstance(exc, SegmentFileWriteError):
         return MachineError(
             code="write_error",
             message=str(exc),

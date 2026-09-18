@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 
 import pytest
 
@@ -458,3 +459,12 @@ def test_run_segment_json_returns_structured_json_result() -> None:
     assert payload["boundaries"] == []
     assert payload["segments"] == []
     assert source.closed is True
+
+
+def test_machine_api_uses_generic_segment_output_errors() -> None:
+    source = Path("src/fluxtuner_ripper/machine.py").read_text()
+
+    assert "TrackFinalizeError" not in source
+    assert "TrackFileWriteError" not in source
+    assert "SegmentFinalizeError" in source
+    assert "SegmentFileWriteError" in source

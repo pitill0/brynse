@@ -120,7 +120,7 @@ class EncodedTrackWriter:
         return source.read(byte_range.start_offset, byte_range.end_offset)
 
 
-class TrackFileWriteError(RuntimeError):
+class SegmentFileWriteError(RuntimeError):
     """Raised when an encoded track cannot be persisted safely."""
 
 
@@ -185,8 +185,13 @@ class TrackFileWriter:
             raise TrackFileWriteError(f"failed to write track file: {target}") from exc
 
 
-class TrackFinalizeError(RuntimeError):
+class SegmentFinalizeError(RuntimeError):
     """Raised when an encoded track cannot be finalized safely."""
+
+
+# Backward-compatible radio/output vocabulary.
+TrackFinalizeError = SegmentFinalizeError
+TrackFileWriteError = SegmentFileWriteError
 
 
 class Mp3TrackFinalizer:
