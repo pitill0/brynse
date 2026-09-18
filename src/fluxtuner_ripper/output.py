@@ -6,10 +6,9 @@ from typing import Protocol
 
 from fluxtuner_ripper.models import (
     SegmentByteRange,
+    SegmentWritePlan,
     SplitDecision,
     SplitKind,
-    TrackByteRange,
-    TrackWritePlan,
 )
 
 
@@ -36,7 +35,7 @@ class SegmentRangePlanner:
         previous_start_offset: int,
         next_end_offset: int,
         decision: SplitDecision,
-    ) -> TrackWritePlan:
+    ) -> SegmentWritePlan:
         if previous_start_offset < 0:
             raise ValueError("previous_start_offset must be non-negative")
         if next_end_offset <= previous_start_offset:
@@ -54,12 +53,12 @@ class SegmentRangePlanner:
         if not (previous_start_offset <= decision.incoming_start < next_end_offset):
             raise ValueError("incoming_start lies outside the writable range")
 
-        return TrackWritePlan(
-            outgoing=TrackByteRange(
+        return SegmentWritePlan(
+            outgoing=SegmentByteRange(
                 start_offset=previous_start_offset,
                 end_offset=decision.outgoing_end,
             ),
-            incoming=TrackByteRange(
+            incoming=SegmentByteRange(
                 start_offset=decision.incoming_start,
                 end_offset=next_end_offset,
             ),
@@ -76,7 +75,7 @@ class EncodedTrackWriter:
         self,
         *,
         source: EncodedByteSource,
-        byte_range: TrackByteRange,
+        byte_range: SegmentByteRange,
         chunk_size: int = 64 * 1024,
     ) -> Iterator[bytes]:
         """Yield one retained encoded range using bounded reads."""
@@ -113,7 +112,7 @@ class EncodedTrackWriter:
         self,
         *,
         source: EncodedByteSource,
-        byte_range: TrackByteRange,
+        byte_range: SegmentByteRange,
     ) -> bytes:
         if not source.contains(byte_range.start_offset, byte_range.end_offset):
             raise ValueError("requested track range is not fully retained")
@@ -972,7 +971,7 @@ class SegmentOutputService:
         self,
         *,
         source: EncodedByteSource,
-        byte_range: TrackByteRange,
+        byte_range: SegmentByteRange,
         directory: Path,
         stem: str,
         codec: str,

@@ -10,13 +10,13 @@ from fluxtuner_ripper.models import (
     BoundaryMatch,
     BoundaryRelation,
     BoundaryRelationResult,
+    SegmentByteRange,
+    SegmentWritePlan,
     SplitDecision,
     SplitKind,
     TemporalSplitDecision,
     TemporalSplitKind,
-    TrackByteRange,
     TrackCandidate,
-    TrackWritePlan,
 )
 from fluxtuner_ripper.orchestrator import BoundaryResolution
 from fluxtuner_ripper.session import TrackTransition
@@ -41,11 +41,11 @@ class _Ingestor:
 
 
 class _Planner:
-    def __init__(self, plan: TrackWritePlan) -> None:
+    def __init__(self, plan: SegmentWritePlan) -> None:
         self.plan_result = plan
         self.calls: list[dict[str, object]] = []
 
-    def plan(self, **kwargs: object) -> TrackWritePlan:
+    def plan(self, **kwargs: object) -> SegmentWritePlan:
         self.calls.append(kwargs)
         return self.plan_result
 
@@ -127,9 +127,9 @@ def test_session_output_writer_plans_and_writes_outgoing_track(
     tmp_path: Path,
 ) -> None:
     transition = _transition()
-    plan = TrackWritePlan(
-        outgoing=TrackByteRange(start_offset=1000, end_offset=5000),
-        incoming=TrackByteRange(start_offset=5000, end_offset=10000),
+    plan = SegmentWritePlan(
+        outgoing=SegmentByteRange(start_offset=1000, end_offset=5000),
+        incoming=SegmentByteRange(start_offset=5000, end_offset=10000),
     )
     planner = _Planner(plan)
     output_path = tmp_path / "Artist _ Track_ One.mp3"
@@ -192,13 +192,13 @@ def test_session_output_writer_reuses_resolved_incoming_start_for_next_track(
     )
 
     plans = [
-        TrackWritePlan(
-            outgoing=TrackByteRange(start_offset=1000, end_offset=5200),
-            incoming=TrackByteRange(start_offset=4800, end_offset=10000),
+        SegmentWritePlan(
+            outgoing=SegmentByteRange(start_offset=1000, end_offset=5200),
+            incoming=SegmentByteRange(start_offset=4800, end_offset=10000),
         ),
-        TrackWritePlan(
-            outgoing=TrackByteRange(start_offset=4800, end_offset=9000),
-            incoming=TrackByteRange(start_offset=9000, end_offset=10000),
+        SegmentWritePlan(
+            outgoing=SegmentByteRange(start_offset=4800, end_offset=9000),
+            incoming=SegmentByteRange(start_offset=9000, end_offset=10000),
         ),
     ]
 
@@ -206,7 +206,7 @@ def test_session_output_writer_reuses_resolved_incoming_start_for_next_track(
         def __init__(self) -> None:
             self.calls: list[dict[str, object]] = []
 
-        def plan(self, **kwargs: object) -> TrackWritePlan:
+        def plan(self, **kwargs: object) -> SegmentWritePlan:
             self.calls.append(kwargs)
             return plans[len(self.calls) - 1]
 
@@ -250,13 +250,13 @@ def test_session_output_writer_reuses_exclusion_incoming_start_for_next_track(
             ),
         ),
     )
-    exclusion_plan = TrackWritePlan(
-        outgoing=TrackByteRange(start_offset=1000, end_offset=5000),
-        incoming=TrackByteRange(start_offset=6200, end_offset=10000),
+    exclusion_plan = SegmentWritePlan(
+        outgoing=SegmentByteRange(start_offset=1000, end_offset=5000),
+        incoming=SegmentByteRange(start_offset=6200, end_offset=10000),
     )
-    next_plan = TrackWritePlan(
-        outgoing=TrackByteRange(start_offset=6200, end_offset=9000),
-        incoming=TrackByteRange(start_offset=9000, end_offset=10000),
+    next_plan = SegmentWritePlan(
+        outgoing=SegmentByteRange(start_offset=6200, end_offset=9000),
+        incoming=SegmentByteRange(start_offset=9000, end_offset=10000),
     )
 
     third_track = _track("Artist - Track Three", 9000, 30.0)
@@ -284,7 +284,7 @@ def test_session_output_writer_reuses_exclusion_incoming_start_for_next_track(
         def __init__(self) -> None:
             self.calls: list[dict[str, object]] = []
 
-        def plan(self, **kwargs: object) -> TrackWritePlan:
+        def plan(self, **kwargs: object) -> SegmentWritePlan:
             self.calls.append(kwargs)
             return (exclusion_plan, next_plan)[len(self.calls) - 1]
 
@@ -332,9 +332,9 @@ def test_session_output_writer_uses_explicit_encoded_source(
     tmp_path: Path,
 ) -> None:
     transition = _transition()
-    plan = TrackWritePlan(
-        outgoing=TrackByteRange(start_offset=1000, end_offset=5000),
-        incoming=TrackByteRange(start_offset=5000, end_offset=10000),
+    plan = SegmentWritePlan(
+        outgoing=SegmentByteRange(start_offset=1000, end_offset=5000),
+        incoming=SegmentByteRange(start_offset=5000, end_offset=10000),
     )
     planner = _Planner(plan)
     output = _Output(tmp_path / "track.mp3")
@@ -360,9 +360,9 @@ def test_session_output_writer_exposes_next_retained_start_offset(
     tmp_path: Path,
 ) -> None:
     transition = _transition()
-    plan = TrackWritePlan(
-        outgoing=TrackByteRange(start_offset=1000, end_offset=5200),
-        incoming=TrackByteRange(start_offset=4800, end_offset=10000),
+    plan = SegmentWritePlan(
+        outgoing=SegmentByteRange(start_offset=1000, end_offset=5200),
+        incoming=SegmentByteRange(start_offset=4800, end_offset=10000),
     )
     writer = SessionOutputWriter(
         ingestor=_Ingestor(),

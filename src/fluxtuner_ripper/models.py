@@ -357,11 +357,6 @@ class SegmentWritePlan:
     incoming: SegmentByteRange
 
 
-# Backward-compatible radio/output vocabulary.
-TrackByteRange = SegmentByteRange
-TrackWritePlan = SegmentWritePlan
-
-
 @dataclass(frozen=True)
 class IcyParseResult:
     """Audio bytes and metadata events produced from one incremental feed."""

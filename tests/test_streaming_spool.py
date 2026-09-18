@@ -120,7 +120,7 @@ def test_streaming_spool_close_removes_transient_file(
 def test_streaming_spool_can_back_track_output_service(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.models import SegmentByteRange
     from fluxtuner_ripper.output import TrackOutputService
 
     class _Finalizer:
@@ -138,7 +138,7 @@ def test_streaming_spool_can_back_track_output_service(
 
         path = service.write_track(
             source=spool,
-            byte_range=TrackByteRange(
+            byte_range=SegmentByteRange(
                 start_offset=4,
                 end_offset=10,
             ),

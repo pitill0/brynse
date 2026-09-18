@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from fluxtuner_ripper.models import SegmentByteRange
 from fluxtuner_ripper.ripping import (
     ContentKind,
     EncodedAudioRingBuffer,
@@ -1892,7 +1893,6 @@ def test_encoded_track_writer_returns_exact_hard_cut_bytes() -> None:
     from fluxtuner_ripper.ripping import (
         EncodedAudioRingBuffer,
         EncodedTrackWriter,
-        TrackByteRange,
     )
 
     source = EncodedAudioRingBuffer(max_bytes=20)
@@ -1900,7 +1900,7 @@ def test_encoded_track_writer_returns_exact_hard_cut_bytes() -> None:
 
     written = EncodedTrackWriter().write_range(
         source=source,
-        byte_range=TrackByteRange(start_offset=4, end_offset=10),
+        byte_range=SegmentByteRange(start_offset=4, end_offset=10),
     )
 
     assert written == b"efghij"
@@ -1910,7 +1910,6 @@ def test_encoded_track_writer_can_materialize_overlapping_tracks() -> None:
     from fluxtuner_ripper.ripping import (
         EncodedAudioRingBuffer,
         EncodedTrackWriter,
-        TrackByteRange,
     )
 
     source = EncodedAudioRingBuffer(max_bytes=20)
@@ -1919,11 +1918,11 @@ def test_encoded_track_writer_can_materialize_overlapping_tracks() -> None:
 
     outgoing = writer.write_range(
         source=source,
-        byte_range=TrackByteRange(start_offset=0, end_offset=12),
+        byte_range=SegmentByteRange(start_offset=0, end_offset=12),
     )
     incoming = writer.write_range(
         source=source,
-        byte_range=TrackByteRange(start_offset=8, end_offset=20),
+        byte_range=SegmentByteRange(start_offset=8, end_offset=20),
     )
 
     assert outgoing == b"abcdefghijkl"
@@ -1935,7 +1934,6 @@ def test_encoded_track_writer_rejects_evicted_range() -> None:
     from fluxtuner_ripper.ripping import (
         EncodedAudioRingBuffer,
         EncodedTrackWriter,
-        TrackByteRange,
     )
 
     source = EncodedAudioRingBuffer(max_bytes=5)
@@ -1944,7 +1942,7 @@ def test_encoded_track_writer_rejects_evicted_range() -> None:
     with pytest.raises(ValueError):
         EncodedTrackWriter().write_range(
             source=source,
-            byte_range=TrackByteRange(start_offset=0, end_offset=5),
+            byte_range=SegmentByteRange(start_offset=0, end_offset=5),
         )
 
 
@@ -2463,7 +2461,6 @@ class _FakeFinalizer:
 def test_track_output_service_composes_mp3_pipeline(tmp_path) -> None:
     from fluxtuner_ripper.ripping import (
         EncodedAudioRingBuffer,
-        TrackByteRange,
         TrackOutputService,
     )
 
@@ -2475,7 +2472,7 @@ def test_track_output_service_composes_mp3_pipeline(tmp_path) -> None:
 
     path = service.write_track(
         source=source,
-        byte_range=TrackByteRange(start_offset=4, end_offset=10),
+        byte_range=SegmentByteRange(start_offset=4, end_offset=10),
         directory=tmp_path,
         stem="Track",
         codec="mp3",
@@ -2489,7 +2486,6 @@ def test_track_output_service_composes_mp3_pipeline(tmp_path) -> None:
 def test_track_output_service_composes_aac_to_m4a_pipeline(tmp_path) -> None:
     from fluxtuner_ripper.ripping import (
         EncodedAudioRingBuffer,
-        TrackByteRange,
         TrackOutputService,
     )
 
@@ -2501,7 +2497,7 @@ def test_track_output_service_composes_aac_to_m4a_pipeline(tmp_path) -> None:
 
     path = service.write_track(
         source=source,
-        byte_range=TrackByteRange(start_offset=8, end_offset=14),
+        byte_range=SegmentByteRange(start_offset=8, end_offset=14),
         directory=tmp_path,
         stem="Track",
         codec="aac",
@@ -2515,7 +2511,6 @@ def test_track_output_service_composes_aac_to_m4a_pipeline(tmp_path) -> None:
 def test_track_output_service_rejects_unsupported_codec(tmp_path) -> None:
     from fluxtuner_ripper.ripping import (
         EncodedAudioRingBuffer,
-        TrackByteRange,
         TrackOutputService,
     )
 
@@ -2525,7 +2520,7 @@ def test_track_output_service_rejects_unsupported_codec(tmp_path) -> None:
     with pytest.raises(ValueError):
         TrackOutputService().write_track(
             source=source,
-            byte_range=TrackByteRange(start_offset=0, end_offset=5),
+            byte_range=SegmentByteRange(start_offset=0, end_offset=5),
             directory=tmp_path,
             stem="Track",
             codec="flac",
@@ -2535,7 +2530,6 @@ def test_track_output_service_rejects_unsupported_codec(tmp_path) -> None:
 def test_track_output_service_rejects_evicted_range(tmp_path) -> None:
     from fluxtuner_ripper.ripping import (
         EncodedAudioRingBuffer,
-        TrackByteRange,
         TrackOutputService,
     )
 
@@ -2545,7 +2539,7 @@ def test_track_output_service_rejects_evicted_range(tmp_path) -> None:
     with pytest.raises(ValueError):
         TrackOutputService(mp3_finalizer=_FakeFinalizer(b"MP3:")).write_track(
             source=source,
-            byte_range=TrackByteRange(start_offset=0, end_offset=5),
+            byte_range=SegmentByteRange(start_offset=0, end_offset=5),
             directory=tmp_path,
             stem="Track",
             codec="mp3",
@@ -2590,7 +2584,7 @@ def test_public_package_api_version_matches_project_bootstrap() -> None:
 
 
 def test_encoded_track_writer_iterates_range_in_bounded_chunks() -> None:
-    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.models import SegmentByteRange
     from fluxtuner_ripper.output import EncodedTrackWriter
 
     class _BoundedSource:
@@ -2622,7 +2616,7 @@ def test_encoded_track_writer_iterates_range_in_bounded_chunks() -> None:
     chunks = tuple(
         EncodedTrackWriter().iter_range(
             source=source,
-            byte_range=TrackByteRange(
+            byte_range=SegmentByteRange(
                 start_offset=2,
                 end_offset=18,
             ),
@@ -2729,7 +2723,7 @@ output_path.write_bytes(sys.stdin.buffer.read())
 def test_track_output_service_streams_mp3_without_full_range_read(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.models import SegmentByteRange
     from fluxtuner_ripper.output import TrackOutputService
 
     class _BoundedSource:
@@ -2783,7 +2777,7 @@ def test_track_output_service_streams_mp3_without_full_range_read(
 
     path = service.write_track(
         source=source,
-        byte_range=TrackByteRange(
+        byte_range=SegmentByteRange(
             start_offset=2,
             end_offset=18,
         ),
@@ -2814,7 +2808,7 @@ def test_track_output_service_streams_mp3_without_full_range_read(
 def test_track_output_service_streams_aac_without_full_range_read(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.models import SegmentByteRange
     from fluxtuner_ripper.output import TrackOutputService
 
     class _BoundedSource:
@@ -2868,7 +2862,7 @@ def test_track_output_service_streams_aac_without_full_range_read(
 
     path = service.write_track(
         source=source,
-        byte_range=TrackByteRange(
+        byte_range=SegmentByteRange(
             start_offset=2,
             end_offset=18,
         ),
@@ -2899,7 +2893,7 @@ def test_track_output_service_streams_aac_without_full_range_read(
 def test_track_output_service_rejects_segment_over_configured_size_limit(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.models import SegmentByteRange
     from fluxtuner_ripper.output import TrackOutputService
 
     class _SourceThatMustNotBeRead:
@@ -2923,7 +2917,7 @@ def test_track_output_service_rejects_segment_over_configured_size_limit(
     ):
         service.write_track(
             source=_SourceThatMustNotBeRead(),
-            byte_range=TrackByteRange(
+            byte_range=SegmentByteRange(
                 start_offset=10,
                 end_offset=19,
             ),
@@ -2940,7 +2934,7 @@ def test_track_output_service_rejects_when_free_disk_space_is_too_low(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.models import SegmentByteRange
     from fluxtuner_ripper.output import TrackOutputService
 
     class _SourceThatMustNotBeRead:
@@ -2977,7 +2971,7 @@ def test_track_output_service_rejects_when_free_disk_space_is_too_low(
     ):
         service.write_track(
             source=_SourceThatMustNotBeRead(),
-            byte_range=TrackByteRange(
+            byte_range=SegmentByteRange(
                 start_offset=10,
                 end_offset=20,
             ),
@@ -2996,7 +2990,7 @@ def test_track_output_service_requires_space_for_segment_plus_reserve(
 ) -> None:
     import shutil
 
-    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.models import SegmentByteRange
     from fluxtuner_ripper.output import TrackOutputService
 
     class _SourceThatMustNotBeRead:
@@ -3034,7 +3028,7 @@ def test_track_output_service_requires_space_for_segment_plus_reserve(
     ):
         service.write_track(
             source=_SourceThatMustNotBeRead(),
-            byte_range=TrackByteRange(
+            byte_range=SegmentByteRange(
                 start_offset=0,
                 end_offset=100_000,
             ),
@@ -3050,7 +3044,7 @@ def test_track_output_service_requires_space_for_segment_plus_reserve(
 def test_track_output_service_rejects_chunk_size_above_hard_limit(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.models import SegmentByteRange
     from fluxtuner_ripper.output import TrackOutputService
 
     class _SourceThatMustNotBeRead:
@@ -3074,7 +3068,7 @@ def test_track_output_service_rejects_chunk_size_above_hard_limit(
     ):
         service.write_track(
             source=_SourceThatMustNotBeRead(),
-            byte_range=TrackByteRange(
+            byte_range=SegmentByteRange(
                 start_offset=0,
                 end_offset=10,
             ),
@@ -3088,7 +3082,7 @@ def test_track_output_service_rejects_chunk_size_above_hard_limit(
 
 
 def test_encoded_track_writer_rejects_source_returning_wrong_chunk_size() -> None:
-    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.models import SegmentByteRange
     from fluxtuner_ripper.output import EncodedTrackWriter
 
     class _BrokenSource:
@@ -3112,7 +3106,7 @@ def test_encoded_track_writer_rejects_source_returning_wrong_chunk_size() -> Non
         tuple(
             writer.iter_range(
                 source=_BrokenSource(),
-                byte_range=TrackByteRange(
+                byte_range=SegmentByteRange(
                     start_offset=0,
                     end_offset=8,
                 ),
@@ -3135,7 +3129,7 @@ def test_track_output_service_rejects_unsafe_output_stem(
     tmp_path: Path,
     stem: str,
 ) -> None:
-    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.models import SegmentByteRange
     from fluxtuner_ripper.output import TrackOutputService
 
     class _SourceThatMustNotBeRead:
@@ -3157,7 +3151,7 @@ def test_track_output_service_rejects_unsafe_output_stem(
     ):
         service.write_track(
             source=_SourceThatMustNotBeRead(),
-            byte_range=TrackByteRange(
+            byte_range=SegmentByteRange(
                 start_offset=0,
                 end_offset=10,
             ),
@@ -3540,7 +3534,7 @@ def test_safe_track_output_service_applies_runtime_disk_policy() -> None:
 def test_track_output_service_derives_stream_finalizer_timeout_from_segment_size(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.models import TrackByteRange
+    from fluxtuner_ripper.models import SegmentByteRange
     from fluxtuner_ripper.output import TrackOutputService
 
     class _Source:
@@ -3586,7 +3580,7 @@ def test_track_output_service_derives_stream_finalizer_timeout_from_segment_size
 
     service.write_track(
         source=source,
-        byte_range=TrackByteRange(
+        byte_range=SegmentByteRange(
             start_offset=0,
             end_offset=320,
         ),
