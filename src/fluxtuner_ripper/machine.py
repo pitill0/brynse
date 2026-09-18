@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import cast
 
-from fluxtuner_ripper.generic_cli import _run_generic_pipeline
+from fluxtuner_ripper.generic_cli import GenericCliError, _run_generic_pipeline
 from fluxtuner_ripper.source import StreamSource
 
 _CHUNK_SIZE = 64 * 1024
@@ -24,6 +24,21 @@ class MachineError:
             "message": self.message,
             "kind": self.kind,
         }
+
+
+def classify_machine_error(exc: Exception) -> MachineError:
+    if isinstance(exc, GenericCliError):
+        return MachineError(
+            code="invalid_request",
+            message=str(exc),
+            kind="validation",
+        )
+
+    return MachineError(
+        code="internal_error",
+        message=str(exc),
+        kind="internal",
+    )
 
 
 @dataclass(frozen=True)

@@ -203,3 +203,16 @@ def test_machine_error_is_json_serializable() -> None:
         "kind": "validation",
     }
     assert json.loads(json.dumps(payload)) == payload
+
+
+def test_machine_classifies_validation_error() -> None:
+    from fluxtuner_ripper.generic_cli import GenericCliError
+    from fluxtuner_ripper.machine import MachineError, classify_machine_error
+
+    error = classify_machine_error(GenericCliError("--interval must be greater than zero"))
+
+    assert error == MachineError(
+        code="invalid_request",
+        message="--interval must be greater than zero",
+        kind="validation",
+    )
