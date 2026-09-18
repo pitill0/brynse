@@ -2585,12 +2585,9 @@ def test_public_package_api_exports_expected_symbols() -> None:
         "BoundaryRelationClassifier",
         "EncodedAudioRingBuffer",
         "FfmpegAcousticDecoder",
-        "IcyStreamParser",
         "IncrementalFrameTimeline",
-        "MetadataSemanticTracker",
         "Mp3SegmentFinalizer",
         "NearestBoundaryMatcher",
-        "RippingStreamIngestor",
         "RmsAcousticAnalyzer",
         "TemporalSplitAligner",
         "TemporalSplitPolicy",
@@ -2601,6 +2598,14 @@ def test_public_package_api_exports_expected_symbols() -> None:
     }
 
     assert expected <= set(fluxtuner_ripper.__all__)
+
+    radio_integration_symbols = {
+        "IcyStreamParser",
+        "MetadataSemanticTracker",
+        "RippingStreamIngestor",
+    }
+
+    assert radio_integration_symbols.isdisjoint(fluxtuner_ripper.__all__)
 
     for name in expected:
         assert getattr(fluxtuner_ripper, name) is not None
