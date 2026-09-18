@@ -1424,3 +1424,12 @@ def test_generic_cli_does_not_depend_on_ripping_orchestrator_name() -> None:
     source = Path("src/fluxtuner_ripper/generic_cli.py").read_text()
 
     assert "RippingOrchestrator" not in source
+
+
+def test_generic_cli_uses_generic_segment_output_errors() -> None:
+    source = Path("src/fluxtuner_ripper/generic_cli.py").read_text()
+
+    assert "TrackFinalizeError" not in source
+    assert "TrackFileWriteError" not in source
+    assert "SegmentFinalizeError" in source
+    assert "SegmentFileWriteError" in source

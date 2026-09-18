@@ -16,7 +16,7 @@ from fluxtuner_ripper.generic_output import GenericSegmentWriter, MaterializedSe
 from fluxtuner_ripper.generic_runner import GenericRunner
 from fluxtuner_ripper.ingest import EncodedStreamIngestor
 from fluxtuner_ripper.orchestrator import CandidateResolution, DefaultCandidateResolver
-from fluxtuner_ripper.output import TrackFileWriteError, TrackFinalizeError
+from fluxtuner_ripper.output import SegmentFileWriteError, SegmentFinalizeError
 from fluxtuner_ripper.providers import (
     BoundaryProvider,
     ExternalBoundaryProvider,
@@ -389,7 +389,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     except GenericCliError as exc:
         parser.error(str(exc))
-    except (TrackFinalizeError, TrackFileWriteError, OSError) as exc:
+    except (SegmentFinalizeError, SegmentFileWriteError, OSError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
