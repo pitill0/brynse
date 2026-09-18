@@ -5,7 +5,7 @@ from enum import StrEnum
 
 
 class SplitKind(StrEnum):
-    """Relationship between consecutive track candidates."""
+    """Relationship between consecutive boundary candidates."""
 
     NO_BOUNDARY = "no_boundary"
     HARD_CUT = "hard_cut"

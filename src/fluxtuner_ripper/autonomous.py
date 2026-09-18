@@ -1,4 +1,4 @@
-"""Autonomous acoustic track-boundary detection."""
+"""Autonomous acoustic boundary detection."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from fluxtuner_ripper.models import AcousticProfile
 
 @dataclass(frozen=True)
 class AutonomousBoundaryCandidate:
-    """One high-confidence track boundary inferred from audio alone."""
+    """One high-confidence boundary inferred from audio alone."""
 
     time_seconds: float
     basin_start_seconds: float

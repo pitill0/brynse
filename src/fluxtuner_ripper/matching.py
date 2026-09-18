@@ -15,7 +15,7 @@ from fluxtuner_ripper.models import (
 
 
 class NearestBoundaryMatcher:
-    """Match a semantic track candidate to the nearest acoustic minimum."""
+    """Match a boundary candidate to the nearest acoustic minimum."""
 
     def __init__(
         self,

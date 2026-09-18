@@ -8,14 +8,14 @@ from enum import StrEnum
 
 
 class BoundaryProposalSource(StrEnum):
-    """Audio-derived source that proposed a possible track boundary."""
+    """Audio-derived source that proposed a possible boundary."""
 
     BASIN = "basin"
     STRUCTURAL = "structural"
 
 
 class BoundaryConfidence(StrEnum):
-    """Reconciled confidence for one possible track boundary."""
+    """Reconciled confidence for one possible boundary."""
 
     UNRESOLVED = "unresolved"
     LOW = "low"
@@ -25,7 +25,7 @@ class BoundaryConfidence(StrEnum):
 
 @dataclass(frozen=True)
 class BoundaryProposal:
-    """One audio-derived proposal for a possible track boundary."""
+    """One audio-derived proposal for a possible boundary."""
 
     time_seconds: float
     source: BoundaryProposalSource
