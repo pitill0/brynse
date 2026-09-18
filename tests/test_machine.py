@@ -272,3 +272,41 @@ def test_run_segment_source_returns_structured_error() -> None:
         message="input contains no encoded data",
         kind="validation",
     )
+
+
+def test_run_segment_source_returns_segment_result() -> None:
+
+    from fluxtuner_ripper.machine import (
+        SegmentRequest,
+        SegmentResult,
+        run_segment_source,
+    )
+
+    class FakeSource:
+        def __init__(self) -> None:
+            self._chunks = [b"encoded-data", b""]
+            self.closed = False
+
+        @property
+        def metadata(self) -> Mapping[str, str]:
+            return {}
+
+        def read(self, max_bytes: int) -> bytes:
+            return self._chunks.pop(0)
+
+        def close(self) -> None:
+            self.closed = True
+
+    source = FakeSource()
+
+    result = run_segment_source(
+        source=source,
+        request=SegmentRequest(
+            codec="mp3",
+            provider="fixed",
+            interval_seconds=10.0,
+        ),
+    )
+
+    assert isinstance(result, SegmentResult)
+    assert source.closed is True
