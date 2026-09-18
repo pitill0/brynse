@@ -7,7 +7,6 @@ import pytest
 
 from fluxtuner_ripper.models import (
     AcousticBoundaryCandidate,
-    BoundaryMatch,
     BoundaryRelation,
     BoundaryRelationResult,
     SegmentByteRange,
@@ -16,6 +15,9 @@ from fluxtuner_ripper.models import (
     SplitKind,
     TemporalSplitDecision,
     TemporalSplitKind,
+)
+from fluxtuner_ripper.radio_models import (
+    BoundaryMatch,
     TrackCandidate,
 )
 from fluxtuner_ripper.radio_orchestrator import BoundaryResolution

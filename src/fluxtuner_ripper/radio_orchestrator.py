@@ -8,16 +8,18 @@ from typing import Protocol
 from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
 from fluxtuner_ripper.frames import IncrementalFrameTimeline
 from fluxtuner_ripper.models import (
-    BoundaryMatch,
     BoundaryRelationResult,
     SplitDecision,
     TemporalSplitDecision,
-    TrackCandidate,
 )
 from fluxtuner_ripper.orchestrator import (
     AcousticCandidateResolution,
     CandidateResolver,
     DefaultCandidateResolver,
+)
+from fluxtuner_ripper.radio_models import (
+    BoundaryMatch,
+    TrackCandidate,
 )
 
 

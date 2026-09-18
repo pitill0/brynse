@@ -16,9 +16,9 @@ from fluxtuner_ripper.acoustic import AcousticWindowExtractor, FfmpegAcousticDec
 from fluxtuner_ripper.live_shadow import LiveShadowBoundaryObserver
 from fluxtuner_ripper.matching import NearestBoundaryMatcher
 from fluxtuner_ripper.metadata import MetadataSemanticTracker
-from fluxtuner_ripper.models import TimedMetadataEvent
 from fluxtuner_ripper.mp3_refinement import Mp3BoundaryRefiner
 from fluxtuner_ripper.orchestrator import HybridCandidateResolver
+from fluxtuner_ripper.radio_models import TimedMetadataEvent
 from fluxtuner_ripper.radio_orchestrator import (
     BoundaryResolver,
     CandidateBoundaryResolver,

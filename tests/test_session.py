@@ -4,15 +4,17 @@ from dataclasses import dataclass
 
 from fluxtuner_ripper.models import (
     AcousticBoundaryCandidate,
-    BoundaryMatch,
     BoundaryRelation,
     BoundaryRelationResult,
-    MetadataSemanticDecision,
-    RippingIngestResult,
     SplitDecision,
     SplitKind,
     TemporalSplitDecision,
     TemporalSplitKind,
+)
+from fluxtuner_ripper.radio_models import (
+    BoundaryMatch,
+    MetadataSemanticDecision,
+    RippingIngestResult,
     TimedMetadataEvent,
     TrackCandidate,
 )

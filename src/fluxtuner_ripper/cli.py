@@ -7,7 +7,7 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from fluxtuner_ripper.models import TimedMetadataEvent
+from fluxtuner_ripper.radio_models import TimedMetadataEvent
 from fluxtuner_ripper.runner import (
     RippingRunConfig,
     RippingRunError,

@@ -1,6 +1,7 @@
 import pytest
 
-from fluxtuner_ripper.models import BoundaryCandidate, TrackCandidate
+from fluxtuner_ripper.models import BoundaryCandidate
+from fluxtuner_ripper.radio_models import TrackCandidate
 
 
 def test_boundary_candidate_accepts_generic_source_and_optional_offset() -> None:

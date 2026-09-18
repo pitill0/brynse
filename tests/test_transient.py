@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from fluxtuner_ripper.models import MetadataSemanticDecision, SplitKind
+from fluxtuner_ripper.models import SplitKind
+from fluxtuner_ripper.radio_models import MetadataSemanticDecision
 from fluxtuner_ripper.transient import ConservativeTransientExclusionPolicy
 
 

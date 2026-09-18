@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from fluxtuner_ripper.models import (
+from fluxtuner_ripper.models import SplitKind
+from fluxtuner_ripper.radio_models import (
     MetadataSemanticDecision,
-    SplitKind,
     TimedMetadataEvent,
     TrackCandidate,
 )

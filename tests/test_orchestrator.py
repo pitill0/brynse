@@ -4,7 +4,6 @@ from fluxtuner_ripper.models import (
     AcousticBoundaryCandidate,
     AcousticProfile,
     AcousticWindow,
-    BoundaryMatch,
     BoundaryRelation,
     BoundaryRelationResult,
     DecodedPcm,
@@ -12,6 +11,9 @@ from fluxtuner_ripper.models import (
     SplitKind,
     TemporalSplitDecision,
     TemporalSplitKind,
+)
+from fluxtuner_ripper.radio_models import (
+    BoundaryMatch,
     TrackCandidate,
 )
 from fluxtuner_ripper.radio_orchestrator import RippingOrchestrator

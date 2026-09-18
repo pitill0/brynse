@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from fluxtuner_ripper.models import IcyParseResult, MetadataEvent
+from fluxtuner_ripper.radio_models import (
+    IcyParseResult,
+    MetadataEvent,
+)
 
 
 def _extract_stream_title(metadata: str) -> str | None:

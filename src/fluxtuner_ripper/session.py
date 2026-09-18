@@ -8,12 +8,14 @@ from dataclasses import dataclass
 from fluxtuner_ripper.matching import TemporalSplitAligner
 from fluxtuner_ripper.metadata import MetadataSemanticTracker
 from fluxtuner_ripper.models import (
-    MetadataSemanticDecision,
-    RippingIngestResult,
     Segment,
     SplitKind,
     TemporalSplitDecision,
     TemporalSplitKind,
+)
+from fluxtuner_ripper.radio_models import (
+    MetadataSemanticDecision,
+    RippingIngestResult,
     TrackCandidate,
 )
 from fluxtuner_ripper.radio_orchestrator import (
