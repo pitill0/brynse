@@ -2,13 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from fluxtuner_ripper.models import SegmentByteRange
-from fluxtuner_ripper.ripping import (
+from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
+from fluxtuner_ripper.models import SegmentByteRange, SplitDecision, SplitKind
+from fluxtuner_ripper.radio_models import (
     ContentKind,
-    EncodedAudioRingBuffer,
     MetadataEvent,
-    SplitDecision,
-    SplitKind,
 )
 
 
@@ -186,7 +184,7 @@ def _adts_frame(*, frame_length: int, sample_rate_index: int = 4, payload_byte: 
 
 
 def test_parse_mp3_frames_uses_each_frame_bitrate_for_vbr_timeline() -> None:
-    from fluxtuner_ripper.ripping import parse_mp3_frames
+    from fluxtuner_ripper.frames import parse_mp3_frames
 
     first = _mp3_frame(bitrate_index=9, payload_byte=1)
     second = _mp3_frame(bitrate_index=14, payload_byte=2)
@@ -202,7 +200,7 @@ def test_parse_mp3_frames_uses_each_frame_bitrate_for_vbr_timeline() -> None:
 
 
 def test_parse_mp3_frames_resynchronizes_after_leading_junk() -> None:
-    from fluxtuner_ripper.ripping import parse_mp3_frames
+    from fluxtuner_ripper.frames import parse_mp3_frames
 
     frame = _mp3_frame(bitrate_index=9)
     frames = parse_mp3_frames(b"junk" + frame)
@@ -212,7 +210,7 @@ def test_parse_mp3_frames_resynchronizes_after_leading_junk() -> None:
 
 
 def test_parse_adts_frames_handles_variable_frame_lengths() -> None:
-    from fluxtuner_ripper.ripping import parse_adts_frames
+    from fluxtuner_ripper.frames import parse_adts_frames
 
     first = _adts_frame(frame_length=900, payload_byte=1)
     second = _adts_frame(frame_length=931, payload_byte=2)
@@ -228,7 +226,7 @@ def test_parse_adts_frames_handles_variable_frame_lengths() -> None:
 
 
 def test_parse_adts_frames_resynchronizes_after_leading_junk() -> None:
-    from fluxtuner_ripper.ripping import parse_adts_frames
+    from fluxtuner_ripper.frames import parse_adts_frames
 
     frame = _adts_frame(frame_length=900)
     frames = parse_adts_frames(b"abc" + frame)
@@ -238,7 +236,10 @@ def test_parse_adts_frames_resynchronizes_after_leading_junk() -> None:
 
 
 def test_frame_at_or_before_offset_uses_frame_start_offsets() -> None:
-    from fluxtuner_ripper.ripping import frame_at_or_before_offset, parse_adts_frames
+    from fluxtuner_ripper.frames import (
+        frame_at_or_before_offset,
+        parse_adts_frames,
+    )
 
     first = _adts_frame(frame_length=900)
     second = _adts_frame(frame_length=931)
@@ -250,7 +251,10 @@ def test_frame_at_or_before_offset_uses_frame_start_offsets() -> None:
 
 
 def test_frame_nearest_time_returns_closest_frame_start() -> None:
-    from fluxtuner_ripper.ripping import frame_nearest_time, parse_adts_frames
+    from fluxtuner_ripper.frames import (
+        frame_nearest_time,
+        parse_adts_frames,
+    )
 
     data = b"".join(_adts_frame(frame_length=900) for _ in range(4))
     frames = parse_adts_frames(data)
@@ -269,7 +273,7 @@ def _icy_block(metadata: str) -> bytes:
 
 
 def test_icy_parser_strips_metadata_and_reports_clean_audio_offset() -> None:
-    from fluxtuner_ripper.ripping import IcyStreamParser
+    from fluxtuner_ripper.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     raw = b"abcd" + _icy_block("StreamTitle='Artist - Track';") + b"efgh"
@@ -284,7 +288,7 @@ def test_icy_parser_strips_metadata_and_reports_clean_audio_offset() -> None:
 
 
 def test_icy_parser_handles_zero_length_metadata_block() -> None:
-    from fluxtuner_ripper.ripping import IcyStreamParser
+    from fluxtuner_ripper.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=3)
 
@@ -296,7 +300,7 @@ def test_icy_parser_handles_zero_length_metadata_block() -> None:
 
 
 def test_icy_parser_handles_metadata_split_across_chunks() -> None:
-    from fluxtuner_ripper.ripping import IcyStreamParser
+    from fluxtuner_ripper.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     block = _icy_block("StreamTitle='Split Metadata';")
@@ -325,7 +329,7 @@ def test_icy_parser_handles_metadata_split_across_chunks() -> None:
 
 
 def test_icy_parser_handles_length_byte_as_its_own_chunk() -> None:
-    from fluxtuner_ripper.ripping import IcyStreamParser
+    from fluxtuner_ripper.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     block = _icy_block("StreamTitle='Chunky';")
@@ -344,7 +348,7 @@ def test_icy_parser_handles_length_byte_as_its_own_chunk() -> None:
 
 
 def test_icy_parser_emits_multiple_events_with_absolute_audio_offsets() -> None:
-    from fluxtuner_ripper.ripping import IcyStreamParser
+    from fluxtuner_ripper.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     raw = (
@@ -366,7 +370,7 @@ def test_icy_parser_emits_multiple_events_with_absolute_audio_offsets() -> None:
 
 
 def test_icy_parser_ignores_metadata_without_stream_title() -> None:
-    from fluxtuner_ripper.ripping import IcyStreamParser
+    from fluxtuner_ripper.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     raw = b"abcd" + _icy_block("StreamUrl='https://example.invalid';") + b"efgh"
@@ -378,7 +382,7 @@ def test_icy_parser_ignores_metadata_without_stream_title() -> None:
 
 
 def test_icy_parser_ignores_empty_stream_title() -> None:
-    from fluxtuner_ripper.ripping import IcyStreamParser
+    from fluxtuner_ripper.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     raw = b"abcd" + _icy_block("StreamTitle='';") + b"efgh"
@@ -390,7 +394,7 @@ def test_icy_parser_ignores_empty_stream_title() -> None:
 
 
 def test_icy_parser_empty_feed_preserves_state() -> None:
-    from fluxtuner_ripper.ripping import IcyStreamParser
+    from fluxtuner_ripper.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
 
@@ -401,7 +405,7 @@ def test_icy_parser_empty_feed_preserves_state() -> None:
 
 
 def test_incremental_frame_timeline_handles_mp3_frame_split_across_feeds() -> None:
-    from fluxtuner_ripper.ripping import IncrementalFrameTimeline
+    from fluxtuner_ripper.frames import IncrementalFrameTimeline
 
     first = _mp3_frame(bitrate_index=9)
     second = _mp3_frame(bitrate_index=14)
@@ -422,7 +426,7 @@ def test_incremental_frame_timeline_handles_mp3_frame_split_across_feeds() -> No
 
 
 def test_incremental_frame_timeline_handles_adts_frame_split_across_feeds() -> None:
-    from fluxtuner_ripper.ripping import IncrementalFrameTimeline
+    from fluxtuner_ripper.frames import IncrementalFrameTimeline
 
     first = _adts_frame(frame_length=900)
     second = _adts_frame(frame_length=931)
@@ -442,7 +446,7 @@ def test_incremental_frame_timeline_handles_adts_frame_split_across_feeds() -> N
 
 
 def test_incremental_frame_timeline_resynchronizes_and_keeps_absolute_offsets() -> None:
-    from fluxtuner_ripper.ripping import IncrementalFrameTimeline
+    from fluxtuner_ripper.frames import IncrementalFrameTimeline
 
     frame = _adts_frame(frame_length=900)
     timeline = IncrementalFrameTimeline("aac")
@@ -563,7 +567,7 @@ def _timed_metadata(
     offset: int,
     time_seconds: float,
 ):
-    from fluxtuner_ripper.ripping import TimedMetadataEvent
+    from fluxtuner_ripper.radio_models import TimedMetadataEvent
 
     return TimedMetadataEvent(
         title=title,
@@ -573,7 +577,8 @@ def _timed_metadata(
 
 
 def test_metadata_semantic_tracker_marks_short_lifetime_no_boundary() -> None:
-    from fluxtuner_ripper.ripping import MetadataSemanticTracker, SplitKind
+    from fluxtuner_ripper.metadata import MetadataSemanticTracker
+    from fluxtuner_ripper.models import SplitKind
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
 
@@ -594,7 +599,7 @@ def test_metadata_semantic_tracker_marks_short_lifetime_no_boundary() -> None:
 
 
 def test_metadata_semantic_tracker_confirms_durable_title_on_repeated_metadata() -> None:
-    from fluxtuner_ripper.ripping import MetadataSemanticTracker
+    from fluxtuner_ripper.metadata import MetadataSemanticTracker
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
 
@@ -609,7 +614,8 @@ def test_metadata_semantic_tracker_confirms_durable_title_on_repeated_metadata()
 
 
 def test_metadata_semantic_tracker_confirms_durable_title_when_replaced() -> None:
-    from fluxtuner_ripper.ripping import MetadataSemanticTracker, SplitKind
+    from fluxtuner_ripper.metadata import MetadataSemanticTracker
+    from fluxtuner_ripper.models import SplitKind
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
 
@@ -627,7 +633,7 @@ def test_metadata_semantic_tracker_confirms_durable_title_when_replaced() -> Non
 
 
 def test_metadata_semantic_tracker_does_not_duplicate_confirmed_candidate() -> None:
-    from fluxtuner_ripper.ripping import MetadataSemanticTracker
+    from fluxtuner_ripper.metadata import MetadataSemanticTracker
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
 
@@ -640,7 +646,7 @@ def test_metadata_semantic_tracker_does_not_duplicate_confirmed_candidate() -> N
 
 
 def test_metadata_semantic_tracker_confirm_current_without_repeat_packet() -> None:
-    from fluxtuner_ripper.ripping import MetadataSemanticTracker
+    from fluxtuner_ripper.metadata import MetadataSemanticTracker
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
 
@@ -656,7 +662,8 @@ def test_metadata_semantic_tracker_confirm_current_without_repeat_packet() -> No
 
 
 def test_metadata_semantic_tracker_transient_bridge_sequence() -> None:
-    from fluxtuner_ripper.ripping import MetadataSemanticTracker, SplitKind
+    from fluxtuner_ripper.metadata import MetadataSemanticTracker
+    from fluxtuner_ripper.models import SplitKind
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
 
@@ -682,7 +689,7 @@ def test_metadata_semantic_tracker_transient_bridge_sequence() -> None:
 
 
 def test_metadata_semantic_tracker_rejects_non_monotonic_time() -> None:
-    from fluxtuner_ripper.ripping import MetadataSemanticTracker
+    from fluxtuner_ripper.metadata import MetadataSemanticTracker
 
     tracker = MetadataSemanticTracker()
 
@@ -693,11 +700,9 @@ def test_metadata_semantic_tracker_rejects_non_monotonic_time() -> None:
 
 
 def test_acoustic_window_extractor_returns_frame_aligned_aac_window() -> None:
-    from fluxtuner_ripper.ripping import (
-        AcousticWindowExtractor,
-        EncodedAudioRingBuffer,
-        IncrementalFrameTimeline,
-    )
+    from fluxtuner_ripper.acoustic import AcousticWindowExtractor
+    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
+    from fluxtuner_ripper.frames import IncrementalFrameTimeline
 
     frames = [_adts_frame(frame_length=900) for _ in range(10)]
     clean = b"".join(frames)
@@ -724,11 +729,9 @@ def test_acoustic_window_extractor_returns_frame_aligned_aac_window() -> None:
 
 
 def test_acoustic_window_extractor_clamps_to_missing_preroll() -> None:
-    from fluxtuner_ripper.ripping import (
-        AcousticWindowExtractor,
-        EncodedAudioRingBuffer,
-        IncrementalFrameTimeline,
-    )
+    from fluxtuner_ripper.acoustic import AcousticWindowExtractor
+    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
+    from fluxtuner_ripper.frames import IncrementalFrameTimeline
 
     frame = _adts_frame(frame_length=900)
     clean = frame * 12
@@ -754,11 +757,9 @@ def test_acoustic_window_extractor_clamps_to_missing_preroll() -> None:
 
 
 def test_acoustic_window_extractor_clamps_to_missing_postroll() -> None:
-    from fluxtuner_ripper.ripping import (
-        AcousticWindowExtractor,
-        EncodedAudioRingBuffer,
-        IncrementalFrameTimeline,
-    )
+    from fluxtuner_ripper.acoustic import AcousticWindowExtractor
+    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
+    from fluxtuner_ripper.frames import IncrementalFrameTimeline
 
     frame = _mp3_frame(bitrate_index=9)
     clean = frame * 6
@@ -783,11 +784,9 @@ def test_acoustic_window_extractor_clamps_to_missing_postroll() -> None:
 
 
 def test_acoustic_window_extractor_returns_none_without_retained_frames() -> None:
-    from fluxtuner_ripper.ripping import (
-        AcousticWindowExtractor,
-        EncodedAudioRingBuffer,
-        IncrementalFrameTimeline,
-    )
+    from fluxtuner_ripper.acoustic import AcousticWindowExtractor
+    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
+    from fluxtuner_ripper.frames import IncrementalFrameTimeline
 
     frame = _adts_frame(frame_length=900)
 
@@ -811,11 +810,9 @@ def test_acoustic_window_extractor_returns_none_without_retained_frames() -> Non
 
 
 def test_acoustic_window_extractor_handles_small_retained_tail() -> None:
-    from fluxtuner_ripper.ripping import (
-        AcousticWindowExtractor,
-        EncodedAudioRingBuffer,
-        IncrementalFrameTimeline,
-    )
+    from fluxtuner_ripper.acoustic import AcousticWindowExtractor
+    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
+    from fluxtuner_ripper.frames import IncrementalFrameTimeline
 
     frame = _adts_frame(frame_length=900)
     clean = frame * 5
@@ -840,7 +837,7 @@ def test_acoustic_window_extractor_handles_small_retained_tail() -> None:
 
 
 def _make_acoustic_window(data: bytes):
-    from fluxtuner_ripper.ripping import AcousticWindow
+    from fluxtuner_ripper.models import AcousticWindow
 
     return AcousticWindow(
         start_offset=0,
@@ -852,7 +849,7 @@ def _make_acoustic_window(data: bytes):
 
 
 def test_decoded_pcm_reports_sample_count() -> None:
-    from fluxtuner_ripper.ripping import DecodedPcm
+    from fluxtuner_ripper.models import DecodedPcm
 
     pcm = DecodedPcm(
         sample_rate=8000,
@@ -865,7 +862,10 @@ def test_decoded_pcm_reports_sample_count() -> None:
 
 
 def test_ffmpeg_acoustic_decoder_rejects_missing_binary() -> None:
-    from fluxtuner_ripper.ripping import AcousticDecodeError, FfmpegAcousticDecoder
+    from fluxtuner_ripper.acoustic import (
+        AcousticDecodeError,
+        FfmpegAcousticDecoder,
+    )
 
     decoder = FfmpegAcousticDecoder(ffmpeg_binary="/definitely/missing/fluxtuner-ffmpeg")
 
@@ -876,7 +876,10 @@ def test_ffmpeg_acoustic_decoder_rejects_missing_binary() -> None:
 def test_ffmpeg_acoustic_decoder_rejects_invalid_audio_when_ffmpeg_available() -> None:
     import shutil
 
-    from fluxtuner_ripper.ripping import AcousticDecodeError, FfmpegAcousticDecoder
+    from fluxtuner_ripper.acoustic import (
+        AcousticDecodeError,
+        FfmpegAcousticDecoder,
+    )
 
     if shutil.which("ffmpeg") is None:
         pytest.skip("ffmpeg is not installed")
@@ -891,7 +894,7 @@ def test_ffmpeg_acoustic_decoder_decodes_mp3_window_to_mono_8khz() -> None:
     import shutil
     import subprocess
 
-    from fluxtuner_ripper.ripping import FfmpegAcousticDecoder
+    from fluxtuner_ripper.acoustic import FfmpegAcousticDecoder
 
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
@@ -932,7 +935,7 @@ def test_ffmpeg_acoustic_decoder_decodes_adts_aac_window_to_mono_8khz() -> None:
     import shutil
     import subprocess
 
-    from fluxtuner_ripper.ripping import FfmpegAcousticDecoder
+    from fluxtuner_ripper.acoustic import FfmpegAcousticDecoder
 
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
@@ -974,7 +977,7 @@ def test_ffmpeg_acoustic_decoder_decodes_adts_aac_window_to_mono_8khz() -> None:
 def _pcm_from_samples(samples: list[int], *, sample_rate: int = 8):
     from array import array
 
-    from fluxtuner_ripper.ripping import DecodedPcm
+    from fluxtuner_ripper.models import DecodedPcm
 
     data = array("h", samples).tobytes()
     return DecodedPcm(
@@ -986,7 +989,7 @@ def _pcm_from_samples(samples: list[int], *, sample_rate: int = 8):
 
 
 def test_rms_acoustic_analyzer_reports_zero_for_silence() -> None:
-    from fluxtuner_ripper.ripping import RmsAcousticAnalyzer
+    from fluxtuner_ripper.acoustic import RmsAcousticAnalyzer
 
     analyzer = RmsAcousticAnalyzer(window_seconds=0.5)
     profile = analyzer.analyze(_pcm_from_samples([0] * 8, sample_rate=8))
@@ -996,7 +999,7 @@ def test_rms_acoustic_analyzer_reports_zero_for_silence() -> None:
 
 
 def test_rms_acoustic_analyzer_reports_constant_signal_level() -> None:
-    from fluxtuner_ripper.ripping import RmsAcousticAnalyzer
+    from fluxtuner_ripper.acoustic import RmsAcousticAnalyzer
 
     analyzer = RmsAcousticAnalyzer(window_seconds=0.5)
     profile = analyzer.analyze(_pcm_from_samples([1000] * 8, sample_rate=8))
@@ -1006,7 +1009,7 @@ def test_rms_acoustic_analyzer_reports_constant_signal_level() -> None:
 
 
 def test_rms_acoustic_analyzer_finds_known_energy_valley() -> None:
-    from fluxtuner_ripper.ripping import RmsAcousticAnalyzer
+    from fluxtuner_ripper.acoustic import RmsAcousticAnalyzer
 
     analyzer = RmsAcousticAnalyzer(window_seconds=0.5)
     pcm = _pcm_from_samples(
@@ -1024,7 +1027,7 @@ def test_rms_acoustic_analyzer_finds_known_energy_valley() -> None:
 
 
 def test_rms_acoustic_analyzer_handles_partial_final_window() -> None:
-    from fluxtuner_ripper.ripping import RmsAcousticAnalyzer
+    from fluxtuner_ripper.acoustic import RmsAcousticAnalyzer
 
     analyzer = RmsAcousticAnalyzer(window_seconds=0.5)
     profile = analyzer.analyze(_pcm_from_samples([1000] * 10, sample_rate=8))
@@ -1036,7 +1039,7 @@ def test_rms_acoustic_analyzer_handles_partial_final_window() -> None:
 
 
 def test_acoustic_profile_minimum_level_returns_none_when_empty() -> None:
-    from fluxtuner_ripper.ripping import AcousticProfile
+    from fluxtuner_ripper.models import AcousticProfile
 
     profile = AcousticProfile(levels=())
 
@@ -1044,14 +1047,17 @@ def test_acoustic_profile_minimum_level_returns_none_when_empty() -> None:
 
 
 def test_rms_acoustic_analyzer_rejects_non_positive_window() -> None:
-    from fluxtuner_ripper.ripping import RmsAcousticAnalyzer
+    from fluxtuner_ripper.acoustic import RmsAcousticAnalyzer
 
     with pytest.raises(ValueError):
         RmsAcousticAnalyzer(window_seconds=0.0)
 
 
 def _profile_from_rms(values: list[float], *, window_seconds: float = 0.5):
-    from fluxtuner_ripper.ripping import AcousticLevel, AcousticProfile
+    from fluxtuner_ripper.models import (
+        AcousticLevel,
+        AcousticProfile,
+    )
 
     levels = []
     for index, rms in enumerate(values):
@@ -1068,7 +1074,7 @@ def _profile_from_rms(values: list[float], *, window_seconds: float = 0.5):
 
 
 def test_acoustic_candidate_finder_finds_local_minima() -> None:
-    from fluxtuner_ripper.ripping import AcousticCandidateFinder
+    from fluxtuner_ripper.acoustic import AcousticCandidateFinder
 
     profile = _profile_from_rms([10.0, 2.0, 9.0, 1.0, 8.0])
     window = _make_acoustic_window(b"x" * 100)
@@ -1085,7 +1091,8 @@ def test_acoustic_candidate_finder_finds_local_minima() -> None:
 
 
 def test_acoustic_candidate_finder_maps_relative_to_absolute_time() -> None:
-    from fluxtuner_ripper.ripping import AcousticCandidateFinder, AcousticWindow
+    from fluxtuner_ripper.acoustic import AcousticCandidateFinder
+    from fluxtuner_ripper.models import AcousticWindow
 
     profile = _profile_from_rms([5.0, 1.0, 4.0])
     window = AcousticWindow(
@@ -1107,7 +1114,8 @@ def test_acoustic_candidate_finder_maps_relative_to_absolute_time() -> None:
 
 
 def test_acoustic_candidate_finder_filters_by_center_radius() -> None:
-    from fluxtuner_ripper.ripping import AcousticCandidateFinder, AcousticWindow
+    from fluxtuner_ripper.acoustic import AcousticCandidateFinder
+    from fluxtuner_ripper.models import AcousticWindow
 
     profile = _profile_from_rms([9.0, 1.0, 8.0, 2.0, 7.0])
     window = AcousticWindow(
@@ -1131,10 +1139,8 @@ def test_acoustic_candidate_finder_filters_by_center_radius() -> None:
 
 
 def test_acoustic_candidate_finder_returns_empty_for_empty_profile() -> None:
-    from fluxtuner_ripper.ripping import (
-        AcousticCandidateFinder,
-        AcousticProfile,
-    )
+    from fluxtuner_ripper.acoustic import AcousticCandidateFinder
+    from fluxtuner_ripper.models import AcousticProfile
 
     candidates = AcousticCandidateFinder().find(
         profile=AcousticProfile(levels=()),
@@ -1145,7 +1151,7 @@ def test_acoustic_candidate_finder_returns_empty_for_empty_profile() -> None:
 
 
 def test_acoustic_candidate_finder_accepts_edge_minima() -> None:
-    from fluxtuner_ripper.ripping import AcousticCandidateFinder
+    from fluxtuner_ripper.acoustic import AcousticCandidateFinder
 
     profile = _profile_from_rms([1.0, 5.0, 2.0])
     candidates = AcousticCandidateFinder().find(
@@ -1157,7 +1163,7 @@ def test_acoustic_candidate_finder_accepts_edge_minima() -> None:
 
 
 def test_acoustic_candidate_finder_requires_center_for_radius() -> None:
-    from fluxtuner_ripper.ripping import AcousticCandidateFinder
+    from fluxtuner_ripper.acoustic import AcousticCandidateFinder
 
     with pytest.raises(ValueError):
         AcousticCandidateFinder().find(
@@ -1173,7 +1179,7 @@ def _track_candidate(
     start_time_seconds: float,
     start_offset: int = 0,
 ):
-    from fluxtuner_ripper.ripping import TrackCandidate
+    from fluxtuner_ripper.radio_models import TrackCandidate
 
     return TrackCandidate(
         title=title,
@@ -1185,7 +1191,7 @@ def _track_candidate(
 
 
 def _acoustic_candidate(*, time_seconds: float, rms: float):
-    from fluxtuner_ripper.ripping import AcousticBoundaryCandidate
+    from fluxtuner_ripper.models import AcousticBoundaryCandidate
 
     return AcousticBoundaryCandidate(
         time_seconds=time_seconds,
@@ -1195,7 +1201,7 @@ def _acoustic_candidate(*, time_seconds: float, rms: float):
 
 
 def test_nearest_boundary_matcher_selects_closest_candidate() -> None:
-    from fluxtuner_ripper.ripping import NearestBoundaryMatcher
+    from fluxtuner_ripper.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher(search_radius_seconds=8.0)
     track = _track_candidate(start_time_seconds=100.0)
@@ -1215,7 +1221,7 @@ def test_nearest_boundary_matcher_selects_closest_candidate() -> None:
 
 
 def test_nearest_boundary_matcher_uses_rms_as_tie_breaker() -> None:
-    from fluxtuner_ripper.ripping import NearestBoundaryMatcher
+    from fluxtuner_ripper.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher(search_radius_seconds=8.0)
     track = _track_candidate(start_time_seconds=100.0)
@@ -1234,7 +1240,7 @@ def test_nearest_boundary_matcher_uses_rms_as_tie_breaker() -> None:
 
 
 def test_nearest_boundary_matcher_returns_none_outside_radius() -> None:
-    from fluxtuner_ripper.ripping import NearestBoundaryMatcher
+    from fluxtuner_ripper.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher(search_radius_seconds=2.0)
     track = _track_candidate(start_time_seconds=100.0)
@@ -1251,7 +1257,7 @@ def test_nearest_boundary_matcher_returns_none_outside_radius() -> None:
 
 
 def test_nearest_boundary_matcher_returns_none_without_candidates() -> None:
-    from fluxtuner_ripper.ripping import NearestBoundaryMatcher
+    from fluxtuner_ripper.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
@@ -1263,7 +1269,7 @@ def test_nearest_boundary_matcher_returns_none_without_candidates() -> None:
 
 
 def test_nearest_boundary_matcher_prefers_earlier_time_after_full_tie() -> None:
-    from fluxtuner_ripper.ripping import NearestBoundaryMatcher
+    from fluxtuner_ripper.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
@@ -1283,7 +1289,7 @@ def test_nearest_boundary_matcher_prefers_earlier_time_after_full_tie() -> None:
 def test_nearest_boundary_matcher_overrides_late_candidate_for_much_quieter_earlier_boundary() -> (
     None
 ):
-    from fluxtuner_ripper.ripping import NearestBoundaryMatcher
+    from fluxtuner_ripper.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
@@ -1302,7 +1308,7 @@ def test_nearest_boundary_matcher_overrides_late_candidate_for_much_quieter_earl
 
 
 def test_nearest_boundary_matcher_keeps_late_candidate_when_quiet_ratio_is_too_small() -> None:
-    from fluxtuner_ripper.ripping import NearestBoundaryMatcher
+    from fluxtuner_ripper.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
@@ -1320,7 +1326,7 @@ def test_nearest_boundary_matcher_keeps_late_candidate_when_quiet_ratio_is_too_s
 
 
 def test_nearest_boundary_matcher_does_not_override_candidate_already_before_metadata() -> None:
-    from fluxtuner_ripper.ripping import NearestBoundaryMatcher
+    from fluxtuner_ripper.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
@@ -1339,7 +1345,7 @@ def test_nearest_boundary_matcher_does_not_override_candidate_already_before_met
 
 
 def test_nearest_boundary_matcher_ignores_quieter_boundary_outside_override_radius() -> None:
-    from fluxtuner_ripper.ripping import NearestBoundaryMatcher
+    from fluxtuner_ripper.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
@@ -1357,10 +1363,8 @@ def test_nearest_boundary_matcher_ignores_quieter_boundary_outside_override_radi
 
 
 def test_boundary_relation_classifier_marks_close_candidates_as_agreement() -> None:
-    from fluxtuner_ripper.ripping import (
-        BoundaryRelation,
-        BoundaryRelationClassifier,
-    )
+    from fluxtuner_ripper.matching import BoundaryRelationClassifier
+    from fluxtuner_ripper.models import BoundaryRelation
 
     classifier = BoundaryRelationClassifier(divergence_threshold_seconds=3.0)
 
@@ -1374,10 +1378,8 @@ def test_boundary_relation_classifier_marks_close_candidates_as_agreement() -> N
 
 
 def test_boundary_relation_classifier_marks_acoustic_candidate_earlier() -> None:
-    from fluxtuner_ripper.ripping import (
-        BoundaryRelation,
-        BoundaryRelationClassifier,
-    )
+    from fluxtuner_ripper.matching import BoundaryRelationClassifier
+    from fluxtuner_ripper.models import BoundaryRelation
 
     classifier = BoundaryRelationClassifier(divergence_threshold_seconds=3.0)
 
@@ -1391,10 +1393,8 @@ def test_boundary_relation_classifier_marks_acoustic_candidate_earlier() -> None
 
 
 def test_boundary_relation_classifier_marks_semantic_candidate_earlier() -> None:
-    from fluxtuner_ripper.ripping import (
-        BoundaryRelation,
-        BoundaryRelationClassifier,
-    )
+    from fluxtuner_ripper.matching import BoundaryRelationClassifier
+    from fluxtuner_ripper.models import BoundaryRelation
 
     classifier = BoundaryRelationClassifier(divergence_threshold_seconds=3.0)
 
@@ -1408,10 +1408,8 @@ def test_boundary_relation_classifier_marks_semantic_candidate_earlier() -> None
 
 
 def test_boundary_relation_classifier_treats_exact_threshold_as_agreement() -> None:
-    from fluxtuner_ripper.ripping import (
-        BoundaryRelation,
-        BoundaryRelationClassifier,
-    )
+    from fluxtuner_ripper.matching import BoundaryRelationClassifier
+    from fluxtuner_ripper.models import BoundaryRelation
 
     classifier = BoundaryRelationClassifier(divergence_threshold_seconds=3.0)
 
@@ -1429,14 +1427,14 @@ def test_boundary_relation_classifier_treats_exact_threshold_as_agreement() -> N
 
 
 def test_boundary_relation_classifier_rejects_invalid_threshold() -> None:
-    from fluxtuner_ripper.ripping import BoundaryRelationClassifier
+    from fluxtuner_ripper.matching import BoundaryRelationClassifier
 
     with pytest.raises(ValueError):
         BoundaryRelationClassifier(divergence_threshold_seconds=0.0)
 
 
 def test_boundary_relation_classifier_rejects_negative_times() -> None:
-    from fluxtuner_ripper.ripping import BoundaryRelationClassifier
+    from fluxtuner_ripper.matching import BoundaryRelationClassifier
 
     classifier = BoundaryRelationClassifier()
 
@@ -1454,11 +1452,11 @@ def test_boundary_relation_classifier_rejects_negative_times() -> None:
 
 
 def test_temporal_split_policy_uses_acoustic_boundary_on_agreement() -> None:
-    from fluxtuner_ripper.ripping import (
+    from fluxtuner_ripper.matching import TemporalSplitPolicy
+    from fluxtuner_ripper.models import (
         BoundaryRelation,
         BoundaryRelationResult,
         TemporalSplitKind,
-        TemporalSplitPolicy,
     )
 
     relation = BoundaryRelationResult(
@@ -1476,11 +1474,11 @@ def test_temporal_split_policy_uses_acoustic_boundary_on_agreement() -> None:
 
 
 def test_temporal_split_policy_uses_semantic_boundary_when_it_is_earlier() -> None:
-    from fluxtuner_ripper.ripping import (
+    from fluxtuner_ripper.matching import TemporalSplitPolicy
+    from fluxtuner_ripper.models import (
         BoundaryRelation,
         BoundaryRelationResult,
         TemporalSplitKind,
-        TemporalSplitPolicy,
     )
 
     relation = BoundaryRelationResult(
@@ -1498,11 +1496,11 @@ def test_temporal_split_policy_uses_semantic_boundary_when_it_is_earlier() -> No
 
 
 def test_temporal_split_policy_creates_crossfade_when_acoustic_is_earlier() -> None:
-    from fluxtuner_ripper.ripping import (
+    from fluxtuner_ripper.matching import TemporalSplitPolicy
+    from fluxtuner_ripper.models import (
         BoundaryRelation,
         BoundaryRelationResult,
         TemporalSplitKind,
-        TemporalSplitPolicy,
     )
 
     relation = BoundaryRelationResult(
@@ -1520,11 +1518,11 @@ def test_temporal_split_policy_creates_crossfade_when_acoustic_is_earlier() -> N
 
 
 def test_temporal_split_policy_uses_acoustic_boundary_when_semantic_is_earlier() -> None:
-    from fluxtuner_ripper.ripping import (
+    from fluxtuner_ripper.matching import TemporalSplitPolicy
+    from fluxtuner_ripper.models import (
         BoundaryRelation,
         BoundaryRelationResult,
         TemporalSplitKind,
-        TemporalSplitPolicy,
     )
 
     relation = BoundaryRelationResult(
@@ -1542,7 +1540,10 @@ def test_temporal_split_policy_uses_acoustic_boundary_when_semantic_is_earlier()
 
 
 def test_temporal_split_decision_rejects_invalid_hard_cut() -> None:
-    from fluxtuner_ripper.ripping import TemporalSplitDecision, TemporalSplitKind
+    from fluxtuner_ripper.models import (
+        TemporalSplitDecision,
+        TemporalSplitKind,
+    )
 
     with pytest.raises(ValueError):
         TemporalSplitDecision(
@@ -1553,7 +1554,10 @@ def test_temporal_split_decision_rejects_invalid_hard_cut() -> None:
 
 
 def test_temporal_split_decision_rejects_invalid_crossfade() -> None:
-    from fluxtuner_ripper.ripping import TemporalSplitDecision, TemporalSplitKind
+    from fluxtuner_ripper.models import (
+        TemporalSplitDecision,
+        TemporalSplitKind,
+    )
 
     with pytest.raises(ValueError):
         TemporalSplitDecision(
@@ -1564,7 +1568,10 @@ def test_temporal_split_decision_rejects_invalid_crossfade() -> None:
 
 
 def test_temporal_split_decision_accepts_exclusion_gap() -> None:
-    from fluxtuner_ripper.ripping import TemporalSplitDecision, TemporalSplitKind
+    from fluxtuner_ripper.models import (
+        TemporalSplitDecision,
+        TemporalSplitKind,
+    )
 
     decision = TemporalSplitDecision(
         kind=TemporalSplitKind.EXCLUSION,
@@ -1576,7 +1583,10 @@ def test_temporal_split_decision_accepts_exclusion_gap() -> None:
 
 
 def test_temporal_split_decision_rejects_collapsed_exclusion() -> None:
-    from fluxtuner_ripper.ripping import TemporalSplitDecision, TemporalSplitKind
+    from fluxtuner_ripper.models import (
+        TemporalSplitDecision,
+        TemporalSplitKind,
+    )
 
     with pytest.raises(ValueError, match="outgoing_end_seconds < incoming_start_seconds"):
         TemporalSplitDecision(
@@ -1587,9 +1597,9 @@ def test_temporal_split_decision_rejects_collapsed_exclusion() -> None:
 
 
 def test_temporal_split_aligner_maps_hard_cut_to_single_frame_offset() -> None:
-    from fluxtuner_ripper.ripping import (
-        IncrementalFrameTimeline,
-        TemporalSplitAligner,
+    from fluxtuner_ripper.frames import IncrementalFrameTimeline
+    from fluxtuner_ripper.matching import TemporalSplitAligner
+    from fluxtuner_ripper.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1617,9 +1627,9 @@ def test_temporal_split_aligner_maps_hard_cut_to_single_frame_offset() -> None:
 
 
 def test_temporal_split_aligner_maps_crossfade_edges_independently() -> None:
-    from fluxtuner_ripper.ripping import (
-        IncrementalFrameTimeline,
-        TemporalSplitAligner,
+    from fluxtuner_ripper.frames import IncrementalFrameTimeline
+    from fluxtuner_ripper.matching import TemporalSplitAligner
+    from fluxtuner_ripper.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1645,9 +1655,9 @@ def test_temporal_split_aligner_maps_crossfade_edges_independently() -> None:
 
 
 def test_temporal_split_aligner_maps_exclusion_edges_independently() -> None:
-    from fluxtuner_ripper.ripping import (
-        IncrementalFrameTimeline,
-        TemporalSplitAligner,
+    from fluxtuner_ripper.frames import IncrementalFrameTimeline
+    from fluxtuner_ripper.matching import TemporalSplitAligner
+    from fluxtuner_ripper.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1674,9 +1684,9 @@ def test_temporal_split_aligner_maps_exclusion_edges_independently() -> None:
 
 
 def test_temporal_split_aligner_prefers_earlier_frame_on_exact_tie() -> None:
-    from fluxtuner_ripper.ripping import (
-        IncrementalFrameTimeline,
-        TemporalSplitAligner,
+    from fluxtuner_ripper.frames import IncrementalFrameTimeline
+    from fluxtuner_ripper.matching import TemporalSplitAligner
+    from fluxtuner_ripper.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1704,10 +1714,12 @@ def test_temporal_split_aligner_prefers_earlier_frame_on_exact_tie() -> None:
 
 
 def test_temporal_split_aligner_rejects_time_before_retained_timeline() -> None:
-    from fluxtuner_ripper.ripping import (
-        IncrementalFrameTimeline,
+    from fluxtuner_ripper.frames import IncrementalFrameTimeline
+    from fluxtuner_ripper.matching import (
         SplitAlignmentError,
         TemporalSplitAligner,
+    )
+    from fluxtuner_ripper.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1731,10 +1743,12 @@ def test_temporal_split_aligner_rejects_time_before_retained_timeline() -> None:
 
 
 def test_temporal_split_aligner_rejects_time_after_retained_timeline() -> None:
-    from fluxtuner_ripper.ripping import (
-        IncrementalFrameTimeline,
+    from fluxtuner_ripper.frames import IncrementalFrameTimeline
+    from fluxtuner_ripper.matching import (
         SplitAlignmentError,
         TemporalSplitAligner,
+    )
+    from fluxtuner_ripper.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1757,10 +1771,12 @@ def test_temporal_split_aligner_rejects_time_after_retained_timeline() -> None:
 
 
 def test_temporal_split_aligner_rejects_collapsed_crossfade_after_alignment() -> None:
-    from fluxtuner_ripper.ripping import (
-        IncrementalFrameTimeline,
+    from fluxtuner_ripper.frames import IncrementalFrameTimeline
+    from fluxtuner_ripper.matching import (
         SplitAlignmentError,
         TemporalSplitAligner,
+    )
+    from fluxtuner_ripper.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1785,10 +1801,12 @@ def test_temporal_split_aligner_rejects_collapsed_crossfade_after_alignment() ->
 
 
 def test_temporal_split_aligner_rejects_collapsed_exclusion_after_alignment() -> None:
-    from fluxtuner_ripper.ripping import (
-        IncrementalFrameTimeline,
+    from fluxtuner_ripper.frames import IncrementalFrameTimeline
+    from fluxtuner_ripper.matching import (
         SplitAlignmentError,
         TemporalSplitAligner,
+    )
+    from fluxtuner_ripper.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1813,7 +1831,8 @@ def test_temporal_split_aligner_rejects_collapsed_exclusion_after_alignment() ->
 
 
 def test_track_range_planner_builds_hard_cut_ranges() -> None:
-    from fluxtuner_ripper.ripping import SegmentRangePlanner, SplitDecision, SplitKind
+    from fluxtuner_ripper.models import SplitDecision, SplitKind
+    from fluxtuner_ripper.output import SegmentRangePlanner
 
     decision = SplitDecision(
         kind=SplitKind.HARD_CUT,
@@ -1834,7 +1853,8 @@ def test_track_range_planner_builds_hard_cut_ranges() -> None:
 
 
 def test_track_range_planner_preserves_crossfade_overlap() -> None:
-    from fluxtuner_ripper.ripping import SegmentRangePlanner, SplitDecision, SplitKind
+    from fluxtuner_ripper.models import SplitDecision, SplitKind
+    from fluxtuner_ripper.output import SegmentRangePlanner
 
     decision = SplitDecision(
         kind=SplitKind.CROSSFADE,
@@ -1858,7 +1878,8 @@ def test_track_range_planner_preserves_crossfade_overlap() -> None:
 
 
 def test_track_range_planner_preserves_exclusion_gap() -> None:
-    from fluxtuner_ripper.ripping import SegmentRangePlanner, SplitDecision, SplitKind
+    from fluxtuner_ripper.models import SplitDecision, SplitKind
+    from fluxtuner_ripper.output import SegmentRangePlanner
 
     decision = SplitDecision(
         kind=SplitKind.EXCLUSION,
@@ -1880,7 +1901,8 @@ def test_track_range_planner_preserves_exclusion_gap() -> None:
 
 
 def test_track_range_planner_rejects_no_boundary() -> None:
-    from fluxtuner_ripper.ripping import SegmentRangePlanner, SplitDecision, SplitKind
+    from fluxtuner_ripper.models import SplitDecision, SplitKind
+    from fluxtuner_ripper.output import SegmentRangePlanner
 
     decision = SplitDecision(kind=SplitKind.NO_BOUNDARY)
 
@@ -1893,10 +1915,8 @@ def test_track_range_planner_rejects_no_boundary() -> None:
 
 
 def test_encoded_track_writer_returns_exact_hard_cut_bytes() -> None:
-    from fluxtuner_ripper.ripping import (
-        EncodedAudioRingBuffer,
-        EncodedSegmentWriter,
-    )
+    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
+    from fluxtuner_ripper.output import EncodedSegmentWriter
 
     source = EncodedAudioRingBuffer(max_bytes=20)
     source.append(b"abcdefghijklmnopqrst")
@@ -1910,10 +1930,8 @@ def test_encoded_track_writer_returns_exact_hard_cut_bytes() -> None:
 
 
 def test_encoded_track_writer_can_materialize_overlapping_tracks() -> None:
-    from fluxtuner_ripper.ripping import (
-        EncodedAudioRingBuffer,
-        EncodedSegmentWriter,
-    )
+    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
+    from fluxtuner_ripper.output import EncodedSegmentWriter
 
     source = EncodedAudioRingBuffer(max_bytes=20)
     source.append(b"abcdefghijklmnopqrst")
@@ -1934,10 +1952,8 @@ def test_encoded_track_writer_can_materialize_overlapping_tracks() -> None:
 
 
 def test_encoded_track_writer_rejects_evicted_range() -> None:
-    from fluxtuner_ripper.ripping import (
-        EncodedAudioRingBuffer,
-        EncodedSegmentWriter,
-    )
+    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
+    from fluxtuner_ripper.output import EncodedSegmentWriter
 
     source = EncodedAudioRingBuffer(max_bytes=5)
     source.append(b"abcdefghij")
@@ -1950,7 +1966,7 @@ def test_encoded_track_writer_rejects_evicted_range() -> None:
 
 
 def test_track_file_writer_uses_codec_extension() -> None:
-    from fluxtuner_ripper.ripping import SegmentFileWriter
+    from fluxtuner_ripper.output import SegmentFileWriter
 
     writer = SegmentFileWriter()
 
@@ -1960,14 +1976,14 @@ def test_track_file_writer_uses_codec_extension() -> None:
 
 
 def test_track_file_writer_rejects_unsupported_codec() -> None:
-    from fluxtuner_ripper.ripping import SegmentFileWriter
+    from fluxtuner_ripper.output import SegmentFileWriter
 
     with pytest.raises(ValueError):
         SegmentFileWriter().extension_for_codec("flac")
 
 
 def test_track_file_writer_persists_exact_bytes(tmp_path) -> None:
-    from fluxtuner_ripper.ripping import SegmentFileWriter
+    from fluxtuner_ripper.output import SegmentFileWriter
 
     payload = b"encoded-track-bytes"
     writer = SegmentFileWriter()
@@ -1984,7 +2000,7 @@ def test_track_file_writer_persists_exact_bytes(tmp_path) -> None:
 
 
 def test_track_file_writer_replaces_existing_target_atomically(tmp_path) -> None:
-    from fluxtuner_ripper.ripping import SegmentFileWriter
+    from fluxtuner_ripper.output import SegmentFileWriter
 
     target = tmp_path / "Track.aac"
     target.write_bytes(b"old")
@@ -2001,7 +2017,7 @@ def test_track_file_writer_replaces_existing_target_atomically(tmp_path) -> None
 
 
 def test_track_file_writer_leaves_no_temp_file_after_success(tmp_path) -> None:
-    from fluxtuner_ripper.ripping import SegmentFileWriter
+    from fluxtuner_ripper.output import SegmentFileWriter
 
     SegmentFileWriter().write(
         directory=tmp_path,
@@ -2019,7 +2035,7 @@ def test_track_file_writer_leaves_no_temp_file_after_success(tmp_path) -> None:
 
 
 def test_track_file_writer_rejects_empty_stem_and_data(tmp_path) -> None:
-    from fluxtuner_ripper.ripping import SegmentFileWriter
+    from fluxtuner_ripper.output import SegmentFileWriter
 
     writer = SegmentFileWriter()
 
@@ -2041,7 +2057,10 @@ def test_track_file_writer_rejects_empty_stem_and_data(tmp_path) -> None:
 
 
 def test_mp3_track_finalizer_rejects_missing_binary() -> None:
-    from fluxtuner_ripper.ripping import Mp3SegmentFinalizer, SegmentFinalizeError
+    from fluxtuner_ripper.output import (
+        Mp3SegmentFinalizer,
+        SegmentFinalizeError,
+    )
 
     finalizer = Mp3SegmentFinalizer(ffmpeg_binary="/definitely/missing/fluxtuner-ffmpeg")
 
@@ -2050,7 +2069,7 @@ def test_mp3_track_finalizer_rejects_missing_binary() -> None:
 
 
 def test_mp3_track_finalizer_rejects_empty_input() -> None:
-    from fluxtuner_ripper.ripping import Mp3SegmentFinalizer
+    from fluxtuner_ripper.output import Mp3SegmentFinalizer
 
     with pytest.raises(ValueError):
         Mp3SegmentFinalizer().finalize(b"")
@@ -2061,7 +2080,10 @@ def test_mp3_track_finalizer_legacy_finalize_respects_timeout(
 ) -> None:
     import time
 
-    from fluxtuner_ripper.ripping import Mp3SegmentFinalizer, SegmentFinalizeError
+    from fluxtuner_ripper.output import (
+        Mp3SegmentFinalizer,
+        SegmentFinalizeError,
+    )
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-legacy-mp3-timeout"
     fake_ffmpeg.write_text(
@@ -2097,7 +2119,10 @@ time.sleep(60)
 def test_mp3_track_finalizer_rejects_invalid_mp3_when_ffmpeg_available() -> None:
     import shutil
 
-    from fluxtuner_ripper.ripping import Mp3SegmentFinalizer, SegmentFinalizeError
+    from fluxtuner_ripper.output import (
+        Mp3SegmentFinalizer,
+        SegmentFinalizeError,
+    )
 
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
@@ -2115,7 +2140,7 @@ def test_mp3_track_finalizer_remuxes_mp3_without_transcoding() -> None:
     if ffmpeg is None:
         pytest.skip("ffmpeg is not installed")
 
-    from fluxtuner_ripper.ripping import Mp3SegmentFinalizer
+    from fluxtuner_ripper.output import Mp3SegmentFinalizer
 
     generated = subprocess.run(
         [
@@ -2171,7 +2196,7 @@ def test_mp3_track_finalizer_preserves_decodable_duration() -> None:
     if ffmpeg is None:
         pytest.skip("ffmpeg is not installed")
 
-    from fluxtuner_ripper.ripping import Mp3SegmentFinalizer
+    from fluxtuner_ripper.output import Mp3SegmentFinalizer
 
     generated = subprocess.run(
         [
@@ -2243,7 +2268,10 @@ def test_mp3_track_finalizer_preserves_decodable_duration() -> None:
 
 
 def test_aac_track_finalizer_rejects_missing_binary() -> None:
-    from fluxtuner_ripper.ripping import AacSegmentFinalizer, SegmentFinalizeError
+    from fluxtuner_ripper.output import (
+        AacSegmentFinalizer,
+        SegmentFinalizeError,
+    )
 
     finalizer = AacSegmentFinalizer(ffmpeg_binary="/definitely/missing/fluxtuner-ffmpeg")
 
@@ -2252,7 +2280,7 @@ def test_aac_track_finalizer_rejects_missing_binary() -> None:
 
 
 def test_aac_track_finalizer_rejects_empty_input() -> None:
-    from fluxtuner_ripper.ripping import AacSegmentFinalizer
+    from fluxtuner_ripper.output import AacSegmentFinalizer
 
     with pytest.raises(ValueError):
         AacSegmentFinalizer().finalize(b"")
@@ -2263,7 +2291,10 @@ def test_aac_track_finalizer_legacy_finalize_respects_timeout(
 ) -> None:
     import time
 
-    from fluxtuner_ripper.ripping import AacSegmentFinalizer, SegmentFinalizeError
+    from fluxtuner_ripper.output import (
+        AacSegmentFinalizer,
+        SegmentFinalizeError,
+    )
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-legacy-aac-timeout"
     fake_ffmpeg.write_text(
@@ -2299,7 +2330,10 @@ time.sleep(60)
 def test_aac_track_finalizer_rejects_invalid_aac_when_ffmpeg_available() -> None:
     import shutil
 
-    from fluxtuner_ripper.ripping import AacSegmentFinalizer, SegmentFinalizeError
+    from fluxtuner_ripper.output import (
+        AacSegmentFinalizer,
+        SegmentFinalizeError,
+    )
 
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
@@ -2317,7 +2351,7 @@ def test_aac_track_finalizer_remuxes_adts_to_m4a_without_transcoding() -> None:
     if ffmpeg is None:
         pytest.skip("ffmpeg is not installed")
 
-    from fluxtuner_ripper.ripping import AacSegmentFinalizer
+    from fluxtuner_ripper.output import AacSegmentFinalizer
 
     generated = subprocess.run(
         [
@@ -2376,7 +2410,7 @@ def test_aac_track_finalizer_preserves_decodable_duration() -> None:
     if ffmpeg is None:
         pytest.skip("ffmpeg is not installed")
 
-    from fluxtuner_ripper.ripping import AacSegmentFinalizer
+    from fluxtuner_ripper.output import AacSegmentFinalizer
 
     generated = subprocess.run(
         [
@@ -2462,10 +2496,8 @@ class _FakeFinalizer:
 
 
 def test_track_output_service_composes_mp3_pipeline(tmp_path) -> None:
-    from fluxtuner_ripper.ripping import (
-        EncodedAudioRingBuffer,
-        SegmentOutputService,
-    )
+    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
+    from fluxtuner_ripper.output import SegmentOutputService
 
     source = EncodedAudioRingBuffer(max_bytes=20)
     source.append(b"abcdefghijklmnopqrst")
@@ -2487,10 +2519,8 @@ def test_track_output_service_composes_mp3_pipeline(tmp_path) -> None:
 
 
 def test_track_output_service_composes_aac_to_m4a_pipeline(tmp_path) -> None:
-    from fluxtuner_ripper.ripping import (
-        EncodedAudioRingBuffer,
-        SegmentOutputService,
-    )
+    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
+    from fluxtuner_ripper.output import SegmentOutputService
 
     source = EncodedAudioRingBuffer(max_bytes=20)
     source.append(b"abcdefghijklmnopqrst")
@@ -2512,10 +2542,8 @@ def test_track_output_service_composes_aac_to_m4a_pipeline(tmp_path) -> None:
 
 
 def test_track_output_service_rejects_unsupported_codec(tmp_path) -> None:
-    from fluxtuner_ripper.ripping import (
-        EncodedAudioRingBuffer,
-        SegmentOutputService,
-    )
+    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
+    from fluxtuner_ripper.output import SegmentOutputService
 
     source = EncodedAudioRingBuffer(max_bytes=10)
     source.append(b"abcdefghij")
@@ -2531,10 +2559,8 @@ def test_track_output_service_rejects_unsupported_codec(tmp_path) -> None:
 
 
 def test_track_output_service_rejects_evicted_range(tmp_path) -> None:
-    from fluxtuner_ripper.ripping import (
-        EncodedAudioRingBuffer,
-        SegmentOutputService,
-    )
+    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
+    from fluxtuner_ripper.output import SegmentOutputService
 
     source = EncodedAudioRingBuffer(max_bytes=5)
     source.append(b"abcdefghij")
