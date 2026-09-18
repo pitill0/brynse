@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
 from fluxtuner_ripper.frames import IncrementalFrameTimeline
-from fluxtuner_ripper.icy import IcyStreamParser
-from fluxtuner_ripper.radio_models import (
+from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
+from fluxtuner_ripper.integrations.radio.models import (
     MetadataEvent,
     RippingIngestResult,
     TimedMetadataEvent,

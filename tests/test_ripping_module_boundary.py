@@ -20,7 +20,7 @@ def test_production_modules_do_not_use_ripping_as_generic_facade() -> None:
 
         source = path.read_text(encoding="utf-8")
 
-        if "from fluxtuner_ripper.ripping import" in source:
+        if "from fluxtuner_ripper.integrations.radio.ripping import" in source:
             violations.append(path.name)
 
     assert not violations, "production modules still use ripping.py as a facade:\n" + "\n".join(

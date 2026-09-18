@@ -8,7 +8,7 @@ def test_track_range_compatibility_vocabulary_is_removed() -> None:
         root / "src/fluxtuner_ripper/models.py",
         root / "src/fluxtuner_ripper/output.py",
         root / "src/fluxtuner_ripper/__init__.py",
-        root / "src/fluxtuner_ripper/ripping.py",
+        root / "src/fluxtuner_ripper/integrations/radio/ripping.py",
     )
 
     forbidden = (

@@ -6,9 +6,9 @@ def test_obsolete_track_output_vocabulary_is_removed() -> None:
 
     paths = (
         root / "src/fluxtuner_ripper/output.py",
-        root / "src/fluxtuner_ripper/session_output.py",
+        root / "src/fluxtuner_ripper/integrations/radio/session_output.py",
         root / "src/fluxtuner_ripper/__init__.py",
-        root / "src/fluxtuner_ripper/ripping.py",
+        root / "src/fluxtuner_ripper/integrations/radio/ripping.py",
     )
 
     forbidden = (

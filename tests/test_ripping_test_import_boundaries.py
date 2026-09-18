@@ -53,7 +53,10 @@ def test_ripping_tests_import_low_level_components_from_owner_modules() -> None:
     violations: list[str] = []
 
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "fluxtuner_ripper.ripping":
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module == "fluxtuner_ripper.integrations.radio.ripping"
+        ):
             bad = [alias.name for alias in node.names if alias.name in FORBIDDEN_FROM_RIPPING]
             if bad:
                 violations.append(f"line {node.lineno}: {', '.join(sorted(bad))}")

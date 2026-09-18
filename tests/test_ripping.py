@@ -3,11 +3,11 @@ from pathlib import Path
 import pytest
 
 from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
-from fluxtuner_ripper.models import SegmentByteRange, SplitDecision, SplitKind
-from fluxtuner_ripper.radio_models import (
+from fluxtuner_ripper.integrations.radio.models import (
     ContentKind,
     MetadataEvent,
 )
+from fluxtuner_ripper.models import SegmentByteRange, SplitDecision, SplitKind
 
 
 def test_content_kind_keeps_future_semantic_categories_explicit() -> None:
@@ -273,7 +273,7 @@ def _icy_block(metadata: str) -> bytes:
 
 
 def test_icy_parser_strips_metadata_and_reports_clean_audio_offset() -> None:
-    from fluxtuner_ripper.icy import IcyStreamParser
+    from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     raw = b"abcd" + _icy_block("StreamTitle='Artist - Track';") + b"efgh"
@@ -288,7 +288,7 @@ def test_icy_parser_strips_metadata_and_reports_clean_audio_offset() -> None:
 
 
 def test_icy_parser_handles_zero_length_metadata_block() -> None:
-    from fluxtuner_ripper.icy import IcyStreamParser
+    from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=3)
 
@@ -300,7 +300,7 @@ def test_icy_parser_handles_zero_length_metadata_block() -> None:
 
 
 def test_icy_parser_handles_metadata_split_across_chunks() -> None:
-    from fluxtuner_ripper.icy import IcyStreamParser
+    from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     block = _icy_block("StreamTitle='Split Metadata';")
@@ -329,7 +329,7 @@ def test_icy_parser_handles_metadata_split_across_chunks() -> None:
 
 
 def test_icy_parser_handles_length_byte_as_its_own_chunk() -> None:
-    from fluxtuner_ripper.icy import IcyStreamParser
+    from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     block = _icy_block("StreamTitle='Chunky';")
@@ -348,7 +348,7 @@ def test_icy_parser_handles_length_byte_as_its_own_chunk() -> None:
 
 
 def test_icy_parser_emits_multiple_events_with_absolute_audio_offsets() -> None:
-    from fluxtuner_ripper.icy import IcyStreamParser
+    from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     raw = (
@@ -370,7 +370,7 @@ def test_icy_parser_emits_multiple_events_with_absolute_audio_offsets() -> None:
 
 
 def test_icy_parser_ignores_metadata_without_stream_title() -> None:
-    from fluxtuner_ripper.icy import IcyStreamParser
+    from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     raw = b"abcd" + _icy_block("StreamUrl='https://example.invalid';") + b"efgh"
@@ -382,7 +382,7 @@ def test_icy_parser_ignores_metadata_without_stream_title() -> None:
 
 
 def test_icy_parser_ignores_empty_stream_title() -> None:
-    from fluxtuner_ripper.icy import IcyStreamParser
+    from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     raw = b"abcd" + _icy_block("StreamTitle='';") + b"efgh"
@@ -394,7 +394,7 @@ def test_icy_parser_ignores_empty_stream_title() -> None:
 
 
 def test_icy_parser_empty_feed_preserves_state() -> None:
-    from fluxtuner_ripper.icy import IcyStreamParser
+    from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
 
@@ -458,7 +458,7 @@ def test_incremental_frame_timeline_resynchronizes_and_keeps_absolute_offsets() 
 
 
 def test_ripping_stream_ingestor_resolves_icy_metadata_to_exact_aac_time() -> None:
-    from fluxtuner_ripper.ripping import RippingStreamIngestor
+    from fluxtuner_ripper.integrations.radio.ripping import RippingStreamIngestor
 
     first = _adts_frame(frame_length=900)
     second = _adts_frame(frame_length=900)
@@ -482,7 +482,7 @@ def test_ripping_stream_ingestor_resolves_icy_metadata_to_exact_aac_time() -> No
 
 
 def test_ripping_stream_ingestor_survives_arbitrary_raw_chunk_boundaries() -> None:
-    from fluxtuner_ripper.ripping import RippingStreamIngestor
+    from fluxtuner_ripper.integrations.radio.ripping import RippingStreamIngestor
 
     first = _mp3_frame(bitrate_index=9)
     second = _mp3_frame(bitrate_index=14)
@@ -519,7 +519,7 @@ def test_ripping_stream_ingestor_survives_arbitrary_raw_chunk_boundaries() -> No
 
 
 def test_ripping_stream_ingestor_delays_boundary_metadata_until_next_frame_arrives() -> None:
-    from fluxtuner_ripper.ripping import RippingStreamIngestor
+    from fluxtuner_ripper.integrations.radio.ripping import RippingStreamIngestor
 
     first = _adts_frame(frame_length=900)
     second = _adts_frame(frame_length=900)
@@ -542,7 +542,7 @@ def test_ripping_stream_ingestor_delays_boundary_metadata_until_next_frame_arriv
 
 
 def test_ripping_stream_ingestor_prunes_frame_records_with_ring_buffer() -> None:
-    from fluxtuner_ripper.ripping import RippingStreamIngestor
+    from fluxtuner_ripper.integrations.radio.ripping import RippingStreamIngestor
 
     frame = _adts_frame(frame_length=900)
     ingestor = RippingStreamIngestor(
@@ -567,7 +567,7 @@ def _timed_metadata(
     offset: int,
     time_seconds: float,
 ):
-    from fluxtuner_ripper.radio_models import TimedMetadataEvent
+    from fluxtuner_ripper.integrations.radio.models import TimedMetadataEvent
 
     return TimedMetadataEvent(
         title=title,
@@ -577,7 +577,7 @@ def _timed_metadata(
 
 
 def test_metadata_semantic_tracker_marks_short_lifetime_no_boundary() -> None:
-    from fluxtuner_ripper.metadata import MetadataSemanticTracker
+    from fluxtuner_ripper.integrations.radio.metadata import MetadataSemanticTracker
     from fluxtuner_ripper.models import SplitKind
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
@@ -599,7 +599,7 @@ def test_metadata_semantic_tracker_marks_short_lifetime_no_boundary() -> None:
 
 
 def test_metadata_semantic_tracker_confirms_durable_title_on_repeated_metadata() -> None:
-    from fluxtuner_ripper.metadata import MetadataSemanticTracker
+    from fluxtuner_ripper.integrations.radio.metadata import MetadataSemanticTracker
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
 
@@ -614,7 +614,7 @@ def test_metadata_semantic_tracker_confirms_durable_title_on_repeated_metadata()
 
 
 def test_metadata_semantic_tracker_confirms_durable_title_when_replaced() -> None:
-    from fluxtuner_ripper.metadata import MetadataSemanticTracker
+    from fluxtuner_ripper.integrations.radio.metadata import MetadataSemanticTracker
     from fluxtuner_ripper.models import SplitKind
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
@@ -633,7 +633,7 @@ def test_metadata_semantic_tracker_confirms_durable_title_when_replaced() -> Non
 
 
 def test_metadata_semantic_tracker_does_not_duplicate_confirmed_candidate() -> None:
-    from fluxtuner_ripper.metadata import MetadataSemanticTracker
+    from fluxtuner_ripper.integrations.radio.metadata import MetadataSemanticTracker
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
 
@@ -646,7 +646,7 @@ def test_metadata_semantic_tracker_does_not_duplicate_confirmed_candidate() -> N
 
 
 def test_metadata_semantic_tracker_confirm_current_without_repeat_packet() -> None:
-    from fluxtuner_ripper.metadata import MetadataSemanticTracker
+    from fluxtuner_ripper.integrations.radio.metadata import MetadataSemanticTracker
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
 
@@ -662,7 +662,7 @@ def test_metadata_semantic_tracker_confirm_current_without_repeat_packet() -> No
 
 
 def test_metadata_semantic_tracker_transient_bridge_sequence() -> None:
-    from fluxtuner_ripper.metadata import MetadataSemanticTracker
+    from fluxtuner_ripper.integrations.radio.metadata import MetadataSemanticTracker
     from fluxtuner_ripper.models import SplitKind
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
@@ -689,7 +689,7 @@ def test_metadata_semantic_tracker_transient_bridge_sequence() -> None:
 
 
 def test_metadata_semantic_tracker_rejects_non_monotonic_time() -> None:
-    from fluxtuner_ripper.metadata import MetadataSemanticTracker
+    from fluxtuner_ripper.integrations.radio.metadata import MetadataSemanticTracker
 
     tracker = MetadataSemanticTracker()
 
@@ -1179,7 +1179,7 @@ def _track_candidate(
     start_time_seconds: float,
     start_offset: int = 0,
 ):
-    from fluxtuner_ripper.radio_models import TrackCandidate
+    from fluxtuner_ripper.integrations.radio.models import TrackCandidate
 
     return TrackCandidate(
         title=title,
@@ -3520,7 +3520,7 @@ def test_session_output_writer_uses_safe_output_service_factory_by_default(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    import fluxtuner_ripper.session_output as session_output
+    import fluxtuner_ripper.integrations.radio.session_output as session_output
     from fluxtuner_ripper.output import SegmentOutputService
 
     class _FakeIngestor:

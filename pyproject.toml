@@ -22,7 +22,7 @@ classifiers = [
 ]
 
 [project.scripts]
-fluxtuner-ripper = "fluxtuner_ripper.cli:main"
+fluxtuner-ripper = "fluxtuner_ripper.integrations.radio.cli:main"
 fluxtuner-ripper-segment = "fluxtuner_ripper.generic_cli:main"
 
 [project.optional-dependencies]

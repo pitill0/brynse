@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fluxtuner_ripper.radio_models import (
+from fluxtuner_ripper.integrations.radio.models import (
     IcyParseResult,
     MetadataEvent,
 )

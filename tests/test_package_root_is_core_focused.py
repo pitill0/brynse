@@ -17,7 +17,7 @@ def test_package_root_does_not_export_radio_models() -> None:
 
     package_init = (root / "src/fluxtuner_ripper/__init__.py").read_text(encoding="utf-8")
 
-    assert "from fluxtuner_ripper.radio_models import" not in package_init
+    assert "from fluxtuner_ripper.integrations.radio.models import" not in package_init
 
     violations = [name for name in RADIO_MODEL_NAMES if f'"{name}"' in package_init]
 

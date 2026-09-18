@@ -4,14 +4,14 @@ from pathlib import Path
 
 def test_ripping_module_only_imports_runtime_dependencies() -> None:
     root = Path(__file__).resolve().parents[1]
-    path = root / "src/fluxtuner_ripper/ripping.py"
+    path = root / "src/fluxtuner_ripper/integrations/radio/ripping.py"
 
     tree = ast.parse(path.read_text(encoding="utf-8"))
 
     forbidden_modules = {
         "fluxtuner_ripper.acoustic",
         "fluxtuner_ripper.matching",
-        "fluxtuner_ripper.metadata",
+        "fluxtuner_ripper.integrations.radio.metadata",
         "fluxtuner_ripper.output",
     }
 

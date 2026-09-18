@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from fluxtuner_ripper.integrations.radio.models import MetadataSemanticDecision
 from fluxtuner_ripper.models import SplitKind
-from fluxtuner_ripper.radio_models import MetadataSemanticDecision
 
 _TOKEN_SEPARATOR = re.compile(r"[^a-z0-9]+")
 

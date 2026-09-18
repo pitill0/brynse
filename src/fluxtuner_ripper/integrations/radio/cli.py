@@ -7,8 +7,8 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from fluxtuner_ripper.radio_models import TimedMetadataEvent
-from fluxtuner_ripper.runner import (
+from fluxtuner_ripper.integrations.radio.models import TimedMetadataEvent
+from fluxtuner_ripper.integrations.radio.runner import (
     RippingRunConfig,
     RippingRunError,
     RippingRunner,
@@ -17,7 +17,7 @@ from fluxtuner_ripper.runner import (
     resolve_codec,
     resolve_metaint,
 )
-from fluxtuner_ripper.session_output import WrittenTrack
+from fluxtuner_ripper.integrations.radio.session_output import WrittenTrack
 from fluxtuner_ripper.source import StreamSource
 
 
