@@ -421,3 +421,40 @@ def test_run_segment_json_returns_structured_json_error() -> None:
         "kind": "validation",
         "message": "input contains no encoded data",
     }
+
+
+def test_run_segment_json_returns_structured_json_result() -> None:
+    import json
+
+    from fluxtuner_ripper.machine import run_segment_json
+
+    class FakeSource:
+        def __init__(self) -> None:
+            self._chunks = [b"encoded-data", b""]
+            self.closed = False
+
+        @property
+        def metadata(self) -> Mapping[str, str]:
+            return {}
+
+        def read(self, max_bytes: int) -> bytes:
+            return self._chunks.pop(0)
+
+        def close(self) -> None:
+            self.closed = True
+
+    source = FakeSource()
+
+    raw = run_segment_json(
+        source=source,
+        request_json='{"codec":"mp3","provider":"fixed","interval_seconds":10.0}',
+    )
+
+    payload = json.loads(raw)
+
+    assert payload["codec"] == "mp3"
+    assert payload["provider"] == "fixed_interval"
+    assert payload["bytes_ingested"] == len(b"encoded-data")
+    assert payload["boundaries"] == []
+    assert payload["segments"] == []
+    assert source.closed is True
