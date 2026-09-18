@@ -117,3 +117,30 @@ def test_segment_source_rejects_legacy_parameters() -> None:
             provider_name="fixed",
             interval_seconds=10.0,
         )
+
+
+def test_segment_result_is_json_serializable() -> None:
+    import json
+
+    from fluxtuner_ripper.machine import SegmentResult
+
+    result = SegmentResult(
+        bytes_ingested=1234,
+        codec="mp3",
+        provider="fixed_interval",
+        interval_seconds=10.0,
+        boundaries=(),
+        segments=(),
+    )
+
+    payload = result.to_dict()
+
+    assert payload == {
+        "bytes_ingested": 1234,
+        "codec": "mp3",
+        "provider": "fixed_interval",
+        "interval_seconds": 10.0,
+        "boundaries": [],
+        "segments": [],
+    }
+    assert json.loads(json.dumps(payload)) == payload

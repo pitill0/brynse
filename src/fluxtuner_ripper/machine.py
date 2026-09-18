@@ -25,6 +25,26 @@ class SegmentRequest:
         }
 
 
+@dataclass(frozen=True)
+class SegmentResult:
+    bytes_ingested: int
+    codec: str
+    provider: str
+    interval_seconds: float | None
+    boundaries: tuple[dict[str, object], ...]
+    segments: tuple[dict[str, object], ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "bytes_ingested": self.bytes_ingested,
+            "codec": self.codec,
+            "provider": self.provider,
+            "interval_seconds": self.interval_seconds,
+            "boundaries": list(self.boundaries),
+            "segments": list(self.segments),
+        }
+
+
 def segment_source(
     *,
     source: StreamSource,
