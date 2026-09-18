@@ -4,6 +4,8 @@ from collections.abc import Mapping
 
 import pytest
 
+from fluxtuner_ripper.machine import MachineError, SegmentResult
+
 
 def test_machine_segment_source_consumes_stream_source() -> None:
     from fluxtuner_ripper.machine import SegmentRequest, SegmentResult, segment_source
@@ -343,3 +345,51 @@ def test_segment_request_from_json_returns_machine_error_for_invalid_input(
     assert isinstance(result, MachineError)
     assert result.code == "invalid_request"
     assert result.kind == "validation"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (
+            MachineError(
+                code="invalid_request",
+                message="bad request",
+                kind="validation",
+            ),
+            {
+                "code": "invalid_request",
+                "kind": "validation",
+                "message": "bad request",
+            },
+        ),
+        (
+            SegmentResult(
+                bytes_ingested=12,
+                codec="mp3",
+                provider="fixed_interval",
+                interval_seconds=10.0,
+                boundaries=(),
+                segments=(),
+            ),
+            {
+                "boundaries": [],
+                "bytes_ingested": 12,
+                "codec": "mp3",
+                "interval_seconds": 10.0,
+                "provider": "fixed_interval",
+                "segments": [],
+            },
+        ),
+    ],
+)
+def test_machine_response_to_json(
+    value: MachineError | SegmentResult,
+    expected: dict[str, object],
+) -> None:
+    import json
+
+    from fluxtuner_ripper.machine import machine_response_to_json
+
+    raw = machine_response_to_json(value)
+
+    assert json.loads(raw) == expected

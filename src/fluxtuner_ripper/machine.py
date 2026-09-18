@@ -64,6 +64,15 @@ def classify_machine_error(exc: Exception) -> MachineError:
     )
 
 
+def machine_response_to_json(
+    value: SegmentResult | MachineError,
+) -> str:
+    return json.dumps(
+        value.to_dict(),
+        sort_keys=True,
+    )
+
+
 def segment_request_from_json(raw: str) -> SegmentRequest | MachineError:
     try:
         payload = json.loads(raw)
