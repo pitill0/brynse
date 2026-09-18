@@ -359,3 +359,12 @@ def test_streaming_segment_sink_resolves_initial_start_offset_lazily(
 
     assert segment.start_offset == 100
     assert segment.end_offset == 300
+
+
+def test_streaming_sink_uses_generic_segment_range_contracts() -> None:
+    source = Path("src/fluxtuner_ripper/streaming_sink.py").read_text()
+
+    assert "TrackByteRange" not in source
+    assert "TrackRangePlanner" not in source
+    assert "SegmentByteRange" in source
+    assert "SegmentRangePlanner" in source

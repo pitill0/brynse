@@ -7,12 +7,12 @@ from typing import Protocol
 
 from fluxtuner_ripper.generic_output import MaterializedSegment
 from fluxtuner_ripper.ingest import EncodedStreamIngestor
-from fluxtuner_ripper.models import TrackByteRange
+from fluxtuner_ripper.models import SegmentByteRange
 from fluxtuner_ripper.orchestrator import CandidateResolution
 from fluxtuner_ripper.output import (
     EncodedByteSource,
+    SegmentRangePlanner,
     TrackOutputService,
-    TrackRangePlanner,
     create_safe_track_output_service,
 )
 from fluxtuner_ripper.streaming_spool import StreamingSpool
@@ -37,7 +37,7 @@ class StreamingSegmentSink:
         spool: StreamingSpool | None = None,
         initial_start_offset: int | None = None,
         initial_start_source: InitialStartOffsetSource | None = None,
-        range_planner: TrackRangePlanner | None = None,
+        range_planner: SegmentRangePlanner | None = None,
         output_service: TrackOutputService | None = None,
     ) -> None:
         if codec not in {"mp3", "aac"}:
@@ -50,7 +50,7 @@ class StreamingSegmentSink:
         self._codec = codec
         self._initial_start_offset = initial_start_offset
         self._initial_start_source = initial_start_source
-        self._range_planner = range_planner or TrackRangePlanner()
+        self._range_planner = range_planner or SegmentRangePlanner()
         self._output_service = output_service or create_safe_track_output_service()
 
         self._current_start_offset: int | None = None
@@ -139,7 +139,7 @@ class StreamingSegmentSink:
             return None
 
         return self._write_range(
-            TrackByteRange(
+            SegmentByteRange(
                 start_offset=current_start_offset,
                 end_offset=stream_end_offset,
             )
@@ -147,7 +147,7 @@ class StreamingSegmentSink:
 
     def _write_range(
         self,
-        byte_range: TrackByteRange,
+        byte_range: SegmentByteRange,
     ) -> MaterializedSegment:
         if not self._source.contains(
             byte_range.start_offset,
