@@ -57,6 +57,95 @@ External boundaries are loaded from JSON or JSONL:
 Use `--min-tail SECONDS` to merge a final tail shorter than the configured
 threshold into the preceding segment. The default is 1 second.
 
+## Machine-oriented API
+
+FluxTuner Ripper also exposes a Python API for embedding the segmentation engine
+in applications, automation, or agent-oriented workflows. This is a library API;
+it is not an additional installed CLI.
+
+The structured request contract is `SegmentRequest`:
+
+```python
+from fluxtuner_ripper.machine import SegmentRequest
+
+request = SegmentRequest(
+    codec="mp3",
+    provider="fixed",
+    interval_seconds=10.0,
+)
+```
+
+The same request can cross a JSON boundary using the equivalent object:
+
+```json
+{
+  "codec": "mp3",
+  "provider": "fixed",
+  "interval_seconds": 10.0
+}
+```
+
+The current machine request contract exposes `codec`, `provider`, and
+`interval_seconds`. The generic CLI has a wider surface, including manual and
+external boundary inputs and output materialization options.
+
+Three entry points provide progressively safer boundaries:
+
+- `segment_source(source=..., request=...)` is the strict Python API. It consumes
+  a `StreamSource`, returns a `SegmentResult`, and may propagate exceptions.
+- `run_segment_source(source=..., request=...)` is the safe Python API. It returns
+  either `SegmentResult` or `MachineError`.
+- `run_segment_json(source=..., request_json=...)` is the machine-oriented JSON
+  boundary. It parses the request, executes through the safe API, and returns a
+  JSON string containing either the result or a structured error.
+
+A successful result contains the normalized request information together with
+ingestion and segmentation data:
+
+```json
+{
+  "boundaries": [],
+  "bytes_ingested": 12,
+  "codec": "mp3",
+  "interval_seconds": 10.0,
+  "provider": "fixed_interval",
+  "segments": []
+}
+```
+
+`MachineError` uses three fields: `code`, `message`, and `kind`. The currently
+defined error codes are:
+
+- `invalid_request` for validation errors
+- `io_error` for input/output failures
+- `finalize_error` for segment finalization failures
+- `write_error` for persistence failures
+- `internal_error` for otherwise unclassified internal failures
+
+The error kinds are `validation`, `operational`, and `internal`.
+
+`StreamSource` is the source abstraction used by the machine API. A source
+provides transport metadata, incremental `read(max_bytes)` access, and `close()`.
+During segmentation, encoded input is read incrementally and the source is closed
+when consumption finishes or aborts.
+
+Example:
+
+```python
+from fluxtuner_ripper.machine import run_segment_json
+from fluxtuner_ripper.source import BinaryIOStreamSource
+
+with open("input.mp3", "rb") as stream:
+    source = BinaryIOStreamSource(stream)
+
+    response = run_segment_json(
+        source=source,
+        request_json=('{"codec":"mp3","provider":"fixed","interval_seconds":10.0}'),
+    )
+
+print(response)
+```
+
 ## Development
 
 ```bash
