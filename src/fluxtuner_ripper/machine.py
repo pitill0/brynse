@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
+from typing import cast
 
 from fluxtuner_ripper.generic_cli import _run_generic_pipeline
 from fluxtuner_ripper.source import StreamSource
@@ -49,7 +50,7 @@ def segment_source(
     *,
     source: StreamSource,
     request: SegmentRequest,
-) -> dict[str, object]:
+) -> SegmentResult:
     """Segment one encoded StreamSource from a structured request."""
 
     def chunks() -> Iterator[bytes]:
@@ -62,9 +63,30 @@ def segment_source(
         finally:
             source.close()
 
-    return _run_generic_pipeline(
+    payload = _run_generic_pipeline(
         chunks=chunks(),
         codec=request.codec,
         provider_name=request.provider,
         interval_seconds=request.interval_seconds,
+    )
+
+    boundaries = cast(
+        list[dict[str, object]],
+        payload.get("boundaries", []),
+    )
+    segments = cast(
+        list[dict[str, object]],
+        payload.get("segments", []),
+    )
+
+    return SegmentResult(
+        bytes_ingested=cast(int, payload["bytes_ingested"]),
+        codec=cast(str, payload["codec"]),
+        provider=cast(str, payload["provider"]),
+        interval_seconds=cast(
+            float | None,
+            payload["interval_seconds"],
+        ),
+        boundaries=tuple(boundaries),
+        segments=tuple(segments),
     )

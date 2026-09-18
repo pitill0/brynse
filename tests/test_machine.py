@@ -6,7 +6,7 @@ import pytest
 
 
 def test_machine_segment_source_consumes_stream_source() -> None:
-    from fluxtuner_ripper.machine import SegmentRequest, segment_source
+    from fluxtuner_ripper.machine import SegmentRequest, SegmentResult, segment_source
 
     class FakeSource:
         def __init__(self) -> None:
@@ -35,7 +35,7 @@ def test_machine_segment_source_consumes_stream_source() -> None:
         ),
     )
 
-    assert isinstance(result, dict)
+    assert isinstance(result, SegmentResult)
     assert source.closed is True
 
 
@@ -62,7 +62,7 @@ def test_segment_request_is_json_serializable() -> None:
 
 def test_segment_source_accepts_segment_request() -> None:
 
-    from fluxtuner_ripper.machine import SegmentRequest, segment_source
+    from fluxtuner_ripper.machine import SegmentRequest, SegmentResult, segment_source
 
     class FakeSource:
         def __init__(self) -> None:
@@ -91,7 +91,7 @@ def test_segment_source_accepts_segment_request() -> None:
         request=request,
     )
 
-    assert isinstance(result, dict)
+    assert isinstance(result, SegmentResult)
     assert source.closed is True
 
 
@@ -144,3 +144,41 @@ def test_segment_result_is_json_serializable() -> None:
         "segments": [],
     }
     assert json.loads(json.dumps(payload)) == payload
+
+
+def test_segment_source_returns_segment_result() -> None:
+
+    from fluxtuner_ripper.machine import (
+        SegmentRequest,
+        SegmentResult,
+        segment_source,
+    )
+
+    class FakeSource:
+        def __init__(self) -> None:
+            self._chunks = [b"encoded-data", b""]
+            self.closed = False
+
+        @property
+        def metadata(self) -> Mapping[str, str]:
+            return {}
+
+        def read(self, max_bytes: int) -> bytes:
+            return self._chunks.pop(0)
+
+        def close(self) -> None:
+            self.closed = True
+
+    source = FakeSource()
+
+    result = segment_source(
+        source=source,
+        request=SegmentRequest(
+            codec="mp3",
+            provider="fixed",
+            interval_seconds=10.0,
+        ),
+    )
+
+    assert isinstance(result, SegmentResult)
+    assert source.closed is True
