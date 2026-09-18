@@ -980,7 +980,7 @@ def test_run_generic_pipeline_streams_segment_larger_than_ring_from_spool(
     import fluxtuner_ripper.generic_cli as generic_cli
     import fluxtuner_ripper.streaming_sink as streaming_sink
     from fluxtuner_ripper.models import SplitDecision, SplitKind
-    from fluxtuner_ripper.output import TrackOutputService
+    from fluxtuner_ripper.output import SegmentOutputService
     from fluxtuner_ripper.spooling_ingest import SpoolingEncodedStreamIngestor
     from fluxtuner_ripper.streaming_spool import StreamingSpool
 
@@ -1060,7 +1060,7 @@ def test_run_generic_pipeline_streams_segment_larger_than_ring_from_spool(
                     handle.write(chunk)
 
     finalizer = _StreamingCopyFinalizer()
-    output_service = TrackOutputService(
+    output_service = SegmentOutputService(
         aac_finalizer=finalizer,  # type: ignore[arg-type]
     )
 
@@ -1144,7 +1144,7 @@ def test_run_generic_pipeline_streams_segment_larger_than_ring_from_spool(
     assert Path(first["path"]).stat().st_size == first_segment_bytes
     assert Path(second["path"]).stat().st_size == (second["end_offset"] - second["start_offset"])
 
-    # TrackOutputService streamed the large range instead of requesting it
+    # SegmentOutputService streamed the large range instead of requesting it
     # as one in-memory byte string.
     assert finalizer.chunk_sizes
     assert max(finalizer.chunk_sizes) <= 64 * 1024
@@ -1295,7 +1295,7 @@ def test_generic_cli_reports_track_finalization_failure_as_operational_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     import fluxtuner_ripper.generic_cli as generic_cli
-    from fluxtuner_ripper.output import TrackFinalizeError
+    from fluxtuner_ripper.output import SegmentFinalizeError
 
     monkeypatch.setattr(
         generic_cli,
@@ -1309,7 +1309,7 @@ def test_generic_cli_reports_track_finalization_failure_as_operational_error(
     )
 
     def fail_pipeline(**kwargs: object) -> dict[str, object]:
-        raise TrackFinalizeError("FFmpeg MP3 finalization failed")
+        raise SegmentFinalizeError("FFmpeg MP3 finalization failed")
 
     monkeypatch.setattr(
         generic_cli,

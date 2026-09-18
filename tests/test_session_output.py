@@ -55,7 +55,7 @@ class _Output:
         self.path = path
         self.calls: list[dict[str, object]] = []
 
-    def write_track(self, **kwargs: object) -> Path:
+    def write_segment(self, **kwargs: object) -> Path:
         self.calls.append(kwargs)
         return self.path
 

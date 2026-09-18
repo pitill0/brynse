@@ -1810,7 +1810,7 @@ def test_temporal_split_aligner_rejects_collapsed_exclusion_after_alignment() ->
 
 
 def test_track_range_planner_builds_hard_cut_ranges() -> None:
-    from fluxtuner_ripper.ripping import SplitDecision, SplitKind, TrackRangePlanner
+    from fluxtuner_ripper.ripping import SegmentRangePlanner, SplitDecision, SplitKind
 
     decision = SplitDecision(
         kind=SplitKind.HARD_CUT,
@@ -1818,7 +1818,7 @@ def test_track_range_planner_builds_hard_cut_ranges() -> None:
         outgoing_end=1000,
     )
 
-    plan = TrackRangePlanner().plan(
+    plan = SegmentRangePlanner().plan(
         previous_start_offset=100,
         next_end_offset=2000,
         decision=decision,
@@ -1831,7 +1831,7 @@ def test_track_range_planner_builds_hard_cut_ranges() -> None:
 
 
 def test_track_range_planner_preserves_crossfade_overlap() -> None:
-    from fluxtuner_ripper.ripping import SplitDecision, SplitKind, TrackRangePlanner
+    from fluxtuner_ripper.ripping import SegmentRangePlanner, SplitDecision, SplitKind
 
     decision = SplitDecision(
         kind=SplitKind.CROSSFADE,
@@ -1839,7 +1839,7 @@ def test_track_range_planner_preserves_crossfade_overlap() -> None:
         outgoing_end=1200,
     )
 
-    plan = TrackRangePlanner().plan(
+    plan = SegmentRangePlanner().plan(
         previous_start_offset=100,
         next_end_offset=2000,
         decision=decision,
@@ -1855,7 +1855,7 @@ def test_track_range_planner_preserves_crossfade_overlap() -> None:
 
 
 def test_track_range_planner_preserves_exclusion_gap() -> None:
-    from fluxtuner_ripper.ripping import SplitDecision, SplitKind, TrackRangePlanner
+    from fluxtuner_ripper.ripping import SegmentRangePlanner, SplitDecision, SplitKind
 
     decision = SplitDecision(
         kind=SplitKind.EXCLUSION,
@@ -1863,7 +1863,7 @@ def test_track_range_planner_preserves_exclusion_gap() -> None:
         outgoing_end=900,
     )
 
-    plan = TrackRangePlanner().plan(
+    plan = SegmentRangePlanner().plan(
         previous_start_offset=100,
         next_end_offset=2000,
         decision=decision,
@@ -1877,12 +1877,12 @@ def test_track_range_planner_preserves_exclusion_gap() -> None:
 
 
 def test_track_range_planner_rejects_no_boundary() -> None:
-    from fluxtuner_ripper.ripping import SplitDecision, SplitKind, TrackRangePlanner
+    from fluxtuner_ripper.ripping import SegmentRangePlanner, SplitDecision, SplitKind
 
     decision = SplitDecision(kind=SplitKind.NO_BOUNDARY)
 
     with pytest.raises(ValueError):
-        TrackRangePlanner().plan(
+        SegmentRangePlanner().plan(
             previous_start_offset=0,
             next_end_offset=1000,
             decision=decision,
@@ -1892,13 +1892,13 @@ def test_track_range_planner_rejects_no_boundary() -> None:
 def test_encoded_track_writer_returns_exact_hard_cut_bytes() -> None:
     from fluxtuner_ripper.ripping import (
         EncodedAudioRingBuffer,
-        EncodedTrackWriter,
+        EncodedSegmentWriter,
     )
 
     source = EncodedAudioRingBuffer(max_bytes=20)
     source.append(b"abcdefghijklmnopqrst")
 
-    written = EncodedTrackWriter().write_range(
+    written = EncodedSegmentWriter().write_range(
         source=source,
         byte_range=SegmentByteRange(start_offset=4, end_offset=10),
     )
@@ -1909,12 +1909,12 @@ def test_encoded_track_writer_returns_exact_hard_cut_bytes() -> None:
 def test_encoded_track_writer_can_materialize_overlapping_tracks() -> None:
     from fluxtuner_ripper.ripping import (
         EncodedAudioRingBuffer,
-        EncodedTrackWriter,
+        EncodedSegmentWriter,
     )
 
     source = EncodedAudioRingBuffer(max_bytes=20)
     source.append(b"abcdefghijklmnopqrst")
-    writer = EncodedTrackWriter()
+    writer = EncodedSegmentWriter()
 
     outgoing = writer.write_range(
         source=source,
@@ -1933,23 +1933,23 @@ def test_encoded_track_writer_can_materialize_overlapping_tracks() -> None:
 def test_encoded_track_writer_rejects_evicted_range() -> None:
     from fluxtuner_ripper.ripping import (
         EncodedAudioRingBuffer,
-        EncodedTrackWriter,
+        EncodedSegmentWriter,
     )
 
     source = EncodedAudioRingBuffer(max_bytes=5)
     source.append(b"abcdefghij")
 
     with pytest.raises(ValueError):
-        EncodedTrackWriter().write_range(
+        EncodedSegmentWriter().write_range(
             source=source,
             byte_range=SegmentByteRange(start_offset=0, end_offset=5),
         )
 
 
 def test_track_file_writer_uses_codec_extension() -> None:
-    from fluxtuner_ripper.ripping import TrackFileWriter
+    from fluxtuner_ripper.ripping import SegmentFileWriter
 
-    writer = TrackFileWriter()
+    writer = SegmentFileWriter()
 
     assert writer.extension_for_codec("mp3") == ".mp3"
     assert writer.extension_for_codec("aac") == ".aac"
@@ -1957,17 +1957,17 @@ def test_track_file_writer_uses_codec_extension() -> None:
 
 
 def test_track_file_writer_rejects_unsupported_codec() -> None:
-    from fluxtuner_ripper.ripping import TrackFileWriter
+    from fluxtuner_ripper.ripping import SegmentFileWriter
 
     with pytest.raises(ValueError):
-        TrackFileWriter().extension_for_codec("flac")
+        SegmentFileWriter().extension_for_codec("flac")
 
 
 def test_track_file_writer_persists_exact_bytes(tmp_path) -> None:
-    from fluxtuner_ripper.ripping import TrackFileWriter
+    from fluxtuner_ripper.ripping import SegmentFileWriter
 
     payload = b"encoded-track-bytes"
-    writer = TrackFileWriter()
+    writer = SegmentFileWriter()
 
     path = writer.write(
         directory=tmp_path,
@@ -1981,12 +1981,12 @@ def test_track_file_writer_persists_exact_bytes(tmp_path) -> None:
 
 
 def test_track_file_writer_replaces_existing_target_atomically(tmp_path) -> None:
-    from fluxtuner_ripper.ripping import TrackFileWriter
+    from fluxtuner_ripper.ripping import SegmentFileWriter
 
     target = tmp_path / "Track.aac"
     target.write_bytes(b"old")
 
-    path = TrackFileWriter().write(
+    path = SegmentFileWriter().write(
         directory=tmp_path,
         stem="Track",
         codec="aac",
@@ -1998,9 +1998,9 @@ def test_track_file_writer_replaces_existing_target_atomically(tmp_path) -> None
 
 
 def test_track_file_writer_leaves_no_temp_file_after_success(tmp_path) -> None:
-    from fluxtuner_ripper.ripping import TrackFileWriter
+    from fluxtuner_ripper.ripping import SegmentFileWriter
 
-    TrackFileWriter().write(
+    SegmentFileWriter().write(
         directory=tmp_path,
         stem="Track",
         codec="mp3",
@@ -2016,9 +2016,9 @@ def test_track_file_writer_leaves_no_temp_file_after_success(tmp_path) -> None:
 
 
 def test_track_file_writer_rejects_empty_stem_and_data(tmp_path) -> None:
-    from fluxtuner_ripper.ripping import TrackFileWriter
+    from fluxtuner_ripper.ripping import SegmentFileWriter
 
-    writer = TrackFileWriter()
+    writer = SegmentFileWriter()
 
     with pytest.raises(ValueError):
         writer.write(
@@ -2038,19 +2038,19 @@ def test_track_file_writer_rejects_empty_stem_and_data(tmp_path) -> None:
 
 
 def test_mp3_track_finalizer_rejects_missing_binary() -> None:
-    from fluxtuner_ripper.ripping import Mp3TrackFinalizer, TrackFinalizeError
+    from fluxtuner_ripper.ripping import Mp3SegmentFinalizer, SegmentFinalizeError
 
-    finalizer = Mp3TrackFinalizer(ffmpeg_binary="/definitely/missing/fluxtuner-ffmpeg")
+    finalizer = Mp3SegmentFinalizer(ffmpeg_binary="/definitely/missing/fluxtuner-ffmpeg")
 
-    with pytest.raises(TrackFinalizeError, match="FFmpeg binary not found"):
+    with pytest.raises(SegmentFinalizeError, match="FFmpeg binary not found"):
         finalizer.finalize(b"not-an-mp3")
 
 
 def test_mp3_track_finalizer_rejects_empty_input() -> None:
-    from fluxtuner_ripper.ripping import Mp3TrackFinalizer
+    from fluxtuner_ripper.ripping import Mp3SegmentFinalizer
 
     with pytest.raises(ValueError):
-        Mp3TrackFinalizer().finalize(b"")
+        Mp3SegmentFinalizer().finalize(b"")
 
 
 def test_mp3_track_finalizer_legacy_finalize_respects_timeout(
@@ -2058,7 +2058,7 @@ def test_mp3_track_finalizer_legacy_finalize_respects_timeout(
 ) -> None:
     import time
 
-    from fluxtuner_ripper.ripping import Mp3TrackFinalizer, TrackFinalizeError
+    from fluxtuner_ripper.ripping import Mp3SegmentFinalizer, SegmentFinalizeError
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-legacy-mp3-timeout"
     fake_ffmpeg.write_text(
@@ -2073,7 +2073,7 @@ time.sleep(60)
     )
     fake_ffmpeg.chmod(0o755)
 
-    finalizer = Mp3TrackFinalizer(
+    finalizer = Mp3SegmentFinalizer(
         ffmpeg_binary=str(fake_ffmpeg),
         timeout_seconds=0.2,
     )
@@ -2081,7 +2081,7 @@ time.sleep(60)
     started = time.monotonic()
 
     with pytest.raises(
-        TrackFinalizeError,
+        SegmentFinalizeError,
         match="timed out",
     ):
         finalizer.finalize(b"legacy-mp3-data")
@@ -2094,14 +2094,14 @@ time.sleep(60)
 def test_mp3_track_finalizer_rejects_invalid_mp3_when_ffmpeg_available() -> None:
     import shutil
 
-    from fluxtuner_ripper.ripping import Mp3TrackFinalizer, TrackFinalizeError
+    from fluxtuner_ripper.ripping import Mp3SegmentFinalizer, SegmentFinalizeError
 
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         pytest.skip("ffmpeg is not installed")
 
-    with pytest.raises(TrackFinalizeError, match="MP3 finalization failed"):
-        Mp3TrackFinalizer(ffmpeg_binary=ffmpeg).finalize(b"not-a-valid-mp3")
+    with pytest.raises(SegmentFinalizeError, match="MP3 finalization failed"):
+        Mp3SegmentFinalizer(ffmpeg_binary=ffmpeg).finalize(b"not-a-valid-mp3")
 
 
 def test_mp3_track_finalizer_remuxes_mp3_without_transcoding() -> None:
@@ -2112,7 +2112,7 @@ def test_mp3_track_finalizer_remuxes_mp3_without_transcoding() -> None:
     if ffmpeg is None:
         pytest.skip("ffmpeg is not installed")
 
-    from fluxtuner_ripper.ripping import Mp3TrackFinalizer
+    from fluxtuner_ripper.ripping import Mp3SegmentFinalizer
 
     generated = subprocess.run(
         [
@@ -2136,7 +2136,7 @@ def test_mp3_track_finalizer_remuxes_mp3_without_transcoding() -> None:
         check=True,
     ).stdout
 
-    finalized = Mp3TrackFinalizer(ffmpeg_binary=ffmpeg).finalize(generated)
+    finalized = Mp3SegmentFinalizer(ffmpeg_binary=ffmpeg).finalize(generated)
 
     assert finalized
 
@@ -2168,7 +2168,7 @@ def test_mp3_track_finalizer_preserves_decodable_duration() -> None:
     if ffmpeg is None:
         pytest.skip("ffmpeg is not installed")
 
-    from fluxtuner_ripper.ripping import Mp3TrackFinalizer
+    from fluxtuner_ripper.ripping import Mp3SegmentFinalizer
 
     generated = subprocess.run(
         [
@@ -2192,7 +2192,7 @@ def test_mp3_track_finalizer_preserves_decodable_duration() -> None:
         check=True,
     ).stdout
 
-    finalized = Mp3TrackFinalizer(ffmpeg_binary=ffmpeg).finalize(generated)
+    finalized = Mp3SegmentFinalizer(ffmpeg_binary=ffmpeg).finalize(generated)
 
     before = subprocess.run(
         [
@@ -2240,19 +2240,19 @@ def test_mp3_track_finalizer_preserves_decodable_duration() -> None:
 
 
 def test_aac_track_finalizer_rejects_missing_binary() -> None:
-    from fluxtuner_ripper.ripping import AacTrackFinalizer, TrackFinalizeError
+    from fluxtuner_ripper.ripping import AacSegmentFinalizer, SegmentFinalizeError
 
-    finalizer = AacTrackFinalizer(ffmpeg_binary="/definitely/missing/fluxtuner-ffmpeg")
+    finalizer = AacSegmentFinalizer(ffmpeg_binary="/definitely/missing/fluxtuner-ffmpeg")
 
-    with pytest.raises(TrackFinalizeError, match="FFmpeg binary not found"):
+    with pytest.raises(SegmentFinalizeError, match="FFmpeg binary not found"):
         finalizer.finalize(b"not-aac")
 
 
 def test_aac_track_finalizer_rejects_empty_input() -> None:
-    from fluxtuner_ripper.ripping import AacTrackFinalizer
+    from fluxtuner_ripper.ripping import AacSegmentFinalizer
 
     with pytest.raises(ValueError):
-        AacTrackFinalizer().finalize(b"")
+        AacSegmentFinalizer().finalize(b"")
 
 
 def test_aac_track_finalizer_legacy_finalize_respects_timeout(
@@ -2260,7 +2260,7 @@ def test_aac_track_finalizer_legacy_finalize_respects_timeout(
 ) -> None:
     import time
 
-    from fluxtuner_ripper.ripping import AacTrackFinalizer, TrackFinalizeError
+    from fluxtuner_ripper.ripping import AacSegmentFinalizer, SegmentFinalizeError
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-legacy-aac-timeout"
     fake_ffmpeg.write_text(
@@ -2275,7 +2275,7 @@ time.sleep(60)
     )
     fake_ffmpeg.chmod(0o755)
 
-    finalizer = AacTrackFinalizer(
+    finalizer = AacSegmentFinalizer(
         ffmpeg_binary=str(fake_ffmpeg),
         timeout_seconds=0.2,
     )
@@ -2283,7 +2283,7 @@ time.sleep(60)
     started = time.monotonic()
 
     with pytest.raises(
-        TrackFinalizeError,
+        SegmentFinalizeError,
         match="timed out",
     ):
         finalizer.finalize(b"legacy-aac-data")
@@ -2296,14 +2296,14 @@ time.sleep(60)
 def test_aac_track_finalizer_rejects_invalid_aac_when_ffmpeg_available() -> None:
     import shutil
 
-    from fluxtuner_ripper.ripping import AacTrackFinalizer, TrackFinalizeError
+    from fluxtuner_ripper.ripping import AacSegmentFinalizer, SegmentFinalizeError
 
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         pytest.skip("ffmpeg is not installed")
 
-    with pytest.raises(TrackFinalizeError, match="AAC finalization failed"):
-        AacTrackFinalizer(ffmpeg_binary=ffmpeg).finalize(b"not-valid-aac")
+    with pytest.raises(SegmentFinalizeError, match="AAC finalization failed"):
+        AacSegmentFinalizer(ffmpeg_binary=ffmpeg).finalize(b"not-valid-aac")
 
 
 def test_aac_track_finalizer_remuxes_adts_to_m4a_without_transcoding() -> None:
@@ -2314,7 +2314,7 @@ def test_aac_track_finalizer_remuxes_adts_to_m4a_without_transcoding() -> None:
     if ffmpeg is None:
         pytest.skip("ffmpeg is not installed")
 
-    from fluxtuner_ripper.ripping import AacTrackFinalizer
+    from fluxtuner_ripper.ripping import AacSegmentFinalizer
 
     generated = subprocess.run(
         [
@@ -2340,7 +2340,7 @@ def test_aac_track_finalizer_remuxes_adts_to_m4a_without_transcoding() -> None:
         check=True,
     ).stdout
 
-    finalized = AacTrackFinalizer(ffmpeg_binary=ffmpeg).finalize(generated)
+    finalized = AacSegmentFinalizer(ffmpeg_binary=ffmpeg).finalize(generated)
 
     assert finalized
     assert b"ftyp" in finalized[:64]
@@ -2373,7 +2373,7 @@ def test_aac_track_finalizer_preserves_decodable_duration() -> None:
     if ffmpeg is None:
         pytest.skip("ffmpeg is not installed")
 
-    from fluxtuner_ripper.ripping import AacTrackFinalizer
+    from fluxtuner_ripper.ripping import AacSegmentFinalizer
 
     generated = subprocess.run(
         [
@@ -2399,7 +2399,7 @@ def test_aac_track_finalizer_preserves_decodable_duration() -> None:
         check=True,
     ).stdout
 
-    finalized = AacTrackFinalizer(ffmpeg_binary=ffmpeg).finalize(generated)
+    finalized = AacSegmentFinalizer(ffmpeg_binary=ffmpeg).finalize(generated)
 
     before = subprocess.run(
         [
@@ -2461,16 +2461,16 @@ class _FakeFinalizer:
 def test_track_output_service_composes_mp3_pipeline(tmp_path) -> None:
     from fluxtuner_ripper.ripping import (
         EncodedAudioRingBuffer,
-        TrackOutputService,
+        SegmentOutputService,
     )
 
     source = EncodedAudioRingBuffer(max_bytes=20)
     source.append(b"abcdefghijklmnopqrst")
     finalizer = _FakeFinalizer(b"MP3:")
 
-    service = TrackOutputService(mp3_finalizer=finalizer)
+    service = SegmentOutputService(mp3_finalizer=finalizer)
 
-    path = service.write_track(
+    path = service.write_segment(
         source=source,
         byte_range=SegmentByteRange(start_offset=4, end_offset=10),
         directory=tmp_path,
@@ -2486,16 +2486,16 @@ def test_track_output_service_composes_mp3_pipeline(tmp_path) -> None:
 def test_track_output_service_composes_aac_to_m4a_pipeline(tmp_path) -> None:
     from fluxtuner_ripper.ripping import (
         EncodedAudioRingBuffer,
-        TrackOutputService,
+        SegmentOutputService,
     )
 
     source = EncodedAudioRingBuffer(max_bytes=20)
     source.append(b"abcdefghijklmnopqrst")
     finalizer = _FakeFinalizer(b"M4A:")
 
-    service = TrackOutputService(aac_finalizer=finalizer)
+    service = SegmentOutputService(aac_finalizer=finalizer)
 
-    path = service.write_track(
+    path = service.write_segment(
         source=source,
         byte_range=SegmentByteRange(start_offset=8, end_offset=14),
         directory=tmp_path,
@@ -2511,14 +2511,14 @@ def test_track_output_service_composes_aac_to_m4a_pipeline(tmp_path) -> None:
 def test_track_output_service_rejects_unsupported_codec(tmp_path) -> None:
     from fluxtuner_ripper.ripping import (
         EncodedAudioRingBuffer,
-        TrackOutputService,
+        SegmentOutputService,
     )
 
     source = EncodedAudioRingBuffer(max_bytes=10)
     source.append(b"abcdefghij")
 
     with pytest.raises(ValueError):
-        TrackOutputService().write_track(
+        SegmentOutputService().write_segment(
             source=source,
             byte_range=SegmentByteRange(start_offset=0, end_offset=5),
             directory=tmp_path,
@@ -2530,14 +2530,14 @@ def test_track_output_service_rejects_unsupported_codec(tmp_path) -> None:
 def test_track_output_service_rejects_evicted_range(tmp_path) -> None:
     from fluxtuner_ripper.ripping import (
         EncodedAudioRingBuffer,
-        TrackOutputService,
+        SegmentOutputService,
     )
 
     source = EncodedAudioRingBuffer(max_bytes=5)
     source.append(b"abcdefghij")
 
     with pytest.raises(ValueError):
-        TrackOutputService(mp3_finalizer=_FakeFinalizer(b"MP3:")).write_track(
+        SegmentOutputService(mp3_finalizer=_FakeFinalizer(b"MP3:")).write_segment(
             source=source,
             byte_range=SegmentByteRange(start_offset=0, end_offset=5),
             directory=tmp_path,
@@ -2550,7 +2550,7 @@ def test_public_package_api_exports_expected_symbols() -> None:
     import fluxtuner_ripper
 
     expected = {
-        "AacTrackFinalizer",
+        "AacSegmentFinalizer",
         "AcousticCandidateFinder",
         "AcousticWindowExtractor",
         "BoundaryRelationClassifier",
@@ -2559,14 +2559,14 @@ def test_public_package_api_exports_expected_symbols() -> None:
         "IcyStreamParser",
         "IncrementalFrameTimeline",
         "MetadataSemanticTracker",
-        "Mp3TrackFinalizer",
+        "Mp3SegmentFinalizer",
         "NearestBoundaryMatcher",
         "RippingStreamIngestor",
         "RmsAcousticAnalyzer",
         "TemporalSplitAligner",
         "TemporalSplitPolicy",
-        "TrackOutputService",
-        "TrackRangePlanner",
+        "SegmentOutputService",
+        "SegmentRangePlanner",
         "parse_adts_frames",
         "parse_mp3_frames",
     }
@@ -2585,7 +2585,7 @@ def test_public_package_api_version_matches_project_bootstrap() -> None:
 
 def test_encoded_track_writer_iterates_range_in_bounded_chunks() -> None:
     from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import EncodedTrackWriter
+    from fluxtuner_ripper.output import EncodedSegmentWriter
 
     class _BoundedSource:
         def __init__(self, data: bytes, max_read_size: int) -> None:
@@ -2614,7 +2614,7 @@ def test_encoded_track_writer_iterates_range_in_bounded_chunks() -> None:
     )
 
     chunks = tuple(
-        EncodedTrackWriter().iter_range(
+        EncodedSegmentWriter().iter_range(
             source=source,
             byte_range=SegmentByteRange(
                 start_offset=2,
@@ -2642,7 +2642,7 @@ def test_encoded_track_writer_iterates_range_in_bounded_chunks() -> None:
 def test_mp3_finalizer_streams_chunks_directly_to_output_file(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.output import Mp3TrackFinalizer
+    from fluxtuner_ripper.output import Mp3SegmentFinalizer
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg"
     fake_ffmpeg.write_text(
@@ -2667,7 +2667,7 @@ shutil.copyfileobj(sys.stdin.buffer, sys.stdout.buffer)
         )
     )
 
-    finalizer = Mp3TrackFinalizer(
+    finalizer = Mp3SegmentFinalizer(
         ffmpeg_binary=str(fake_ffmpeg),
     )
 
@@ -2682,7 +2682,7 @@ shutil.copyfileobj(sys.stdin.buffer, sys.stdout.buffer)
 def test_aac_finalizer_streams_chunks_directly_to_output_file(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.output import AacTrackFinalizer
+    from fluxtuner_ripper.output import AacSegmentFinalizer
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg"
     fake_ffmpeg.write_text(
@@ -2708,7 +2708,7 @@ output_path.write_bytes(sys.stdin.buffer.read())
         )
     )
 
-    finalizer = AacTrackFinalizer(
+    finalizer = AacSegmentFinalizer(
         ffmpeg_binary=str(fake_ffmpeg),
     )
 
@@ -2724,7 +2724,7 @@ def test_track_output_service_streams_mp3_without_full_range_read(
     tmp_path: Path,
 ) -> None:
     from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import TrackOutputService
+    from fluxtuner_ripper.output import SegmentOutputService
 
     class _BoundedSource:
         def __init__(self, data: bytes, max_read_size: int) -> None:
@@ -2771,11 +2771,11 @@ def test_track_output_service_streams_mp3_without_full_range_read(
     )
     finalizer = _StreamingFinalizer()
 
-    service = TrackOutputService(
+    service = SegmentOutputService(
         mp3_finalizer=finalizer,
     )
 
-    path = service.write_track(
+    path = service.write_segment(
         source=source,
         byte_range=SegmentByteRange(
             start_offset=2,
@@ -2809,7 +2809,7 @@ def test_track_output_service_streams_aac_without_full_range_read(
     tmp_path: Path,
 ) -> None:
     from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import TrackOutputService
+    from fluxtuner_ripper.output import SegmentOutputService
 
     class _BoundedSource:
         def __init__(self, data: bytes, max_read_size: int) -> None:
@@ -2856,11 +2856,11 @@ def test_track_output_service_streams_aac_without_full_range_read(
     )
     finalizer = _StreamingFinalizer()
 
-    service = TrackOutputService(
+    service = SegmentOutputService(
         aac_finalizer=finalizer,
     )
 
-    path = service.write_track(
+    path = service.write_segment(
         source=source,
         byte_range=SegmentByteRange(
             start_offset=2,
@@ -2894,7 +2894,7 @@ def test_track_output_service_rejects_segment_over_configured_size_limit(
     tmp_path: Path,
 ) -> None:
     from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import TrackOutputService
+    from fluxtuner_ripper.output import SegmentOutputService
 
     class _SourceThatMustNotBeRead:
         @property
@@ -2907,7 +2907,7 @@ def test_track_output_service_rejects_segment_over_configured_size_limit(
         def read(self, start: int, end: int) -> bytes:
             raise AssertionError("oversized segment must be rejected before reading source bytes")
 
-    service = TrackOutputService(
+    service = SegmentOutputService(
         max_segment_bytes=8,
     )
 
@@ -2915,7 +2915,7 @@ def test_track_output_service_rejects_segment_over_configured_size_limit(
         ValueError,
         match="segment exceeds maximum allowed size",
     ):
-        service.write_track(
+        service.write_segment(
             source=_SourceThatMustNotBeRead(),
             byte_range=SegmentByteRange(
                 start_offset=10,
@@ -2935,7 +2935,7 @@ def test_track_output_service_rejects_when_free_disk_space_is_too_low(
     monkeypatch,
 ) -> None:
     from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import TrackOutputService
+    from fluxtuner_ripper.output import SegmentOutputService
 
     class _SourceThatMustNotBeRead:
         @property
@@ -2961,7 +2961,7 @@ def test_track_output_service_rejects_when_free_disk_space_is_too_low(
         lambda _: _DiskUsage(),
     )
 
-    service = TrackOutputService(
+    service = SegmentOutputService(
         min_free_output_bytes=100_000,
     )
 
@@ -2969,7 +2969,7 @@ def test_track_output_service_rejects_when_free_disk_space_is_too_low(
         RuntimeError,
         match="insufficient free disk space",
     ):
-        service.write_track(
+        service.write_segment(
             source=_SourceThatMustNotBeRead(),
             byte_range=SegmentByteRange(
                 start_offset=10,
@@ -2991,7 +2991,7 @@ def test_track_output_service_requires_space_for_segment_plus_reserve(
     import shutil
 
     from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import TrackOutputService
+    from fluxtuner_ripper.output import SegmentOutputService
 
     class _SourceThatMustNotBeRead:
         @property
@@ -3017,7 +3017,7 @@ def test_track_output_service_requires_space_for_segment_plus_reserve(
         lambda _: _DiskUsage(),
     )
 
-    service = TrackOutputService(
+    service = SegmentOutputService(
         min_free_output_bytes=100_000,
         output_space_factor=1.0,
     )
@@ -3026,7 +3026,7 @@ def test_track_output_service_requires_space_for_segment_plus_reserve(
         RuntimeError,
         match="insufficient free disk space",
     ):
-        service.write_track(
+        service.write_segment(
             source=_SourceThatMustNotBeRead(),
             byte_range=SegmentByteRange(
                 start_offset=0,
@@ -3045,7 +3045,7 @@ def test_track_output_service_rejects_chunk_size_above_hard_limit(
     tmp_path: Path,
 ) -> None:
     from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import TrackOutputService
+    from fluxtuner_ripper.output import SegmentOutputService
 
     class _SourceThatMustNotBeRead:
         @property
@@ -3060,13 +3060,13 @@ def test_track_output_service_rejects_chunk_size_above_hard_limit(
                 "oversized chunk_size must be rejected before reading source bytes"
             )
 
-    service = TrackOutputService()
+    service = SegmentOutputService()
 
     with pytest.raises(
         ValueError,
         match="chunk_size exceeds maximum allowed size",
     ):
-        service.write_track(
+        service.write_segment(
             source=_SourceThatMustNotBeRead(),
             byte_range=SegmentByteRange(
                 start_offset=0,
@@ -3083,7 +3083,7 @@ def test_track_output_service_rejects_chunk_size_above_hard_limit(
 
 def test_encoded_track_writer_rejects_source_returning_wrong_chunk_size() -> None:
     from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import EncodedTrackWriter
+    from fluxtuner_ripper.output import EncodedSegmentWriter
 
     class _BrokenSource:
         @property
@@ -3097,7 +3097,7 @@ def test_encoded_track_writer_rejects_source_returning_wrong_chunk_size() -> Non
             requested = end - start
             return b"x" * (requested + 1)
 
-    writer = EncodedTrackWriter()
+    writer = EncodedSegmentWriter()
 
     with pytest.raises(
         RuntimeError,
@@ -3130,7 +3130,7 @@ def test_track_output_service_rejects_unsafe_output_stem(
     stem: str,
 ) -> None:
     from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import TrackOutputService
+    from fluxtuner_ripper.output import SegmentOutputService
 
     class _SourceThatMustNotBeRead:
         @property
@@ -3143,13 +3143,13 @@ def test_track_output_service_rejects_unsafe_output_stem(
         def read(self, start: int, end: int) -> bytes:
             raise AssertionError("unsafe output stem must be rejected before reading source bytes")
 
-    service = TrackOutputService()
+    service = SegmentOutputService()
 
     with pytest.raises(
         ValueError,
         match="unsafe output stem",
     ):
-        service.write_track(
+        service.write_segment(
             source=_SourceThatMustNotBeRead(),
             byte_range=SegmentByteRange(
                 start_offset=0,
@@ -3167,7 +3167,7 @@ def test_mp3_stream_finalizer_times_out_and_cleans_partial_output(
 ) -> None:
     import time
 
-    from fluxtuner_ripper.output import Mp3TrackFinalizer, TrackFinalizeError
+    from fluxtuner_ripper.output import Mp3SegmentFinalizer, SegmentFinalizeError
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-timeout"
     fake_ffmpeg.write_text(
@@ -3184,7 +3184,7 @@ time.sleep(60)
 
     output_path = tmp_path / "timeout.mp3"
 
-    finalizer = Mp3TrackFinalizer(
+    finalizer = Mp3SegmentFinalizer(
         ffmpeg_binary=str(fake_ffmpeg),
         timeout_seconds=0.1,
     )
@@ -3192,7 +3192,7 @@ time.sleep(60)
     started = time.monotonic()
 
     with pytest.raises(
-        TrackFinalizeError,
+        SegmentFinalizeError,
         match="timed out",
     ):
         finalizer.finalize_stream(
@@ -3219,7 +3219,7 @@ def test_mp3_stream_finalizer_times_out_when_ffmpeg_stops_consuming_stdin(
 ) -> None:
     import time
 
-    from fluxtuner_ripper.output import Mp3TrackFinalizer, TrackFinalizeError
+    from fluxtuner_ripper.output import Mp3SegmentFinalizer, SegmentFinalizeError
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-no-stdin"
     fake_ffmpeg.write_text(
@@ -3234,7 +3234,7 @@ time.sleep(60)
 
     output_path = tmp_path / "blocked-stdin.mp3"
 
-    finalizer = Mp3TrackFinalizer(
+    finalizer = Mp3SegmentFinalizer(
         ffmpeg_binary=str(fake_ffmpeg),
         timeout_seconds=0.2,
     )
@@ -3244,7 +3244,7 @@ time.sleep(60)
     started = time.monotonic()
 
     with pytest.raises(
-        TrackFinalizeError,
+        SegmentFinalizeError,
         match="timed out",
     ):
         finalizer.finalize_stream(
@@ -3263,7 +3263,7 @@ def test_aac_stream_finalizer_times_out_when_ffmpeg_stops_consuming_stdin(
 ) -> None:
     import time
 
-    from fluxtuner_ripper.output import AacTrackFinalizer, TrackFinalizeError
+    from fluxtuner_ripper.output import AacSegmentFinalizer, SegmentFinalizeError
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-aac-no-stdin"
     fake_ffmpeg.write_text(
@@ -3278,7 +3278,7 @@ time.sleep(60)
 
     output_path = tmp_path / "blocked-stdin.m4a"
 
-    finalizer = AacTrackFinalizer(
+    finalizer = AacSegmentFinalizer(
         ffmpeg_binary=str(fake_ffmpeg),
         timeout_seconds=0.2,
     )
@@ -3288,7 +3288,7 @@ time.sleep(60)
     started = time.monotonic()
 
     with pytest.raises(
-        TrackFinalizeError,
+        SegmentFinalizeError,
         match="timed out",
     ):
         finalizer.finalize_stream(
@@ -3316,7 +3316,7 @@ def test_mp3_stream_finalizer_does_not_create_unbounded_stderr_tempfile(
 ) -> None:
     import tempfile
 
-    from fluxtuner_ripper.output import Mp3TrackFinalizer, TrackFinalizeError
+    from fluxtuner_ripper.output import Mp3SegmentFinalizer, SegmentFinalizeError
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-stderr"
     fake_ffmpeg.write_text(
@@ -3349,10 +3349,10 @@ raise SystemExit(1)
     output_path = tmp_path / "stderr.mp3"
 
     with pytest.raises(
-        TrackFinalizeError,
+        SegmentFinalizeError,
         match="MP3 finalization failed",
     ):
-        Mp3TrackFinalizer(
+        Mp3SegmentFinalizer(
             ffmpeg_binary=str(fake_ffmpeg),
             timeout_seconds=2.0,
         ).finalize_stream(
@@ -3369,7 +3369,7 @@ def test_aac_stream_finalizer_does_not_create_unbounded_stderr_tempfile(
 ) -> None:
     import tempfile
 
-    from fluxtuner_ripper.output import AacTrackFinalizer, TrackFinalizeError
+    from fluxtuner_ripper.output import AacSegmentFinalizer, SegmentFinalizeError
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-aac-stderr"
     fake_ffmpeg.write_text(
@@ -3402,10 +3402,10 @@ raise SystemExit(1)
     output_path = tmp_path / "stderr.m4a"
 
     with pytest.raises(
-        TrackFinalizeError,
+        SegmentFinalizeError,
         match="AAC finalization failed",
     ):
-        AacTrackFinalizer(
+        AacSegmentFinalizer(
             ffmpeg_binary=str(fake_ffmpeg),
             timeout_seconds=2.0,
         ).finalize_stream(
@@ -3492,7 +3492,7 @@ def test_session_output_writer_uses_safe_output_service_factory_by_default(
     monkeypatch,
 ) -> None:
     import fluxtuner_ripper.session_output as session_output
-    from fluxtuner_ripper.output import TrackOutputService
+    from fluxtuner_ripper.output import SegmentOutputService
 
     class _FakeIngestor:
         pass
@@ -3507,7 +3507,7 @@ def test_session_output_writer_uses_safe_output_service_factory_by_default(
 
     monkeypatch.setattr(
         session_output,
-        "create_safe_track_output_service",
+        "create_safe_segment_output_service",
         fake_factory,
     )
 
@@ -3519,13 +3519,13 @@ def test_session_output_writer_uses_safe_output_service_factory_by_default(
 
     assert calls == 1
     assert writer._output_service is sentinel
-    assert not isinstance(writer._output_service, TrackOutputService)
+    assert not isinstance(writer._output_service, SegmentOutputService)
 
 
 def test_safe_track_output_service_applies_runtime_disk_policy() -> None:
-    from fluxtuner_ripper.output import create_safe_track_output_service
+    from fluxtuner_ripper.output import create_safe_segment_output_service
 
-    service = create_safe_track_output_service()
+    service = create_safe_segment_output_service()
 
     assert service._min_free_output_bytes == 512 * 1024 * 1024
     assert service._output_space_factor == 1.25
@@ -3535,7 +3535,7 @@ def test_track_output_service_derives_stream_finalizer_timeout_from_segment_size
     tmp_path: Path,
 ) -> None:
     from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import TrackOutputService
+    from fluxtuner_ripper.output import SegmentOutputService
 
     class _Source:
         def __init__(self, size: int) -> None:
@@ -3570,7 +3570,7 @@ def test_track_output_service_derives_stream_finalizer_timeout_from_segment_size
 
     finalizer = _StreamingFinalizer()
 
-    service = TrackOutputService(
+    service = SegmentOutputService(
         mp3_finalizer=finalizer,
         finalize_base_timeout_seconds=30.0,
         finalize_throughput_bytes_per_second=8.0,
@@ -3578,7 +3578,7 @@ def test_track_output_service_derives_stream_finalizer_timeout_from_segment_size
 
     source = _Source(320)
 
-    service.write_track(
+    service.write_segment(
         source=source,
         byte_range=SegmentByteRange(
             start_offset=0,
@@ -3598,7 +3598,7 @@ def test_mp3_stream_finalizer_accepts_per_call_timeout_override(
 ) -> None:
     import time
 
-    from fluxtuner_ripper.output import Mp3TrackFinalizer, TrackFinalizeError
+    from fluxtuner_ripper.output import Mp3SegmentFinalizer, SegmentFinalizeError
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-mp3-override-timeout"
     fake_ffmpeg.write_text(
@@ -3615,7 +3615,7 @@ time.sleep(60)
 
     output_path = tmp_path / "override-timeout.mp3"
 
-    finalizer = Mp3TrackFinalizer(
+    finalizer = Mp3SegmentFinalizer(
         ffmpeg_binary=str(fake_ffmpeg),
         timeout_seconds=30.0,
     )
@@ -3623,7 +3623,7 @@ time.sleep(60)
     started = time.monotonic()
 
     with pytest.raises(
-        TrackFinalizeError,
+        SegmentFinalizeError,
         match="timed out",
     ):
         finalizer.finalize_stream(
@@ -3643,7 +3643,7 @@ def test_aac_stream_finalizer_accepts_per_call_timeout_override(
 ) -> None:
     import time
 
-    from fluxtuner_ripper.output import AacTrackFinalizer, TrackFinalizeError
+    from fluxtuner_ripper.output import AacSegmentFinalizer, SegmentFinalizeError
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-aac-override-timeout"
     fake_ffmpeg.write_text(
@@ -3660,7 +3660,7 @@ time.sleep(60)
 
     output_path = tmp_path / "override-timeout.m4a"
 
-    finalizer = AacTrackFinalizer(
+    finalizer = AacSegmentFinalizer(
         ffmpeg_binary=str(fake_ffmpeg),
         timeout_seconds=30.0,
     )
@@ -3668,7 +3668,7 @@ time.sleep(60)
     started = time.monotonic()
 
     with pytest.raises(
-        TrackFinalizeError,
+        SegmentFinalizeError,
         match="timed out",
     ):
         finalizer.finalize_stream(
@@ -3684,9 +3684,9 @@ time.sleep(60)
 
 
 def test_safe_track_output_service_applies_runtime_timeout_policy() -> None:
-    from fluxtuner_ripper.output import create_safe_track_output_service
+    from fluxtuner_ripper.output import create_safe_segment_output_service
 
-    service = create_safe_track_output_service()
+    service = create_safe_segment_output_service()
 
     assert service._finalize_base_timeout_seconds == 30.0
     assert service._finalize_throughput_bytes_per_second == 8 * 1024 * 1024

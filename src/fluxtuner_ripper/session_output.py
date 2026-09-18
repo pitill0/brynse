@@ -8,9 +8,9 @@ from pathlib import Path
 
 from fluxtuner_ripper.output import (
     EncodedByteSource,
-    TrackOutputService,
-    TrackRangePlanner,
-    create_safe_track_output_service,
+    SegmentOutputService,
+    SegmentRangePlanner,
+    create_safe_segment_output_service,
 )
 from fluxtuner_ripper.ripping import RippingStreamIngestor
 from fluxtuner_ripper.session import SegmentTransition, TrackTransition
@@ -51,8 +51,8 @@ class SessionOutputWriter:
         ingestor: RippingStreamIngestor,
         directory: Path,
         codec: str,
-        range_planner: TrackRangePlanner | None = None,
-        output_service: TrackOutputService | None = None,
+        range_planner: SegmentRangePlanner | None = None,
+        output_service: SegmentOutputService | None = None,
         source: EncodedByteSource | None = None,
     ) -> None:
         if codec not in {"mp3", "aac"}:
@@ -62,8 +62,8 @@ class SessionOutputWriter:
         self._source = source
         self._directory = directory
         self._codec = codec
-        self._range_planner = range_planner or TrackRangePlanner()
-        self._output_service = output_service or create_safe_track_output_service()
+        self._range_planner = range_planner or SegmentRangePlanner()
+        self._output_service = output_service or create_safe_segment_output_service()
         self._current_start_offset: int | None = None
 
     @property
@@ -93,7 +93,7 @@ class SessionOutputWriter:
             decision=transition.boundary.split,
         )
 
-        path = self._output_service.write_track(
+        path = self._output_service.write_segment(
             source=self._source if self._source is not None else self._ingestor.ring_buffer,
             byte_range=plan.outgoing,
             directory=self._directory,

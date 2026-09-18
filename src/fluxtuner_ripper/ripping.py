@@ -113,28 +113,28 @@ from fluxtuner_ripper.models import (
     TrackCandidate as TrackCandidate,
 )
 from fluxtuner_ripper.output import (
-    AacTrackFinalizer as AacTrackFinalizer,
+    AacSegmentFinalizer as AacSegmentFinalizer,
 )
 from fluxtuner_ripper.output import (
-    EncodedTrackWriter as EncodedTrackWriter,
+    EncodedSegmentWriter as EncodedSegmentWriter,
 )
 from fluxtuner_ripper.output import (
-    Mp3TrackFinalizer as Mp3TrackFinalizer,
+    Mp3SegmentFinalizer as Mp3SegmentFinalizer,
 )
 from fluxtuner_ripper.output import (
-    TrackFileWriteError as TrackFileWriteError,
+    SegmentFileWriteError as SegmentFileWriteError,
 )
 from fluxtuner_ripper.output import (
-    TrackFileWriter as TrackFileWriter,
+    SegmentFileWriter as SegmentFileWriter,
 )
 from fluxtuner_ripper.output import (
-    TrackFinalizeError as TrackFinalizeError,
+    SegmentFinalizeError as SegmentFinalizeError,
 )
 from fluxtuner_ripper.output import (
-    TrackOutputService as TrackOutputService,
+    SegmentOutputService as SegmentOutputService,
 )
 from fluxtuner_ripper.output import (
-    TrackRangePlanner as TrackRangePlanner,
+    SegmentRangePlanner as SegmentRangePlanner,
 )
 
 

@@ -42,7 +42,7 @@ class SegmentRangePlanner:
             raise ValueError("next_end_offset must be greater than previous_start_offset")
 
         if decision.kind is SplitKind.NO_BOUNDARY:
-            raise ValueError("NO_BOUNDARY cannot produce a track write plan")
+            raise ValueError("NO_BOUNDARY cannot produce a segment write plan")
 
         if decision.incoming_start is None or decision.outgoing_end is None:
             raise ValueError("split decision requires concrete offsets")
@@ -65,10 +65,7 @@ class SegmentRangePlanner:
         )
 
 
-TrackRangePlanner = SegmentRangePlanner
-
-
-class EncodedTrackWriter:
+class EncodedSegmentWriter:
     """Materialize frame-aligned encoded ranges without transcoding."""
 
     def iter_range(
@@ -87,7 +84,7 @@ class EncodedTrackWriter:
             byte_range.start_offset,
             byte_range.end_offset,
         ):
-            raise ValueError("requested track range is not fully retained")
+            raise ValueError("requested segment range is not fully retained")
 
         current = byte_range.start_offset
 
@@ -115,16 +112,16 @@ class EncodedTrackWriter:
         byte_range: SegmentByteRange,
     ) -> bytes:
         if not source.contains(byte_range.start_offset, byte_range.end_offset):
-            raise ValueError("requested track range is not fully retained")
+            raise ValueError("requested segment range is not fully retained")
         return source.read(byte_range.start_offset, byte_range.end_offset)
 
 
 class SegmentFileWriteError(RuntimeError):
-    """Raised when an encoded track cannot be persisted safely."""
+    """Raised when an encoded segment cannot be persisted safely."""
 
 
-class TrackFileWriter:
-    """Persist encoded track bytes atomically without transcoding."""
+class SegmentFileWriter:
+    """Persist encoded segment bytes atomically without transcoding."""
 
     _EXTENSIONS = {
         "mp3": ".mp3",
@@ -136,7 +133,7 @@ class TrackFileWriter:
         try:
             return self._EXTENSIONS[normalized]
         except KeyError as exc:
-            raise ValueError(f"unsupported codec for track file: {codec}") from exc
+            raise ValueError(f"unsupported codec for segment file: {codec}") from exc
 
     def write(
         self,
@@ -181,19 +178,14 @@ class TrackFileWriter:
 
                 with suppress(OSError):
                     temp_path.unlink(missing_ok=True)
-            raise TrackFileWriteError(f"failed to write track file: {target}") from exc
+            raise SegmentFileWriteError(f"failed to write segment file: {target}") from exc
 
 
 class SegmentFinalizeError(RuntimeError):
-    """Raised when an encoded track cannot be finalized safely."""
+    """Raised when an encoded segment cannot be finalized safely."""
 
 
-# Backward-compatible radio/output vocabulary.
-TrackFinalizeError = SegmentFinalizeError
-TrackFileWriteError = SegmentFileWriteError
-
-
-class Mp3TrackFinalizer:
+class Mp3SegmentFinalizer:
     """Remux MP3 bytes without transcoding to rebuild seek metadata."""
 
     def __init__(
@@ -247,20 +239,20 @@ class Mp3TrackFinalizer:
                 timeout=self._timeout_seconds,
             )
         except FileNotFoundError as exc:
-            raise TrackFinalizeError(f"FFmpeg binary not found: {self._ffmpeg_binary}") from exc
+            raise SegmentFinalizeError(f"FFmpeg binary not found: {self._ffmpeg_binary}") from exc
         except subprocess.TimeoutExpired as exc:
-            raise TrackFinalizeError(
+            raise SegmentFinalizeError(
                 f"FFmpeg MP3 finalization timed out after {self._timeout_seconds} seconds"
             ) from exc
 
         if completed.returncode != 0:
             error = completed.stderr.decode("utf-8", errors="replace").strip()
-            raise TrackFinalizeError(
+            raise SegmentFinalizeError(
                 f"FFmpeg MP3 finalization failed with exit code {completed.returncode}: {error}"
             )
 
         if not completed.stdout:
-            raise TrackFinalizeError("FFmpeg MP3 finalization produced no output")
+            raise SegmentFinalizeError("FFmpeg MP3 finalization produced no output")
 
         return completed.stdout
 
@@ -350,14 +342,14 @@ class Mp3TrackFinalizer:
                         bufsize=0,
                     )
                 except FileNotFoundError as exc:
-                    raise TrackFinalizeError(
+                    raise SegmentFinalizeError(
                         f"FFmpeg binary not found: {self._ffmpeg_binary}"
                     ) from exc
 
                 if process.stdin is None:
-                    raise TrackFinalizeError("FFmpeg MP3 finalization did not provide stdin")
+                    raise SegmentFinalizeError("FFmpeg MP3 finalization did not provide stdin")
                 if process.stderr is None:
-                    raise TrackFinalizeError("FFmpeg MP3 finalization did not provide stderr")
+                    raise SegmentFinalizeError("FFmpeg MP3 finalization did not provide stderr")
 
                 stdin_handle = process.stdin
                 stderr_handle = process.stderr
@@ -427,24 +419,24 @@ class Mp3TrackFinalizer:
                     feeder.join(timeout=1)
                     stderr_reader.join(timeout=1)
 
-                    raise TrackFinalizeError("FFmpeg MP3 finalization timed out") from exc
+                    raise SegmentFinalizeError("FFmpeg MP3 finalization timed out") from exc
 
                 feeder.join(timeout=1)
                 stderr_reader.join(timeout=1)
 
                 if feeder.is_alive():
-                    raise TrackFinalizeError("FFmpeg MP3 stdin feeder did not terminate")
+                    raise SegmentFinalizeError("FFmpeg MP3 stdin feeder did not terminate")
 
                 if stderr_reader.is_alive():
-                    raise TrackFinalizeError("FFmpeg MP3 stderr reader did not terminate")
+                    raise SegmentFinalizeError("FFmpeg MP3 stderr reader did not terminate")
 
                 if feeder_errors:
-                    raise TrackFinalizeError("FFmpeg MP3 stdin feeding failed") from feeder_errors[
-                        0
-                    ]
+                    raise SegmentFinalizeError(
+                        "FFmpeg MP3 stdin feeding failed"
+                    ) from feeder_errors[0]
 
                 if stderr_errors:
-                    raise TrackFinalizeError(
+                    raise SegmentFinalizeError(
                         "FFmpeg MP3 stderr draining failed"
                     ) from stderr_errors[0]
 
@@ -460,12 +452,12 @@ class Mp3TrackFinalizer:
                     )
                     .strip()
                 )
-                raise TrackFinalizeError(
+                raise SegmentFinalizeError(
                     f"FFmpeg MP3 finalization failed with exit code {returncode}: {error}"
                 )
 
             if temp_path is None or temp_path.stat().st_size == 0:
-                raise TrackFinalizeError("FFmpeg MP3 finalization produced no output")
+                raise SegmentFinalizeError("FFmpeg MP3 finalization produced no output")
 
             os.replace(temp_path, output_path)
             replaced = True
@@ -498,7 +490,7 @@ class Mp3TrackFinalizer:
                     temp_path.unlink(missing_ok=True)
 
 
-class AacTrackFinalizer:
+class AacSegmentFinalizer:
     """Remux AAC/ADTS bytes to M4A without transcoding."""
 
     def __init__(
@@ -554,20 +546,20 @@ class AacTrackFinalizer:
                 timeout=self._timeout_seconds,
             )
         except FileNotFoundError as exc:
-            raise TrackFinalizeError(f"FFmpeg binary not found: {self._ffmpeg_binary}") from exc
+            raise SegmentFinalizeError(f"FFmpeg binary not found: {self._ffmpeg_binary}") from exc
         except subprocess.TimeoutExpired as exc:
-            raise TrackFinalizeError(
+            raise SegmentFinalizeError(
                 f"FFmpeg AAC finalization timed out after {self._timeout_seconds} seconds"
             ) from exc
 
         if completed.returncode != 0:
             error = completed.stderr.decode("utf-8", errors="replace").strip()
-            raise TrackFinalizeError(
+            raise SegmentFinalizeError(
                 f"FFmpeg AAC finalization failed with exit code {completed.returncode}: {error}"
             )
 
         if not completed.stdout:
-            raise TrackFinalizeError("FFmpeg AAC finalization produced no output")
+            raise SegmentFinalizeError("FFmpeg AAC finalization produced no output")
 
         return completed.stdout
 
@@ -656,12 +648,14 @@ class AacTrackFinalizer:
                     bufsize=0,
                 )
             except FileNotFoundError as exc:
-                raise TrackFinalizeError(f"FFmpeg binary not found: {self._ffmpeg_binary}") from exc
+                raise SegmentFinalizeError(
+                    f"FFmpeg binary not found: {self._ffmpeg_binary}"
+                ) from exc
 
             if process.stdin is None:
-                raise TrackFinalizeError("FFmpeg AAC finalization did not provide stdin")
+                raise SegmentFinalizeError("FFmpeg AAC finalization did not provide stdin")
             if process.stderr is None:
-                raise TrackFinalizeError("FFmpeg AAC finalization did not provide stderr")
+                raise SegmentFinalizeError("FFmpeg AAC finalization did not provide stderr")
 
             stdin_handle = process.stdin
             stderr_handle = process.stderr
@@ -731,22 +725,24 @@ class AacTrackFinalizer:
                 feeder.join(timeout=1)
                 stderr_reader.join(timeout=1)
 
-                raise TrackFinalizeError("FFmpeg AAC finalization timed out") from exc
+                raise SegmentFinalizeError("FFmpeg AAC finalization timed out") from exc
 
             feeder.join(timeout=1)
             stderr_reader.join(timeout=1)
 
             if feeder.is_alive():
-                raise TrackFinalizeError("FFmpeg AAC stdin feeder did not terminate")
+                raise SegmentFinalizeError("FFmpeg AAC stdin feeder did not terminate")
 
             if stderr_reader.is_alive():
-                raise TrackFinalizeError("FFmpeg AAC stderr reader did not terminate")
+                raise SegmentFinalizeError("FFmpeg AAC stderr reader did not terminate")
 
             if feeder_errors:
-                raise TrackFinalizeError("FFmpeg AAC stdin feeding failed") from feeder_errors[0]
+                raise SegmentFinalizeError("FFmpeg AAC stdin feeding failed") from feeder_errors[0]
 
             if stderr_errors:
-                raise TrackFinalizeError("FFmpeg AAC stderr draining failed") from stderr_errors[0]
+                raise SegmentFinalizeError("FFmpeg AAC stderr draining failed") from stderr_errors[
+                    0
+                ]
 
             if returncode != 0:
                 error = (
@@ -757,12 +753,12 @@ class AacTrackFinalizer:
                     )
                     .strip()
                 )
-                raise TrackFinalizeError(
+                raise SegmentFinalizeError(
                     f"FFmpeg AAC finalization failed with exit code {returncode}: {error}"
                 )
 
             if temp_path.stat().st_size == 0:
-                raise TrackFinalizeError("FFmpeg AAC finalization produced no output")
+                raise SegmentFinalizeError("FFmpeg AAC finalization produced no output")
 
             with temp_path.open("r+b", buffering=0) as finalized_handle:
                 os.fsync(finalized_handle.fileno())
@@ -808,11 +804,6 @@ def create_safe_segment_output_service() -> SegmentOutputService:
     )
 
 
-def create_safe_track_output_service() -> TrackOutputService:
-    """Backward-compatible radio-oriented output factory."""
-    return create_safe_segment_output_service()
-
-
 class SegmentOutputService:
     """Compose range extraction, codec finalization, and atomic persistence."""
 
@@ -821,9 +812,9 @@ class SegmentOutputService:
     def __init__(
         self,
         *,
-        mp3_finalizer: Mp3TrackFinalizer | None = None,
-        aac_finalizer: AacTrackFinalizer | None = None,
-        file_writer: TrackFileWriter | None = None,
+        mp3_finalizer: Mp3SegmentFinalizer | None = None,
+        aac_finalizer: AacSegmentFinalizer | None = None,
+        file_writer: SegmentFileWriter | None = None,
         max_segment_bytes: int | None = None,
         min_free_output_bytes: int | None = None,
         output_space_factor: float = 0.0,
@@ -853,10 +844,10 @@ class SegmentOutputService:
         ):
             raise ValueError("finalize_throughput_bytes_per_second must be greater than zero")
 
-        self._mp3_finalizer = mp3_finalizer or Mp3TrackFinalizer()
-        self._aac_finalizer = aac_finalizer or AacTrackFinalizer()
-        self._file_writer = file_writer or TrackFileWriter()
-        self._encoded_writer = EncodedTrackWriter()
+        self._mp3_finalizer = mp3_finalizer or Mp3SegmentFinalizer()
+        self._aac_finalizer = aac_finalizer or AacSegmentFinalizer()
+        self._file_writer = file_writer or SegmentFileWriter()
+        self._encoded_writer = EncodedSegmentWriter()
         self._max_segment_bytes = max_segment_bytes
         self._min_free_output_bytes = min_free_output_bytes
         self._output_space_factor = output_space_factor
@@ -919,7 +910,7 @@ class SegmentOutputService:
             finalizer = self._aac_finalizer
             output_codec = "m4a"
         else:
-            raise ValueError(f"unsupported codec for track output: {codec}")
+            raise ValueError(f"unsupported codec for segment output: {codec}")
 
         finalize_stream = getattr(finalizer, "finalize_stream", None)
 
@@ -965,26 +956,6 @@ class SegmentOutputService:
             stem=stem,
             output_codec=output_codec,
             data=finalized,
-        )
-
-    def write_track(
-        self,
-        *,
-        source: EncodedByteSource,
-        byte_range: SegmentByteRange,
-        directory: Path,
-        stem: str,
-        codec: str,
-        chunk_size: int = 64 * 1024,
-    ) -> Path:
-        """Backward-compatible radio-oriented output method."""
-        return self.write_segment(
-            source=source,
-            byte_range=byte_range,
-            directory=directory,
-            stem=stem,
-            codec=codec,
-            chunk_size=chunk_size,
         )
 
     def _write_finalized(
@@ -1048,7 +1019,4 @@ class SegmentOutputService:
             if temp_path is not None:
                 with suppress(OSError):
                     temp_path.unlink(missing_ok=True)
-            raise TrackFileWriteError(f"failed to write track file: {target}") from exc
-
-
-TrackOutputService = SegmentOutputService
+            raise SegmentFileWriteError(f"failed to write segment file: {target}") from exc

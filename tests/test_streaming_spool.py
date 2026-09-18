@@ -121,7 +121,7 @@ def test_streaming_spool_can_back_track_output_service(
     tmp_path: Path,
 ) -> None:
     from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import TrackOutputService
+    from fluxtuner_ripper.output import SegmentOutputService
 
     class _Finalizer:
         def finalize(self, data: bytes) -> bytes:
@@ -132,11 +132,11 @@ def test_streaming_spool_can_back_track_output_service(
     try:
         spool.append(b"abcdefghijklmnop")
 
-        service = TrackOutputService(
+        service = SegmentOutputService(
             mp3_finalizer=_Finalizer(),  # type: ignore[arg-type]
         )
 
-        path = service.write_track(
+        path = service.write_segment(
             source=spool,
             byte_range=SegmentByteRange(
                 start_offset=4,
