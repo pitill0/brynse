@@ -36,6 +36,49 @@ FluxTuner remains a first-party integration and reference consumer.
 - Radio-specific track state and transition handling
 - Atomic track persistence
 
+## Architecture
+
+FluxTuner Ripper is organized around a source-agnostic segmentation core.
+
+```text
+SOURCE
+  ↓
+INGESTION
+  ↓
+RETENTION
+  ↓
+BOUNDARY PROVIDERS
+  ↓
+BOUNDARY CANDIDATES
+  ↓
+BOUNDARY RESOLUTION
+  ↓
+SEGMENT PLAN
+  ↓
+MATERIALIZATION
+  ↓
+SEGMENT
+  ↓
+SINK
+```
+
+Domain-specific integrations provide semantics and boundary signals without
+changing the core segmentation model.
+
+The first-party radio integration depends on the generic engine:
+
+```text
+integrations.radio
+      ↓
+     core
+```
+
+The core never depends on radio concepts.
+
+For a detailed description of the architecture, data flow, extension points,
+retention model, boundary resolution, and radio integration, see
+[`docs/architecture.md`](docs/architecture.md).
+
 ## Generic streaming CLI
 
 `fluxtuner-ripper-segment` reads MP3 or AAC input incrementally from a file or
