@@ -8,6 +8,9 @@ any source-specific integration.
 The goal is to keep the domain model stable even when new sources, media types,
 boundary providers, or integrations are added.
 
+For the behavioral guarantees associated with these concepts, see
+[`guarantees.md`](guarantees.md).
+
 ## Source
 
 A **Source** is the origin of the continuous byte stream consumed by the engine.

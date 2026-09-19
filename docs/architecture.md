@@ -21,6 +21,9 @@ it does not own the semantic meaning of that boundary.
 For formal definitions of the core vocabulary used throughout this document,
 see [`concepts.md`](concepts.md).
 
+For the behavioral guarantees and explicit non-guarantees of the engine, see
+[`guarantees.md`](guarantees.md).
+
 ## Architectural overview
 
 ```mermaid
