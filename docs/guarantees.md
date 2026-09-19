@@ -6,6 +6,9 @@ the generic segmentation engine.
 These guarantees define what consumers, integrations, and future extension
 points may rely on independently of radio-specific behavior.
 
+For the contracts that extension implementations should follow, see
+[`extensions.md`](extensions.md).
+
 ## Incremental processing
 
 The engine processes continuous input incrementally.

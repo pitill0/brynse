@@ -24,6 +24,10 @@ see [`concepts.md`](concepts.md).
 For the behavioral guarantees and explicit non-guarantees of the engine, see
 [`guarantees.md`](guarantees.md).
 
+For guidance on implementing providers, resolvers, materializers, sinks, domain
+integrations, and external adapters, see
+[`extensions.md`](extensions.md).
+
 ## Architectural overview
 
 ```mermaid
