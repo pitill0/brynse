@@ -1,15 +1,24 @@
 # FluxTuner Ripper
 
-FluxTuner Ripper is a source-agnostic streaming ingestion and segmentation engine
-that turns continuous streams into timestamped, lossless or minimally transformed
-segments using pluggable boundary sources and policies.
+FluxTuner Ripper is a boundary-driven continuous-stream segmentation engine.
+
+It incrementally consumes encoded streams, retains only the working data required
+for segmentation, resolves pluggable boundary signals, and materializes bounded
+segments without requiring source-specific semantics.
+
+Audio is its current media domain. Radio ripping is provided as a first-party
+integration built on top of the generic engine.
+
+The engine originated inside FluxTuner's radio ripping workflow, but has since
+evolved into an independent boundary-driven streaming segmentation core.
+FluxTuner remains a first-party integration and reference consumer.
 
 ## Current scope
 
-- Incremental ICY metadata parsing
+### Generic segmentation engine
+
 - MP3 and AAC/ADTS frame timelines
 - Bounded in-memory analysis ring plus reclaimable disk spool retention
-- Metadata semantic tracking
 - Bounded acoustic-window extraction
 - FFmpeg decode for analysis
 - RMS acoustic profiling
@@ -18,8 +27,14 @@ segments using pluggable boundary sources and policies.
 - Crossfade-aware byte-range planning
 - Streaming MP3 finalization
 - Streaming AAC/ADTS to M4A finalization
-- Atomic track persistence
 - Incremental source-agnostic CLI segmentation
+
+### First-party radio integration
+
+- Incremental ICY metadata parsing
+- Metadata semantic tracking
+- Radio-specific track state and transition handling
+- Atomic track persistence
 
 ## Generic streaming CLI
 

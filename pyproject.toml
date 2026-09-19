@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "fluxtuner-ripper"
 version = "0.1.0.dev0"
-description = "Native ICY radio stream ripper core extracted from FluxTuner."
+description = "Boundary-driven continuous-stream segmentation engine."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MPL-2.0" }
