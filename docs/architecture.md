@@ -28,6 +28,9 @@ For guidance on implementing providers, resolvers, materializers, sinks, domain
 integrations, and external adapters, see
 [`extensions.md`](extensions.md).
 
+For reproducible examples and validated real-world use cases, see
+[`examples/README.md`](examples/README.md).
+
 ## Architectural overview
 
 ```mermaid
