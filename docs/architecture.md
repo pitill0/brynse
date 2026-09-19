@@ -18,6 +18,9 @@ The architecture follows one central rule:
 The engine may consume intelligence about where a segment boundary exists, but
 it does not own the semantic meaning of that boundary.
 
+For formal definitions of the core vocabulary used throughout this document,
+see [`concepts.md`](concepts.md).
+
 ## Architectural overview
 
 ```mermaid
