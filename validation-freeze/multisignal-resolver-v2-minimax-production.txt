@@ -1,0 +1,29 @@
+MULTISIGNAL-RESOLVER-v2-MINIMAX production freeze
+
+Commit:
+9eaf41978b91bc5b7d8745c779c7e1d4c9ce90fd
+
+Files:
+67e550039b5e85743e3c7d30e920dbaefa6b80e4cbf471175d3db46f665cc3e1  src/fluxtuner_ripper/multisignal.py
+81bc77ae59ab6abfa1dc2361fb915be3a0669b6d6bd3279b655a99e74467a460  src/fluxtuner_ripper/orchestrator.py
+626922e15b1f0bd312a72716f295fc049b326cbe9f70340f8d348d1cbb1f4c69  src/fluxtuner_ripper/integrations/radio/runner.py
+baff420cd6135f135e7a1610388d4c5c6e0992653d0ea98ed93f4f271aaae50a  src/fluxtuner_ripper/hybrid.py
+42fa6b3a4e346e86941896575a4730c50e5aac66c2b9e6b75a0ac9ba45ea5ef7  src/fluxtuner_ripper/local_discontinuity.py
+0d957282cc9f8cd3b96fac5a7852d814e468cac7058845d13d2e2b4c23f161a7  src/fluxtuner_ripper/temporal_variability.py
+59192d285aaf9ec5b9c8ea9f0aac174b469f9eab68daa45649481003cc94661b  src/fluxtuner_ripper/matching.py
+9899068fbd77011596e1fae846cb66268015f3297673b53bf8fbf1f857b2be0e  pyproject.toml
+
+Frozen policy:
+- candidate generation: FULL UNION = BASIN + direct-D2 local maxima
+- semantic candidate window: [semantic-7s, semantic-1s]
+- direct-D2 step: 0.25s
+- family score: reciprocal-rank fusion of short/long/regime families
+- forward novelty: directed PRE->POST spectral novelty
+- selector: MULTISIGNAL-RESOLVER-v2-MINIMAX
+- hard cut: incoming = outgoing = MINIMAX
+- crossfade: incoming = MINIMAX; outgoing = Hybrid latest qualifying rise
+- invalid crossfade order: abstain
+- AAC and MP3 use the same multisignal resolver
+- MP3 refinement is not applied after MINIMAX
+- transient exclusions remain session-level and outside acoustic resolver
+- no tuning after Corpus E
