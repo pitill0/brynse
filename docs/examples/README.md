@@ -1,6 +1,6 @@
 # Examples and validated use cases
 
-This directory contains reproducible examples of FluxTuner Ripper in use.
+This directory contains reproducible examples of Brynse in use.
 
 Examples are classified by evidence level.
 

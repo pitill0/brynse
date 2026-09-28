@@ -1,6 +1,6 @@
 # Core concepts
 
-FluxTuner Ripper is a boundary-driven continuous-stream segmentation engine.
+Brynse is a boundary-driven continuous-stream segmentation engine.
 
 This document defines the core vocabulary used by the engine independently of
 any source-specific integration.

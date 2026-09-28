@@ -1,6 +1,6 @@
 # Extension contracts
 
-This document defines how FluxTuner Ripper should be extended without weakening
+This document defines how Brynse should be extended without weakening
 the generic segmentation architecture.
 
 The core rule is:

@@ -29,13 +29,13 @@ validation and is therefore not claimed as such here.
 The first-party radio CLI is:
 
 ```text
-fluxtuner-ripper
+brynse-radio
 ```
 
 Basic usage:
 
 ```bash
-fluxtuner-ripper \
+brynse-radio \
   "https://example.com/radio-stream" \
   --output ./tracks
 ```
@@ -61,7 +61,7 @@ The current radio integration recognizes:
 A codec can also be forced explicitly:
 
 ```bash
-fluxtuner-ripper \
+brynse-radio \
   "https://example.com/radio-stream" \
   --output ./tracks \
   --codec mp3
@@ -70,7 +70,7 @@ fluxtuner-ripper \
 or:
 
 ```bash
-fluxtuner-ripper \
+brynse-radio \
   "https://example.com/radio-stream" \
   --output ./tracks \
   --codec aac
@@ -149,7 +149,7 @@ It can be changed with:
 For example:
 
 ```bash
-fluxtuner-ripper \
+brynse-radio \
   "https://example.com/radio-stream" \
   --output ./tracks \
   --metadata-threshold 10
@@ -202,7 +202,7 @@ It can be disabled with:
 Example:
 
 ```bash
-fluxtuner-ripper \
+brynse-radio \
   "https://example.com/radio-stream" \
   --output ./tracks \
   --no-transient-exclusion

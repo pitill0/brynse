@@ -1,6 +1,6 @@
 # Architecture
 
-FluxTuner Ripper is a boundary-driven continuous-stream segmentation engine.
+Brynse is a boundary-driven continuous-stream segmentation engine.
 
 Its core responsibility is deliberately narrow:
 
@@ -256,7 +256,7 @@ The dependency direction is deliberately one-way.
 
 ```mermaid
 flowchart BT
-    R[fluxtuner_ripper.integrations.radio]
+    R[brynse.integrations.radio]
     C[Generic segmentation core]
 
     R --> C
@@ -280,7 +280,7 @@ The radio integration may freely depend on generic engine components.
 The radio implementation lives under:
 
 ```text
-fluxtuner_ripper.integrations.radio
+brynse.integrations.radio
 ```
 
 Its current responsibilities include:
@@ -293,7 +293,7 @@ Its current responsibilities include:
 - adapting radio track candidates to generic boundary candidates
 - radio-oriented orchestration
 - track-oriented output naming and persistence
-- the `fluxtuner-ripper` radio CLI
+- the `brynse-radio` radio CLI
 
 Conceptually:
 
@@ -351,7 +351,7 @@ owner of the engine's domain model.
 The source-agnostic CLI is:
 
 ```text
-fluxtuner-ripper-segment
+brynse
 ```
 
 It exposes generic segmentation operations without requiring radio semantics.
@@ -372,7 +372,7 @@ segments.
 The first-party radio CLI is:
 
 ```text
-fluxtuner-ripper
+brynse-radio
 ```
 
 It uses the radio integration and therefore understands concepts such as ICY
@@ -443,7 +443,7 @@ The following rules define the intended architecture:
 At a high level:
 
 ```text
-fluxtuner_ripper/
+brynse/
     models.py
     boundaries.py
     providers.py
