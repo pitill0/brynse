@@ -256,3 +256,67 @@ Future work, if resumed, should focus on one of:
 The current production ripper remains on the validated Hybrid resolver
 path.
 
+
+## Production transfer and prospective validation
+
+The frozen MULTISIGNAL-RESOLVER-v2-MINIMAX was transferred to
+production and prospectively evaluated against untouched Corpus E.
+
+Production implementation commit:
+
+    b68ecf8 Freeze radio multisignal acoustic window
+
+Final pre-E preregistration:
+
+    cfb9bc6 Finalize multisignal resolver freeze for Corpus E
+
+Corpus E contained 18 transitions. Three historically annotated
+exclusions were omitted from acoustic-resolver scoring because exclusion
+handling is a session-level responsibility established before evaluation.
+
+Resolver evaluation:
+
+    N       = 15
+    MAE     = 0.562 s
+    median  = 0.200 s
+    <=0.25  = 9/15
+    <=0.50  = 10/15
+    <=1.00  = 12/15
+    max     = 2.375 s
+
+For comparison, the frozen C+D development result was:
+
+    N       = 46
+    MAE     = 0.922 s
+    median  = 0.397 s
+    <=0.25  = 15/46
+    <=0.50  = 26/46
+    <=1.00  = 32/46
+    max     = 4.119 s
+
+Corpus E therefore did not show an out-of-sample collapse. The frozen
+resolver generalized prospectively and is accepted as the production
+boundary resolver.
+
+No tuning was performed from Corpus E results.
+
+Evaluation artifacts:
+
+    manifest:
+    afbfb9cc137c627215ebb11b7c44d2f03fbe2ce38990e7e382f9b7808caa3dd0
+
+    evaluator:
+    a669988a75308e481a5a3f239d6f7e51f8cf4c3ca1d16545b75e54cb401c8036
+
+    frozen predictions:
+    dfce6c6106955f9e2947aff27688e20173c61e6ebd7520efe6cd887c946e4b2d
+
+    human truth:
+    a4dbdc5cd73e4155831a389412e0cb6a4c3dc0cd11cda1b15af006742b6f2f4e
+
+Status:
+
+    research: CLOSED
+    production transfer: COMPLETE
+    prospective validation: PASSED
+    post-E tuning: NONE
