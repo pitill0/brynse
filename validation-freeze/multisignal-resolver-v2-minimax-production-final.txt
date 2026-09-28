@@ -1,0 +1,58 @@
+MULTISIGNAL-RESOLVER-v2-MINIMAX final production freeze
+
+Implementation commit: b68ecf8c4bb63843af968071826e7a2031b11e10
+Previous preregistration commit: 0004b98
+
+Reason for superseding previous preregistration:
+- Production wiring was found, before Corpus E evaluation, to use an 8 s
+  acoustic search radius instead of the frozen 24 s research window.
+- Radio session resolution was found to occur as soon as metadata became
+  durable instead of waiting for the complete 24 s acoustic post-context.
+- Both discrepancies were detected before opening prospective predictions,
+  listening to review audio, or observing boundary truth/results from Corpus E.
+
+Frozen production policy:
+- FULL UNION: BASIN + direct-D2 local maxima
+- semantic candidate window: [semantic-7s, semantic-1s]
+- direct-D2 step: 0.25 s
+- family RRF: short + long + MFCC regime
+- MFCC regime scales: 2, 3, 4, 6, 8 s
+- forward novelty window: 0.750 s
+- selection: MULTISIGNAL-RESOLVER-v2-MINIMAX
+- HARD_CUT: incoming = outgoing = MINIMAX
+- CROSSFADE: incoming = MINIMAX; outgoing = Hybrid latest qualifying rise
+- invalid crossfade ordering: abstain
+- AAC and MP3 use the same multisignal resolver
+- no MP3 refinement after MINIMAX
+- exclusions remain session-level and bypass acoustic resolution
+- radio multisignal acoustic radius: 24.0 s, fixed
+- radio acoustic settle: 24.0 s, fixed
+- metadata durability threshold remains independent at 8.0 s by default
+- no tuning after Corpus E evaluation
+
+Implementation SHA256:
+67e550039b5e85743e3c7d30e920dbaefa6b80e4cbf471175d3db46f665cc3e1  src/fluxtuner_ripper/multisignal.py
+81bc77ae59ab6abfa1dc2361fb915be3a0669b6d6bd3279b655a99e74467a460  src/fluxtuner_ripper/orchestrator.py
+f276abc108b0ef828a7509fd1d3defdae019e0caf90be7cc5bbe8e97db480b91  src/fluxtuner_ripper/integrations/radio/orchestrator.py
+d53c050d8e0211a5f594734f25aead879d50f53278a498117201cea223d9ce74  src/fluxtuner_ripper/integrations/radio/session.py
+4940cf5dc85dbe33c3b74d5ecc866667283392b8e2a9bb99a980706d01bd3b09  src/fluxtuner_ripper/integrations/radio/runner.py
+14d6c3812c04774451a37de02b96f317f5978bf1b0eed30b1d4378a5d5df1038  src/fluxtuner_ripper/integrations/radio/cli.py
+
+Relevant test SHA256:
+016fa6e90b8f667bf9ba433ac11f59daa8ae3ba7cdf2cbd0de3c2967552b91db  tests/test_multisignal.py
+d146424ab98afbbaa5bdbd27dd3e5652dd43d6888aa3da708be09e74b3c69c3f  tests/test_session.py
+a9576e7dccab4250904b43952658a29c933e144e1eb7723de067cb9012420f02  tests/test_radio_runner_multisignal.py
+
+Corpus E frozen artifacts:
+afbfb9cc137c627215ebb11b7c44d2f03fbe2ce38990e7e382f9b7808caa3dd0  prospective-manifest.json
+f0d2d8d978a01f36a499f9837c335eac88996a3e7208c31a080904fac60d74a3  prospective-predictions.json
+
+Corpus E status at freeze:
+- 18 prospective transitions
+- manifest operational fields inspected
+- prospective-predictions.json content not opened
+- review-long/review-short audio not listened to
+- no Corpus E boundary result used for implementation decisions
+
+Validation status:
+- make gate passed immediately before this freeze
