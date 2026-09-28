@@ -5,7 +5,11 @@ import pytest
 
 from fluxtuner_ripper.models import (
     AcousticWindow,
+    BoundaryCandidate,
     DecodedPcm,
+    SplitDecision,
+    SplitKind,
+    TemporalSplitDecision,
     TemporalSplitKind,
 )
 from fluxtuner_ripper.multisignal import (
@@ -18,6 +22,10 @@ from fluxtuner_ripper.multisignal import (
     assign_family_rrf,
     build_union_candidates,
     forward_novelty,
+)
+from fluxtuner_ripper.orchestrator import (
+    CandidateResolution,
+    MultiSignalAcousticCandidateResolver,
 )
 
 
@@ -472,3 +480,156 @@ def test_multisignal_temporal_resolver_rejects_invalid_crossfade_order() -> None
     )
 
     assert decision is None
+
+
+def test_multisignal_acoustic_candidate_resolver_composes_product_pipeline() -> None:
+    acoustic_window = AcousticWindow(
+        start_offset=100,
+        end_offset=200,
+        start_time_seconds=0.0,
+        end_time_seconds=20.0,
+        data=b"x" * 100,
+    )
+
+    pcm8 = DecodedPcm(
+        sample_rate=8000,
+        channels=1,
+        sample_width_bytes=2,
+        data=b"\x00\x00" * (8000 * 20),
+    )
+
+    pcm16 = DecodedPcm(
+        sample_rate=16000,
+        channels=1,
+        sample_width_bytes=2,
+        data=b"\x00\x00" * (16000 * 20),
+    )
+
+    profile = object()
+
+    class FakeWindowExtractor:
+        def extract(
+            self,
+            *,
+            candidate_time_seconds,
+            timeline,
+            ring_buffer,
+        ):
+            assert candidate_time_seconds == 10.0
+            assert timeline is timeline_object
+            assert ring_buffer is ring_object
+            return acoustic_window
+
+    class FakeDecoder:
+        def __init__(self, result):
+            self.result = result
+
+        def decode(self, window):
+            assert window is acoustic_window
+            return self.result
+
+    class FakeAnalyzer:
+        def analyze(self, pcm):
+            assert pcm is pcm8
+            return profile
+
+    class FakeBuilder:
+        def build(
+            self,
+            *,
+            semantic_time,
+            window,
+            pcm8,
+            pcm16,
+        ):
+            assert semantic_time == 10.0
+            assert window is acoustic_window
+            assert pcm8 is globals_pcm8
+            assert pcm16 is globals_pcm16
+
+            return (
+                MultiSignalCandidate(
+                    time_seconds=3.0,
+                    family_rrf=0.9,
+                    forward_novelty=0.1,
+                ),
+                MultiSignalCandidate(
+                    time_seconds=4.0,
+                    family_rrf=0.8,
+                    forward_novelty=0.8,
+                ),
+                MultiSignalCandidate(
+                    time_seconds=5.0,
+                    family_rrf=0.1,
+                    forward_novelty=0.9,
+                ),
+            )
+
+    class FakeTemporalResolver:
+        def resolve(
+            self,
+            *,
+            selected,
+            profile,
+            window,
+            semantic_time_seconds,
+        ):
+            assert selected.time_seconds == 4.0
+            assert profile is globals_profile
+            assert window is acoustic_window
+            assert semantic_time_seconds == 10.0
+
+            return TemporalSplitDecision(
+                kind=TemporalSplitKind.HARD_CUT,
+                incoming_start_seconds=4.0,
+                outgoing_end_seconds=4.0,
+            )
+
+    split = SplitDecision(
+        kind=SplitKind.HARD_CUT,
+        incoming_start=123,
+        outgoing_end=123,
+    )
+
+    class FakeAligner:
+        def align(self, *, decision, timeline):
+            assert decision.incoming_start_seconds == 4.0
+            assert timeline is timeline_object
+            return split
+
+    timeline_object = object()
+    ring_object = object()
+
+    globals_pcm8 = pcm8
+    globals_pcm16 = pcm16
+    globals_profile = profile
+
+    resolver = MultiSignalAcousticCandidateResolver(
+        window_extractor=FakeWindowExtractor(),
+        decoder8=FakeDecoder(pcm8),
+        decoder16=FakeDecoder(pcm16),
+        analyzer=FakeAnalyzer(),
+        candidate_builder=FakeBuilder(),
+        temporal_resolver=FakeTemporalResolver(),
+        split_aligner=FakeAligner(),
+    )
+
+    candidate = BoundaryCandidate(
+        time_seconds=10.0,
+        source="test",
+    )
+
+    resolution = resolver.resolve_candidate(
+        candidate=candidate,
+        timeline=timeline_object,
+        ring_buffer=ring_object,
+    )
+
+    assert isinstance(
+        resolution,
+        CandidateResolution,
+    )
+    assert resolution.candidate is candidate
+    assert resolution.temporal.kind is TemporalSplitKind.HARD_CUT
+    assert resolution.temporal.incoming_start_seconds == 4.0
+    assert resolution.split is split

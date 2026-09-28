@@ -4,7 +4,7 @@ import math
 import statistics
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol, cast, runtime_checkable
 
 import numpy as np
 
@@ -652,11 +652,23 @@ CandidateBuilder = Callable[
 ]
 
 
+@runtime_checkable
+class AcousticCandidateBuilder(Protocol):
+    def build(
+        self,
+        *,
+        semantic_time: float,
+        window: AcousticWindow,
+        pcm8: DecodedPcm,
+        pcm16: DecodedPcm,
+    ) -> Sequence[MultiSignalCandidate]: ...
+
+
 class MultiSignalCandidateResolver:
     def __init__(
         self,
         *,
-        candidate_builder: CandidateBuilder,
+        candidate_builder: CandidateBuilder | AcousticCandidateBuilder,
         selector: MinimaxBoundarySelector | None = None,
     ) -> None:
         self._candidate_builder = candidate_builder
@@ -694,9 +706,19 @@ class MultiSignalCandidateResolver:
         *,
         semantic_time_seconds: float,
     ) -> MultiSignalCandidate | None:
+        builder = self._candidate_builder
+
+        if not callable(builder):
+            raise TypeError("candidate_builder is not callable")
+
+        callable_builder = cast(
+            CandidateBuilder,
+            builder,
+        )
+
         candidates = tuple(
-            self._candidate_builder(
-                semantic_time_seconds=(semantic_time_seconds),
+            callable_builder(
+                semantic_time_seconds=semantic_time_seconds,
             )
         )
 

@@ -29,6 +29,11 @@ from fluxtuner_ripper.models import (
     TemporalSplitKind,
 )
 from fluxtuner_ripper.mp3_refinement import Mp3BoundaryRefiner
+from fluxtuner_ripper.multisignal import (
+    AcousticMultiSignalCandidateBuilder,
+    MultiSignalCandidateResolver,
+    MultiSignalTemporalResolver,
+)
 
 
 @dataclass(frozen=True)
@@ -145,6 +150,126 @@ class DefaultCandidateResolver:
             split=split,
             acoustic=selected,
             relation=relation,
+        )
+
+
+class MultiSignalAcousticCandidateResolver:
+    """Resolve candidates through the frozen multisignal boundary policy."""
+
+    def __init__(
+        self,
+        *,
+        window_extractor: AcousticWindowExtractor | None = None,
+        decoder8: FfmpegAcousticDecoder | None = None,
+        decoder16: FfmpegAcousticDecoder | None = None,
+        analyzer: RmsAcousticAnalyzer | None = None,
+        candidate_builder: AcousticMultiSignalCandidateBuilder | None = None,
+        candidate_resolver: MultiSignalCandidateResolver | None = None,
+        temporal_resolver: MultiSignalTemporalResolver | None = None,
+        split_aligner: TemporalSplitAligner | None = None,
+    ) -> None:
+        self._window_extractor = (
+            window_extractor
+            if window_extractor is not None
+            else AcousticWindowExtractor(
+                search_radius_seconds=8.0,
+            )
+        )
+
+        self._decoder8 = (
+            decoder8
+            if decoder8 is not None
+            else FfmpegAcousticDecoder(
+                output_sample_rate=8000,
+            )
+        )
+
+        self._decoder16 = (
+            decoder16
+            if decoder16 is not None
+            else FfmpegAcousticDecoder(
+                output_sample_rate=16000,
+            )
+        )
+
+        self._analyzer = (
+            analyzer
+            if analyzer is not None
+            else RmsAcousticAnalyzer(
+                window_seconds=0.05,
+            )
+        )
+
+        self._candidate_builder = (
+            candidate_builder
+            if candidate_builder is not None
+            else AcousticMultiSignalCandidateBuilder()
+        )
+
+        self._candidate_resolver = (
+            candidate_resolver
+            if candidate_resolver is not None
+            else MultiSignalCandidateResolver(
+                candidate_builder=self._candidate_builder,
+            )
+        )
+
+        self._temporal_resolver = (
+            temporal_resolver if temporal_resolver is not None else MultiSignalTemporalResolver()
+        )
+
+        self._split_aligner = split_aligner if split_aligner is not None else TemporalSplitAligner()
+
+    def resolve_candidate(
+        self,
+        *,
+        candidate: BoundaryCandidate,
+        timeline: IncrementalFrameTimeline,
+        ring_buffer: EncodedAudioRingBuffer,
+    ) -> CandidateResolution | None:
+        window = self._window_extractor.extract(
+            candidate_time_seconds=candidate.time_seconds,
+            timeline=timeline,
+            ring_buffer=ring_buffer,
+        )
+
+        if window is None:
+            return None
+
+        pcm8 = self._decoder8.decode(window)
+        pcm16 = self._decoder16.decode(window)
+
+        profile = self._analyzer.analyze(pcm8)
+
+        selected = self._candidate_resolver.resolve_acoustic_boundary(
+            semantic_time_seconds=candidate.time_seconds,
+            window=window,
+            pcm8=pcm8,
+            pcm16=pcm16,
+        )
+
+        if selected is None:
+            return None
+
+        temporal = self._temporal_resolver.resolve(
+            selected=selected,
+            profile=profile,
+            window=window,
+            semantic_time_seconds=candidate.time_seconds,
+        )
+
+        if temporal is None:
+            return None
+
+        split = self._split_aligner.align(
+            decision=temporal,
+            timeline=timeline,
+        )
+
+        return CandidateResolution(
+            candidate=candidate,
+            temporal=temporal,
+            split=split,
         )
 
 
