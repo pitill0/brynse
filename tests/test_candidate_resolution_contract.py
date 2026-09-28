@@ -1,6 +1,6 @@
 from dataclasses import fields
 
-from fluxtuner_ripper.orchestrator import CandidateResolution
+from brynse.orchestrator import CandidateResolution
 
 
 def test_candidate_resolution_contract_is_algorithm_agnostic() -> None:

@@ -4,7 +4,7 @@ from pathlib import Path
 
 def test_package_root_does_not_export_radio_integration() -> None:
     root = Path(__file__).resolve().parents[1]
-    path = root / "src/fluxtuner_ripper/__init__.py"
+    path = root / "src/brynse/__init__.py"
 
     tree = ast.parse(path.read_text(encoding="utf-8"))
 
@@ -14,7 +14,7 @@ def test_package_root_does_not_export_radio_integration() -> None:
         if (
             isinstance(node, ast.ImportFrom)
             and node.module is not None
-            and node.module.startswith("fluxtuner_ripper.integrations.radio")
+            and node.module.startswith("brynse.integrations.radio")
         ):
             violations.append(f"line {node.lineno}: {node.module}")
 

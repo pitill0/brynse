@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from fluxtuner_ripper.integrations.radio.cli import (
+from brynse.integrations.radio.cli import (
     CliError,
     _build_parser,
     _resolve_codec,
     _resolve_metaint,
     main,
 )
-from fluxtuner_ripper.source import BinaryIOStreamSource
+from brynse.source import BinaryIOStreamSource
 
 
 def test_cli_resolves_mp3_codec_from_content_type() -> None:
@@ -54,7 +54,7 @@ def test_cli_main_ingests_mock_stream(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import fluxtuner_ripper.integrations.radio.cli as cli
+    import brynse.integrations.radio.cli as cli
 
     class FakeStream(io.BytesIO):
         pass
@@ -114,7 +114,7 @@ def test_cli_reports_unfinished_track_on_keyboard_interrupt(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import fluxtuner_ripper.integrations.radio.cli as cli
+    import brynse.integrations.radio.cli as cli
 
     class FakeRunner:
         current_track_title = "Artist - Open Track"
@@ -168,7 +168,7 @@ def test_cli_reports_runtime_ripping_failure_as_operational_error(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import fluxtuner_ripper.integrations.radio.cli as cli
+    import brynse.integrations.radio.cli as cli
 
     class FakeRunner:
         current_track_title = None
@@ -205,7 +205,7 @@ def test_radio_cli_handles_keyboard_interrupt_cleanly(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import fluxtuner_ripper.integrations.radio.cli as cli
+    import brynse.integrations.radio.cli as cli
 
     class FakeRunner:
         current_track_title = None
@@ -244,7 +244,7 @@ def test_radio_cli_handles_broken_stdout_pipe_cleanly(
     import builtins
     from types import SimpleNamespace
 
-    import fluxtuner_ripper.integrations.radio.cli as cli
+    import brynse.integrations.radio.cli as cli
 
     class FakeRunner:
         current_track_title = None
@@ -287,7 +287,7 @@ def test_radio_cli_reports_stream_open_failure_as_operational_error(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import fluxtuner_ripper.integrations.radio.cli as cli
+    import brynse.integrations.radio.cli as cli
 
     def fail_open_stream(url: str) -> object:
         raise cli.RippingRunError("connection refused")
@@ -339,7 +339,7 @@ def test_radio_cli_open_stream_returns_stream_source(
 ) -> None:
     from collections.abc import Mapping
 
-    import fluxtuner_ripper.integrations.radio.cli as cli
+    import brynse.integrations.radio.cli as cli
 
     class FakeSource:
         @property

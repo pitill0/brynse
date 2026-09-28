@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from fluxtuner_ripper.models import (
+from brynse.models import (
     AcousticProfile,
     AcousticWindow,
     TemporalSplitDecision,
     TemporalSplitKind,
 )
-from fluxtuner_ripper.mp3_refinement import Mp3BoundaryRefiner, Mp3TransitionGeometry
+from brynse.mp3_refinement import Mp3BoundaryRefiner, Mp3TransitionGeometry
 
 
 class _GeometryRefiner(Mp3BoundaryRefiner):

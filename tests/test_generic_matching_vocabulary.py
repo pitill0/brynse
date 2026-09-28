@@ -4,7 +4,7 @@ from pathlib import Path
 
 def test_matching_module_has_no_radio_specific_track_contracts() -> None:
     root = Path(__file__).resolve().parents[1]
-    path = root / "src/fluxtuner_ripper/matching.py"
+    path = root / "src/brynse/matching.py"
 
     source = path.read_text(encoding="utf-8")
 

@@ -4,15 +4,15 @@ from pathlib import Path
 
 def test_ripping_module_only_imports_runtime_dependencies() -> None:
     root = Path(__file__).resolve().parents[1]
-    path = root / "src/fluxtuner_ripper/integrations/radio/ripping.py"
+    path = root / "src/brynse/integrations/radio/ripping.py"
 
     tree = ast.parse(path.read_text(encoding="utf-8"))
 
     forbidden_modules = {
-        "fluxtuner_ripper.acoustic",
-        "fluxtuner_ripper.matching",
-        "fluxtuner_ripper.integrations.radio.metadata",
-        "fluxtuner_ripper.output",
+        "brynse.acoustic",
+        "brynse.matching",
+        "brynse.integrations.radio.metadata",
+        "brynse.output",
     }
 
     violations: list[str] = []

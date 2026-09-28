@@ -4,13 +4,13 @@ from pathlib import Path
 def test_radio_models_are_separated_from_core_models() -> None:
     root = Path(__file__).resolve().parents[1]
 
-    core_models = (root / "src/fluxtuner_ripper/models.py").read_text(encoding="utf-8")
+    core_models = (root / "src/brynse/models.py").read_text(encoding="utf-8")
 
-    radio_models = root / "src/fluxtuner_ripper/integrations/radio/models.py"
+    radio_models = root / "src/brynse/integrations/radio/models.py"
 
     assert radio_models.exists()
 
-    assert not (root / "src/fluxtuner_ripper/radio_models.py").exists()
+    assert not (root / "src/brynse/radio_models.py").exists()
 
     forbidden = (
         "class ContentKind",

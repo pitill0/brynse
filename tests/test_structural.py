@@ -4,9 +4,9 @@ from array import array
 
 import pytest
 
-from fluxtuner_ripper.boundaries import BoundaryProposalSource
-from fluxtuner_ripper.models import DecodedPcm
-from fluxtuner_ripper.structural import StructuralBoundaryDetector
+from brynse.boundaries import BoundaryProposalSource
+from brynse.models import DecodedPcm
+from brynse.structural import StructuralBoundaryDetector
 
 
 def _pcm(samples: list[int], *, sample_rate: int = 100) -> DecodedPcm:

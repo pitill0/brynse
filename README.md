@@ -1,6 +1,6 @@
-# FluxTuner Ripper
+# Brynse
 
-FluxTuner Ripper is a boundary-driven continuous-stream segmentation engine.
+Brynse is a boundary-driven continuous-stream segmentation engine.
 
 It incrementally consumes encoded streams, retains only the working data required
 for segmentation, resolves pluggable boundary signals, and materializes bounded
@@ -38,7 +38,7 @@ FluxTuner remains a first-party integration and reference consumer.
 
 ## Architecture
 
-FluxTuner Ripper is organized around a source-agnostic segmentation core.
+Brynse is organized around a source-agnostic segmentation core.
 
 ```text
 SOURCE
@@ -81,7 +81,7 @@ retention model, boundary resolution, and radio integration, see
 
 ## Generic streaming CLI
 
-`fluxtuner-ripper-segment` reads MP3 or AAC input incrementally from a file or
+`brynse` reads MP3 or AAC input incrementally from a file or
 stdin. Without `--output-dir` it reports resolved boundaries as JSON. With
 `--output-dir`, encoded input is retained in a reclaimable disk spool while a
 bounded ring remains available for boundary analysis; completed segments are
@@ -89,7 +89,7 @@ materialized incrementally from the retained source.
 
 Fixed-interval segmentation:
 
-    fluxtuner-ripper-segment input.mp3 \
+    brynse input.mp3 \
       --codec mp3 \
       --provider fixed \
       --interval 180 \
@@ -97,7 +97,7 @@ Fixed-interval segmentation:
 
 Manual boundaries can be supplied by repeating `--boundary`:
 
-    fluxtuner-ripper-segment input.aac \
+    brynse input.aac \
       --codec aac \
       --provider manual \
       --boundary 120 \
@@ -106,7 +106,7 @@ Manual boundaries can be supplied by repeating `--boundary`:
 
 External boundaries are loaded from JSON or JSONL:
 
-    fluxtuner-ripper-segment - \
+    brynse - \
       --codec mp3 \
       --provider external \
       --boundaries-file boundaries.jsonl \
@@ -117,14 +117,14 @@ threshold into the preceding segment. The default is 1 second.
 
 ## Machine-oriented API
 
-FluxTuner Ripper also exposes a Python API for embedding the segmentation engine
+Brynse also exposes a Python API for embedding the segmentation engine
 in applications, automation, or agent-oriented workflows. This is a library API;
 it is not an additional installed CLI.
 
 The structured request contract is `SegmentRequest`:
 
 ```python
-from fluxtuner_ripper.machine import SegmentRequest
+from brynse.machine import SegmentRequest
 
 request = SegmentRequest(
     codec="mp3",
@@ -190,8 +190,8 @@ when consumption finishes or aborts.
 Example:
 
 ```python
-from fluxtuner_ripper.machine import run_segment_json
-from fluxtuner_ripper.source import BinaryIOStreamSource
+from brynse.machine import run_segment_json
+from brynse.source import BinaryIOStreamSource
 
 with open("input.mp3", "rb") as stream:
     source = BinaryIOStreamSource(stream)

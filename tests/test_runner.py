@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from fluxtuner_ripper.integrations.radio.runner import (
+from brynse.integrations.radio.runner import (
     RippingRunConfig,
     RippingRunError,
     RippingRunner,
     resolve_codec,
     resolve_metaint,
 )
-from fluxtuner_ripper.source import BinaryIOStreamSource
+from brynse.source import BinaryIOStreamSource
 
 
 def _stream_source(stream: object, metadata: dict[str, str]) -> BinaryIOStreamSource:
@@ -162,7 +162,7 @@ def test_runner_retains_clean_audio_in_safe_streaming_spool(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    import fluxtuner_ripper.integrations.radio.runner as runner_module
+    import brynse.integrations.radio.runner as runner_module
 
     frame_length = 417
     frame = b"\xff\xfb\x90\x00" + bytes(frame_length - 4)
@@ -230,7 +230,7 @@ def test_runner_discards_spool_before_next_retained_track_offset(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    import fluxtuner_ripper.integrations.radio.runner as runner_module
+    import brynse.integrations.radio.runner as runner_module
 
     class FakeStream:
         def __init__(self) -> None:
@@ -323,7 +323,7 @@ def test_runner_closes_spool_when_output_writer_construction_fails(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    import fluxtuner_ripper.integrations.radio.runner as runner_module
+    import brynse.integrations.radio.runner as runner_module
 
     class FakeStream:
         def read(self, size: int = -1) -> bytes:
@@ -389,7 +389,7 @@ def test_runner_closes_spool_when_append_fails(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    import fluxtuner_ripper.integrations.radio.runner as runner_module
+    import brynse.integrations.radio.runner as runner_module
 
     class FakeStream:
         def __init__(self) -> None:
@@ -472,7 +472,7 @@ def test_runner_does_not_discard_spool_when_track_write_fails(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    import fluxtuner_ripper.integrations.radio.runner as runner_module
+    import brynse.integrations.radio.runner as runner_module
 
     class FakeStream:
         def __init__(self) -> None:
@@ -568,7 +568,7 @@ def test_runner_closes_spool_when_discard_fails(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    import fluxtuner_ripper.integrations.radio.runner as runner_module
+    import brynse.integrations.radio.runner as runner_module
 
     class FakeStream:
         def __init__(self) -> None:
@@ -667,7 +667,7 @@ def test_open_stream_uses_interoperable_icy_request_headers(
 ) -> None:
     from io import BytesIO
 
-    import fluxtuner_ripper.integrations.radio.runner as runner
+    import brynse.integrations.radio.runner as runner
 
     captured_request = None
 
@@ -703,7 +703,7 @@ def test_open_stream_wraps_remote_disconnect_as_ripping_run_error(
 
     import pytest
 
-    import fluxtuner_ripper.integrations.radio.runner as runner
+    import brynse.integrations.radio.runner as runner
 
     def fake_urlopen(request, timeout):
         raise http.client.RemoteDisconnected("Remote end closed connection without response")
@@ -722,7 +722,7 @@ def test_open_stream_source_wraps_radio_stream_and_headers(
 ) -> None:
     from io import BytesIO
 
-    import fluxtuner_ripper.integrations.radio.runner as runner
+    import brynse.integrations.radio.runner as runner
 
     stream = BytesIO(b"radio-audio")
     headers = {
@@ -750,7 +750,7 @@ def test_open_stream_source_wraps_radio_stream_and_headers(
 def test_ripping_runner_consumes_stream_source_directly(tmp_path: Path) -> None:
     from collections.abc import Mapping
 
-    from fluxtuner_ripper.integrations.radio.runner import RippingRunConfig, RippingRunner
+    from brynse.integrations.radio.runner import RippingRunConfig, RippingRunner
 
     class FakeSource:
         def __init__(self) -> None:

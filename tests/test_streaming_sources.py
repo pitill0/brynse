@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-from fluxtuner_ripper.external_boundaries import ExternalBoundaryParseError
-from fluxtuner_ripper.streaming_sources import (
+from brynse.external_boundaries import ExternalBoundaryParseError
+from brynse.streaming_sources import (
     iter_audio_chunks,
     iter_boundary_jsonl,
 )

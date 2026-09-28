@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from fluxtuner_ripper.integrations.radio.models import (
+from brynse.integrations.radio.models import (
     BoundaryMatch,
     MetadataSemanticDecision,
     RippingIngestResult,
     TimedMetadataEvent,
     TrackCandidate,
 )
-from fluxtuner_ripper.integrations.radio.orchestrator import BoundaryResolution
-from fluxtuner_ripper.integrations.radio.session import RippingSession
-from fluxtuner_ripper.models import (
+from brynse.integrations.radio.orchestrator import BoundaryResolution
+from brynse.integrations.radio.session import RippingSession
+from brynse.models import (
     AcousticBoundaryCandidate,
     BoundaryRelation,
     BoundaryRelationResult,

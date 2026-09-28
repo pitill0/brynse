@@ -1,13 +1,13 @@
-from fluxtuner_ripper.generic_runner import GenericRunner, GenericRunResult
-from fluxtuner_ripper.ingest import EncodedStreamIngestor
-from fluxtuner_ripper.models import (
+from brynse.generic_runner import GenericRunner, GenericRunResult
+from brynse.ingest import EncodedStreamIngestor
+from brynse.models import (
     BoundaryCandidate,
     SplitDecision,
     SplitKind,
     TemporalSplitDecision,
     TemporalSplitKind,
 )
-from fluxtuner_ripper.orchestrator import CandidateResolution
+from brynse.orchestrator import CandidateResolution
 
 
 def _adts_frame(

@@ -1,8 +1,8 @@
 from pathlib import Path
 
-import fluxtuner_ripper.integrations.radio.runner as runner_module
-from fluxtuner_ripper.integrations.radio.orchestrator import CandidateBoundaryResolver
-from fluxtuner_ripper.integrations.radio.runner import RippingRunConfig, RippingRunner
+import brynse.integrations.radio.runner as runner_module
+from brynse.integrations.radio.orchestrator import CandidateBoundaryResolver
+from brynse.integrations.radio.runner import RippingRunConfig, RippingRunner
 
 
 def test_radio_runner_uses_multisignal_resolver_for_aac_and_mp3(

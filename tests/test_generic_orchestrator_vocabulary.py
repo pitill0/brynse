@@ -4,7 +4,7 @@ from pathlib import Path
 
 def test_orchestrator_core_has_no_radio_track_contracts() -> None:
     root = Path(__file__).resolve().parents[1]
-    path = root / "src/fluxtuner_ripper/orchestrator.py"
+    path = root / "src/brynse/orchestrator.py"
 
     source = path.read_text(encoding="utf-8")
 

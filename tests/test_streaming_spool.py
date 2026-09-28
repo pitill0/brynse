@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from fluxtuner_ripper.streaming_spool import StreamingSpool
+from brynse.streaming_spool import StreamingSpool
 
 
 def test_streaming_spool_uses_absolute_offsets(
@@ -120,8 +120,8 @@ def test_streaming_spool_close_removes_transient_file(
 def test_streaming_spool_can_back_track_output_service(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import SegmentOutputService
+    from brynse.models import SegmentByteRange
+    from brynse.output import SegmentOutputService
 
     class _Finalizer:
         def finalize(self, data: bytes) -> bytes:
@@ -315,7 +315,7 @@ def test_streaming_spool_rejects_append_beyond_retained_byte_limit(
 def test_safe_streaming_spool_applies_runtime_retention_limit(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.streaming_spool import create_safe_streaming_spool
+    from brynse.streaming_spool import create_safe_streaming_spool
 
     spool = create_safe_streaming_spool(
         directory=tmp_path,
@@ -366,7 +366,7 @@ def test_streaming_spool_rejects_append_when_free_disk_space_is_too_low(
 def test_safe_streaming_spool_applies_runtime_disk_reserve(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.streaming_spool import create_safe_streaming_spool
+    from brynse.streaming_spool import create_safe_streaming_spool
 
     spool = create_safe_streaming_spool(
         directory=tmp_path,

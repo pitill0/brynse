@@ -5,10 +5,10 @@ def test_track_range_compatibility_vocabulary_is_removed() -> None:
     root = Path(__file__).resolve().parents[1]
 
     paths = (
-        root / "src/fluxtuner_ripper/models.py",
-        root / "src/fluxtuner_ripper/output.py",
-        root / "src/fluxtuner_ripper/__init__.py",
-        root / "src/fluxtuner_ripper/integrations/radio/ripping.py",
+        root / "src/brynse/models.py",
+        root / "src/brynse/output.py",
+        root / "src/brynse/__init__.py",
+        root / "src/brynse/integrations/radio/ripping.py",
     )
 
     forbidden = (

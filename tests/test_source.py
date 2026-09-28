@@ -2,7 +2,7 @@ from collections.abc import Mapping
 
 
 def test_stream_source_contract_is_structural() -> None:
-    from fluxtuner_ripper.source import StreamSource
+    from brynse.source import StreamSource
 
     class FakeSource:
         metadata: Mapping[str, str] = {"content-type": "audio/mpeg"}
@@ -24,7 +24,7 @@ def test_stream_source_contract_is_structural() -> None:
 def test_binary_io_stream_source_adapts_existing_binary_stream() -> None:
     from io import BytesIO
 
-    from fluxtuner_ripper.source import BinaryIOStreamSource
+    from brynse.source import BinaryIOStreamSource
 
     stream = BytesIO(b"abcdef")
     source = BinaryIOStreamSource(

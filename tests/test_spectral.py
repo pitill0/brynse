@@ -6,8 +6,8 @@ from array import array
 
 import pytest
 
-from fluxtuner_ripper.models import DecodedPcm
-from fluxtuner_ripper.spectral import (
+from brynse.models import DecodedPcm
+from brynse.spectral import (
     FfmpegSpectralDistributionAnalyzer,
     SpectralAnalysisError,
     SpectralDistributionEvidence,

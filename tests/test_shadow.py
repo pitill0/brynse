@@ -4,30 +4,30 @@ from array import array
 
 import pytest
 
-from fluxtuner_ripper.boundaries import (
+from brynse.boundaries import (
     BoundaryConfidence,
     BoundaryEvidence,
     BoundaryHypothesis,
     BoundaryProposal,
     BoundaryProposalSource,
 )
-from fluxtuner_ripper.confidence import (
+from brynse.confidence import (
     BoundaryConfidenceRoute,
     ShadowBoundaryAssessment,
 )
-from fluxtuner_ripper.local_discontinuity import LocalDiscontinuityEvidence
-from fluxtuner_ripper.models import DecodedPcm
-from fluxtuner_ripper.shadow import (
+from brynse.local_discontinuity import LocalDiscontinuityEvidence
+from brynse.models import DecodedPcm
+from brynse.shadow import (
     ShadowBoundaryAnalysis,
     ShadowBoundaryAnalyzer,
 )
-from fluxtuner_ripper.spectral import SpectralDistributionEvidence
-from fluxtuner_ripper.temporal_variability import TemporalVariabilityEvidence
-from fluxtuner_ripper.transition_assessment import (
+from brynse.spectral import SpectralDistributionEvidence
+from brynse.temporal_variability import TemporalVariabilityEvidence
+from brynse.transition_assessment import (
     ShadowTransitionAssessment,
     TransitionAssessmentLabel,
 )
-from fluxtuner_ripper.transition_evidence import TransitionEvidenceState
+from brynse.transition_evidence import TransitionEvidenceState
 
 
 def _pcm() -> DecodedPcm:

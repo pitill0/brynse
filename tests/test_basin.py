@@ -4,9 +4,9 @@ from array import array
 
 import pytest
 
-from fluxtuner_ripper.basin import AdaptiveBasinBoundaryDetector
-from fluxtuner_ripper.boundaries import BoundaryProposalSource
-from fluxtuner_ripper.models import DecodedPcm
+from brynse.basin import AdaptiveBasinBoundaryDetector
+from brynse.boundaries import BoundaryProposalSource
+from brynse.models import DecodedPcm
 
 
 def _pcm_from_levels(

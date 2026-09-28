@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from fluxtuner_ripper.models import BoundaryCandidate
-from fluxtuner_ripper.streaming_runner import StreamingGenericRunner
+from brynse.models import BoundaryCandidate
+from brynse.streaming_runner import StreamingGenericRunner
 
 
 class _Ingestor:
@@ -162,8 +162,8 @@ def test_streaming_runner_reports_unresolved_attempt() -> None:
 
 
 def test_streaming_provider_cursor_proposes_only_new_time_window() -> None:
-    from fluxtuner_ripper.models import BoundaryCandidate
-    from fluxtuner_ripper.streaming_runner import StreamingProviderCursor
+    from brynse.models import BoundaryCandidate
+    from brynse.streaming_runner import StreamingProviderCursor
 
     calls: list[tuple[float, float]] = []
 
@@ -208,7 +208,7 @@ def test_streaming_generic_runner_polls_provider_after_feed(
 ) -> None:
     from types import SimpleNamespace
 
-    import fluxtuner_ripper.streaming_runner as streaming_runner
+    import brynse.streaming_runner as streaming_runner
 
     candidate = SimpleNamespace(
         time_seconds=1.0,
@@ -282,7 +282,7 @@ def test_streaming_generic_runner_polls_provider_after_feed(
 
 
 def test_streaming_runner_finalize_resolves_pending_candidate_at_eof() -> None:
-    from fluxtuner_ripper.providers import ManualBoundaryProvider
+    from brynse.providers import ManualBoundaryProvider
 
     ingestor = _Ingestor()
     resolver = _Resolver()
@@ -316,6 +316,6 @@ def test_streaming_runner_finalize_resolves_pending_candidate_at_eof() -> None:
 
 
 def test_streaming_runner_does_not_depend_on_ripping_compatibility_module() -> None:
-    source = Path("src/fluxtuner_ripper/streaming_runner.py").read_text()
+    source = Path("src/brynse/streaming_runner.py").read_text()
 
-    assert "from fluxtuner_ripper.integrations.radio.ripping import" not in source
+    assert "from brynse.integrations.radio.ripping import" not in source

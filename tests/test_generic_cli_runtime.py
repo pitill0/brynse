@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from fluxtuner_ripper.generic_cli import GenericCliError, _read_input
+from brynse.generic_cli import GenericCliError, _read_input
 
 
 def test_read_input_reads_file_bytes(tmp_path: Path) -> None:
@@ -44,7 +44,7 @@ def test_run_generic_pipeline_returns_machine_readable_payload(
 ) -> None:
     from types import SimpleNamespace
 
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     class _Ingestor:
         def __init__(self, *, codec: str, ring_max_bytes: int) -> None:
@@ -123,7 +123,7 @@ def test_run_generic_pipeline_returns_machine_readable_payload(
 
 
 def test_run_generic_pipeline_rejects_empty_input() -> None:
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     with pytest.raises(
         GenericCliError,
@@ -142,7 +142,7 @@ def test_run_generic_pipeline_materializes_segments_when_output_directory_is_set
 ) -> None:
     from types import SimpleNamespace
 
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     class _Ingestor:
         def __init__(self, *, codec: str, ring_max_bytes: int) -> None:
@@ -247,7 +247,7 @@ def test_run_generic_pipeline_uses_external_boundary_provider(
 ) -> None:
     from types import SimpleNamespace
 
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     boundary_file = tmp_path / "boundaries.json"
 
@@ -329,7 +329,7 @@ def test_run_generic_pipeline_uses_external_boundary_provider(
 
 
 def test_iter_input_reads_file_incrementally(tmp_path: Path) -> None:
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     path = tmp_path / "input.aac"
     path.write_bytes(b"abcdefghij")
@@ -353,7 +353,7 @@ def test_run_generic_pipeline_accepts_incremental_chunks(
 ) -> None:
     from types import SimpleNamespace
 
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     received_chunks: list[bytes] = []
 
@@ -404,7 +404,7 @@ def test_run_generic_pipeline_materializes_completed_boundary_before_input_eof(
 ) -> None:
     from types import SimpleNamespace
 
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     events: list[str] = []
 
@@ -560,7 +560,7 @@ def test_run_generic_pipeline_finalizes_open_tail_at_eof(
 ) -> None:
     from types import SimpleNamespace
 
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     events: list[str] = []
 
@@ -664,7 +664,7 @@ def test_run_generic_pipeline_processes_pending_boundary_before_tail_at_eof(
 ) -> None:
     from types import SimpleNamespace
 
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     events: list[str] = []
 
@@ -824,7 +824,7 @@ def test_run_generic_pipeline_merges_short_tail_after_eof_boundary(
 ) -> None:
     from types import SimpleNamespace
 
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     events: list[str] = []
 
@@ -977,12 +977,12 @@ def test_run_generic_pipeline_streams_segment_larger_than_ring_from_spool(
 ) -> None:
     from types import SimpleNamespace
 
-    import fluxtuner_ripper.generic_cli as generic_cli
-    import fluxtuner_ripper.streaming_sink as streaming_sink
-    from fluxtuner_ripper.models import SplitDecision, SplitKind
-    from fluxtuner_ripper.output import SegmentOutputService
-    from fluxtuner_ripper.spooling_ingest import SpoolingEncodedStreamIngestor
-    from fluxtuner_ripper.streaming_spool import StreamingSpool
+    import brynse.generic_cli as generic_cli
+    import brynse.streaming_sink as streaming_sink
+    from brynse.models import SplitDecision, SplitKind
+    from brynse.output import SegmentOutputService
+    from brynse.spooling_ingest import SpoolingEncodedStreamIngestor
+    from brynse.streaming_spool import StreamingSpool
 
     def adts_frame(
         *,
@@ -1160,7 +1160,7 @@ def test_main_streams_input_chunks_into_generic_pipeline(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     input_path = tmp_path / "input.mp3"
     input_path.write_bytes(b"abcdefghij")
@@ -1188,7 +1188,7 @@ def test_main_streams_input_chunks_into_generic_pipeline(
     monkeypatch.setattr(
         "sys.argv",
         [
-            "fluxtuner-ripper-segment",
+            "brynse",
             str(input_path),
             "--codec",
             "mp3",
@@ -1205,7 +1205,7 @@ def test_generic_cli_reports_pipeline_failure_without_traceback(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     monkeypatch.setattr(
         generic_cli,
@@ -1250,7 +1250,7 @@ def test_generic_cli_handles_keyboard_interrupt_cleanly(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     monkeypatch.setattr(
         generic_cli,
@@ -1294,8 +1294,8 @@ def test_generic_cli_reports_track_finalization_failure_as_operational_error(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import fluxtuner_ripper.generic_cli as generic_cli
-    from fluxtuner_ripper.output import SegmentFinalizeError
+    import brynse.generic_cli as generic_cli
+    from brynse.output import SegmentFinalizeError
 
     monkeypatch.setattr(
         generic_cli,
@@ -1340,7 +1340,7 @@ def test_generic_cli_handles_broken_stdout_pipe_cleanly(
 ) -> None:
     import builtins
 
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     monkeypatch.setattr(
         generic_cli,
@@ -1390,7 +1390,7 @@ def test_generic_cli_reports_input_io_failure_as_operational_error(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     def failing_input(input_value: str):
         yield b"first-chunk"
@@ -1421,13 +1421,13 @@ def test_generic_cli_reports_input_io_failure_as_operational_error(
 
 
 def test_generic_cli_does_not_depend_on_ripping_orchestrator_name() -> None:
-    source = Path("src/fluxtuner_ripper/generic_cli.py").read_text()
+    source = Path("src/brynse/generic_cli.py").read_text()
 
     assert "RippingOrchestrator" not in source
 
 
 def test_generic_cli_uses_generic_segment_output_errors() -> None:
-    source = Path("src/fluxtuner_ripper/generic_cli.py").read_text()
+    source = Path("src/brynse/generic_cli.py").read_text()
 
     assert "TrackFinalizeError" not in source
     assert "TrackFileWriteError" not in source

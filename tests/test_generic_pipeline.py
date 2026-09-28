@@ -1,11 +1,11 @@
-from fluxtuner_ripper.acoustic import AcousticWindowExtractor
-from fluxtuner_ripper.ingest import EncodedStreamIngestor
-from fluxtuner_ripper.models import (
+from brynse.acoustic import AcousticWindowExtractor
+from brynse.ingest import EncodedStreamIngestor
+from brynse.models import (
     AcousticBoundaryCandidate,
     SplitKind,
 )
-from fluxtuner_ripper.orchestrator import DefaultCandidateResolver
-from fluxtuner_ripper.providers import FixedIntervalBoundaryProvider
+from brynse.orchestrator import DefaultCandidateResolver
+from brynse.providers import FixedIntervalBoundaryProvider
 
 
 def _adts_frame(

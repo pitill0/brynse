@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from fluxtuner_ripper.integrations.radio.models import (
+from brynse.integrations.radio.models import (
     BoundaryMatch,
     TrackCandidate,
 )
-from fluxtuner_ripper.integrations.radio.orchestrator import RippingOrchestrator
-from fluxtuner_ripper.models import (
+from brynse.integrations.radio.orchestrator import RippingOrchestrator
+from brynse.models import (
     AcousticBoundaryCandidate,
     AcousticProfile,
     AcousticWindow,

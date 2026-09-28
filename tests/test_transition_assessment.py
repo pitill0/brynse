@@ -1,9 +1,9 @@
-from fluxtuner_ripper.transition_assessment import (
+from brynse.transition_assessment import (
     ShadowTransitionAssessment,
     ShadowTransitionEvaluator,
     TransitionAssessmentLabel,
 )
-from fluxtuner_ripper.transition_evidence import TransitionEvidenceState
+from brynse.transition_evidence import TransitionEvidenceState
 
 
 def test_shadow_transition_assessment_defaults_to_unresolved() -> None:

@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from fluxtuner_ripper.ingest import EncodedStreamIngestor
-from fluxtuner_ripper.spooling_ingest import SpoolingEncodedStreamIngestor
-from fluxtuner_ripper.streaming_spool import StreamingSpool
+from brynse.ingest import EncodedStreamIngestor
+from brynse.spooling_ingest import SpoolingEncodedStreamIngestor
+from brynse.streaming_spool import StreamingSpool
 
 
 def _mp3_frame() -> bytes:
@@ -139,7 +139,7 @@ def test_spooling_ingestor_preserves_first_frame_offset_after_ring_eviction(
 def test_safe_spooling_ingestor_uses_runtime_spool_policy(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.spooling_ingest import create_safe_spooling_ingestor
+    from brynse.spooling_ingest import create_safe_spooling_ingestor
 
     ingestor = EncodedStreamIngestor(
         codec="mp3",

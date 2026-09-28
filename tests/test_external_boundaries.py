@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from fluxtuner_ripper.external_boundaries import (
+from brynse.external_boundaries import (
     ExternalBoundaryParseError,
     load_external_boundaries,
     parse_external_boundaries_json,

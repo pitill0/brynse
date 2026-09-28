@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from fluxtuner_ripper.models import (
+from brynse.models import (
     AcousticWindow,
     BoundaryCandidate,
     DecodedPcm,
@@ -12,7 +12,7 @@ from fluxtuner_ripper.models import (
     TemporalSplitDecision,
     TemporalSplitKind,
 )
-from fluxtuner_ripper.multisignal import (
+from brynse.multisignal import (
     AcousticMultiSignalCandidateBuilder,
     FamilyRankCandidate,
     MinimaxBoundarySelector,
@@ -23,7 +23,7 @@ from fluxtuner_ripper.multisignal import (
     build_union_candidates,
     forward_novelty,
 )
-from fluxtuner_ripper.orchestrator import (
+from brynse.orchestrator import (
     CandidateResolution,
     MultiSignalAcousticCandidateResolver,
 )

@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from fluxtuner_ripper.models import SplitDecision, SplitKind
-from fluxtuner_ripper.streaming_sink import StreamingSegmentSink
+from brynse.models import SplitDecision, SplitKind
+from brynse.streaming_sink import StreamingSegmentSink
 
 
 class _Ring:
@@ -216,7 +216,7 @@ def test_streaming_segment_sink_rejects_evicted_segment(
 def test_streaming_segment_sink_uses_spool_and_compacts_after_boundary(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.streaming_spool import StreamingSpool
+    from brynse.streaming_spool import StreamingSpool
 
     ingestor = _ingestor()
     output_service = _OutputService()
@@ -263,7 +263,7 @@ def test_streaming_segment_sink_uses_spool_and_compacts_after_boundary(
 def test_streaming_segment_sink_spool_preserves_crossfade_overlap(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.streaming_spool import StreamingSpool
+    from brynse.streaming_spool import StreamingSpool
 
     ingestor = _ingestor()
     output_service = _OutputService()
@@ -362,7 +362,7 @@ def test_streaming_segment_sink_resolves_initial_start_offset_lazily(
 
 
 def test_streaming_sink_uses_generic_segment_range_contracts() -> None:
-    source = Path("src/fluxtuner_ripper/streaming_sink.py").read_text()
+    source = Path("src/brynse/streaming_sink.py").read_text()
 
     assert "TrackByteRange" not in source
     assert "TrackRangePlanner" not in source
@@ -371,7 +371,7 @@ def test_streaming_sink_uses_generic_segment_range_contracts() -> None:
 
 
 def test_streaming_sink_uses_segment_output_service_contract() -> None:
-    source = Path("src/fluxtuner_ripper/streaming_sink.py").read_text()
+    source = Path("src/brynse/streaming_sink.py").read_text()
 
     assert "TrackOutputService" not in source
     assert "create_safe_track_output_service" not in source

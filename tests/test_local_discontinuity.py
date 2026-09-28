@@ -4,12 +4,12 @@ from typing import Any
 
 import pytest
 
-from fluxtuner_ripper.local_discontinuity import (
+from brynse.local_discontinuity import (
     LocalDiscontinuityAnalyzer,
     LocalDiscontinuityEvidence,
 )
-from fluxtuner_ripper.models import DecodedPcm
-from fluxtuner_ripper.spectral import SpectralDistributionEvidence
+from brynse.models import DecodedPcm
+from brynse.spectral import SpectralDistributionEvidence
 
 
 def _pcm(*, sample_rate: int = 16000, seconds: float = 6.0) -> DecodedPcm:
@@ -88,7 +88,7 @@ def test_local_discontinuity_analyzer_uses_validated_horizons(
             return _spectral(between=self.side_seconds)
 
     monkeypatch.setattr(
-        "fluxtuner_ripper.local_discontinuity.FfmpegSpectralDistributionAnalyzer",
+        "brynse.local_discontinuity.FfmpegSpectralDistributionAnalyzer",
         FakeAnalyzer,
     )
 
@@ -149,7 +149,7 @@ def test_local_discontinuity_analyzer_returns_none_when_a_horizon_lacks_context(
             return _spectral(between=self.side_seconds)
 
     monkeypatch.setattr(
-        "fluxtuner_ripper.local_discontinuity.FfmpegSpectralDistributionAnalyzer",
+        "brynse.local_discontinuity.FfmpegSpectralDistributionAnalyzer",
         FakeAnalyzer,
     )
 

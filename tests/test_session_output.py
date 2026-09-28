@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from fluxtuner_ripper.integrations.radio.models import (
+from brynse.integrations.radio.models import (
     BoundaryMatch,
     TrackCandidate,
 )
-from fluxtuner_ripper.integrations.radio.orchestrator import BoundaryResolution
-from fluxtuner_ripper.integrations.radio.session import TrackTransition
-from fluxtuner_ripper.integrations.radio.session_output import SessionOutputWriter, safe_track_stem
-from fluxtuner_ripper.models import (
+from brynse.integrations.radio.orchestrator import BoundaryResolution
+from brynse.integrations.radio.session import TrackTransition
+from brynse.integrations.radio.session_output import SessionOutputWriter, safe_track_stem
+from brynse.models import (
     AcousticBoundaryCandidate,
     BoundaryRelation,
     BoundaryRelationResult,

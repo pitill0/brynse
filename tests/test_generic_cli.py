@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from fluxtuner_ripper.generic_cli import GenericCliError, _build_parser, _validate_args
+from brynse.generic_cli import GenericCliError, _build_parser, _validate_args
 
 
 def test_generic_cli_parses_file_input() -> None:
@@ -105,7 +105,7 @@ def test_external_provider_requires_boundaries_file(
 
 
 def test_generic_cli_opens_file_as_stream_source(tmp_path: Path) -> None:
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     input_path = tmp_path / "input.mp3"
     input_path.write_bytes(b"encoded-data")
@@ -124,7 +124,7 @@ def test_generic_cli_opens_stdin_as_non_closing_stream_source(
     from io import BytesIO
     from types import SimpleNamespace
 
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     stream = BytesIO(b"stdin-data")
 
@@ -147,7 +147,7 @@ def test_generic_cli_opens_stdin_as_non_closing_stream_source(
 def test_iter_input_reads_through_stream_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import fluxtuner_ripper.generic_cli as generic_cli
+    import brynse.generic_cli as generic_cli
 
     class FakeSource:
         def __init__(self) -> None:

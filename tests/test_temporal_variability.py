@@ -4,8 +4,8 @@ from array import array
 
 import pytest
 
-from fluxtuner_ripper.models import DecodedPcm
-from fluxtuner_ripper.temporal_variability import (
+from brynse.models import DecodedPcm
+from brynse.temporal_variability import (
     TemporalVariabilityAnalyzer,
     TemporalVariabilityEvidence,
 )

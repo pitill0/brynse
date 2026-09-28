@@ -1,7 +1,7 @@
 import pytest
 
-from fluxtuner_ripper.integrations.radio.models import TrackCandidate
-from fluxtuner_ripper.models import BoundaryCandidate
+from brynse.integrations.radio.models import TrackCandidate
+from brynse.models import BoundaryCandidate
 
 
 def test_boundary_candidate_accepts_generic_source_and_optional_offset() -> None:
@@ -64,7 +64,7 @@ def test_track_candidate_projects_to_generic_metadata_boundary() -> None:
 
 
 def test_segment_accepts_stream_position_and_optional_label() -> None:
-    from fluxtuner_ripper.models import Segment
+    from brynse.models import Segment
 
     segment = Segment(
         start_offset=1234,
@@ -78,7 +78,7 @@ def test_segment_accepts_stream_position_and_optional_label() -> None:
 
 
 def test_track_candidate_projects_to_generic_segment() -> None:
-    from fluxtuner_ripper.models import Segment
+    from brynse.models import Segment
 
     track = TrackCandidate(
         title="Artist - Track",
@@ -112,7 +112,7 @@ def test_segment_rejects_invalid_stream_positions(
     kwargs: dict[str, object],
     message: str,
 ) -> None:
-    from fluxtuner_ripper.models import Segment
+    from brynse.models import Segment
 
     with pytest.raises(ValueError, match=message):
         Segment(**kwargs)

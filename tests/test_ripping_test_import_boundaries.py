@@ -55,7 +55,7 @@ def test_ripping_tests_import_low_level_components_from_owner_modules() -> None:
     for node in ast.walk(tree):
         if (
             isinstance(node, ast.ImportFrom)
-            and node.module == "fluxtuner_ripper.integrations.radio.ripping"
+            and node.module == "brynse.integrations.radio.ripping"
         ):
             bad = [alias.name for alias in node.names if alias.name in FORBIDDEN_FROM_RIPPING]
             if bad:

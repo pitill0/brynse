@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fluxtuner_ripper.models import (
+from brynse.models import (
     AcousticProfile,
     AcousticWindow,
     BoundaryCandidate,
@@ -10,7 +10,7 @@ from fluxtuner_ripper.models import (
     TemporalSplitDecision,
     TemporalSplitKind,
 )
-from fluxtuner_ripper.orchestrator import HybridCandidateResolver
+from brynse.orchestrator import HybridCandidateResolver
 
 
 class _WindowExtractor:

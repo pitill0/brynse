@@ -6,8 +6,8 @@ from io import BytesIO
 
 import pytest
 
-from fluxtuner_ripper.generic_cli import _run_generic_pipeline
-from fluxtuner_ripper.source import BinaryIOStreamSource
+from brynse.generic_cli import _run_generic_pipeline
+from brynse.source import BinaryIOStreamSource
 
 
 def test_non_radio_stream_source_materializes_fixed_interval_segments(

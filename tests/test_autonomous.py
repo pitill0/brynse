@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from fluxtuner_ripper.autonomous import AutonomousBoundaryDetector
-from fluxtuner_ripper.boundaries import BoundaryProposalSource, BoundaryReconciler
-from fluxtuner_ripper.models import AcousticLevel, AcousticProfile
+from brynse.autonomous import AutonomousBoundaryDetector
+from brynse.boundaries import BoundaryProposalSource, BoundaryReconciler
+from brynse.models import AcousticLevel, AcousticProfile
 
 
 def _profile(values: list[float], *, step: float = 0.5) -> AcousticProfile:

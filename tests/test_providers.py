@@ -1,7 +1,7 @@
 import pytest
 
-from fluxtuner_ripper.models import BoundaryCandidate
-from fluxtuner_ripper.providers import FixedIntervalBoundaryProvider
+from brynse.models import BoundaryCandidate
+from brynse.providers import FixedIntervalBoundaryProvider
 
 
 def test_fixed_interval_provider_proposes_boundaries_in_requested_interval() -> None:
@@ -79,7 +79,7 @@ def test_fixed_interval_provider_rejects_invalid_requested_range() -> None:
 
 
 def test_manual_boundary_provider_returns_boundaries_in_requested_window() -> None:
-    from fluxtuner_ripper.providers import ManualBoundaryProvider
+    from brynse.providers import ManualBoundaryProvider
 
     provider = ManualBoundaryProvider(
         boundary_times_seconds=(30.0, 10.0, 20.0),
@@ -101,7 +101,7 @@ def test_manual_boundary_provider_returns_boundaries_in_requested_window() -> No
 
 
 def test_manual_boundary_provider_deduplicates_times() -> None:
-    from fluxtuner_ripper.providers import ManualBoundaryProvider
+    from brynse.providers import ManualBoundaryProvider
 
     provider = ManualBoundaryProvider(
         boundary_times_seconds=(10.0, 10.0, 20.0),
@@ -121,7 +121,7 @@ def test_manual_boundary_provider_deduplicates_times() -> None:
 def test_manual_boundary_provider_rejects_negative_time() -> None:
     import pytest
 
-    from fluxtuner_ripper.providers import ManualBoundaryProvider
+    from brynse.providers import ManualBoundaryProvider
 
     with pytest.raises(
         ValueError,
@@ -133,7 +133,7 @@ def test_manual_boundary_provider_rejects_negative_time() -> None:
 
 
 def test_external_boundary_provider_preserves_external_identity() -> None:
-    from fluxtuner_ripper.providers import (
+    from brynse.providers import (
         ExternalBoundary,
         ExternalBoundaryProvider,
     )
@@ -170,7 +170,7 @@ def test_external_boundary_provider_preserves_external_identity() -> None:
 
 
 def test_external_boundary_provider_filters_requested_window() -> None:
-    from fluxtuner_ripper.providers import (
+    from brynse.providers import (
         ExternalBoundary,
         ExternalBoundaryProvider,
     )
@@ -194,7 +194,7 @@ def test_external_boundary_provider_filters_requested_window() -> None:
 def test_external_boundary_rejects_invalid_values() -> None:
     import pytest
 
-    from fluxtuner_ripper.providers import ExternalBoundary
+    from brynse.providers import ExternalBoundary
 
     with pytest.raises(ValueError, match="time_seconds must be non-negative"):
         ExternalBoundary(time_seconds=-1.0)

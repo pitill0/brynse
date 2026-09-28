@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from fluxtuner_ripper.hybrid import HybridAcousticSplitResolver
-from fluxtuner_ripper.models import (
+from brynse.hybrid import HybridAcousticSplitResolver
+from brynse.models import (
     AcousticLevel,
     AcousticProfile,
     AcousticWindow,

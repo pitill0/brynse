@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from fluxtuner_ripper.integrations.radio.models import MetadataSemanticDecision
-from fluxtuner_ripper.integrations.radio.transient import ConservativeTransientExclusionPolicy
-from fluxtuner_ripper.models import SplitKind
+from brynse.integrations.radio.models import MetadataSemanticDecision
+from brynse.integrations.radio.transient import ConservativeTransientExclusionPolicy
+from brynse.models import SplitKind
 
 
 def _decision(

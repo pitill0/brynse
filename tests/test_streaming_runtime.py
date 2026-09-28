@@ -1,9 +1,9 @@
 import asyncio
 from types import SimpleNamespace
 
-from fluxtuner_ripper.models import BoundaryCandidate
-from fluxtuner_ripper.streaming_runner import StreamingGenericRunner
-from fluxtuner_ripper.streaming_runtime import AsyncStreamingRuntime
+from brynse.models import BoundaryCandidate
+from brynse.streaming_runner import StreamingGenericRunner
+from brynse.streaming_runtime import AsyncStreamingRuntime
 
 
 class _Ingestor:

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from fluxtuner_ripper.boundaries import (
+from brynse.boundaries import (
     BoundaryConfidence,
     BoundaryEvidence,
     BoundaryHypothesis,
@@ -12,13 +12,13 @@ from fluxtuner_ripper.boundaries import (
     BoundaryProposalSource,
     BoundaryReconciler,
 )
-from fluxtuner_ripper.confidence import ShadowBoundaryAssessment
-from fluxtuner_ripper.live_shadow import (
+from brynse.confidence import ShadowBoundaryAssessment
+from brynse.live_shadow import (
     LiveShadowBoundaryObserver,
     LiveShadowConfig,
 )
-from fluxtuner_ripper.models import DecodedPcm
-from fluxtuner_ripper.shadow import ShadowBoundaryAnalysis
+from brynse.models import DecodedPcm
+from brynse.shadow import ShadowBoundaryAnalysis
 
 
 @dataclass(frozen=True)
@@ -234,7 +234,7 @@ def test_live_shadow_observer_respects_analysis_interval() -> None:
 def test_live_shadow_observer_forwards_custom_ffmpeg_to_spectral_analyzer(
     monkeypatch,
 ) -> None:
-    import fluxtuner_ripper.live_shadow as live_shadow
+    import brynse.live_shadow as live_shadow
 
     captured: list[str] = []
 
@@ -380,7 +380,7 @@ def test_live_shadow_observer_never_reopens_finalized_past() -> None:
 def test_live_shadow_observer_uses_16khz_temporal_decoder_for_default_shadow(
     monkeypatch,
 ) -> None:
-    import fluxtuner_ripper.live_shadow as live_shadow
+    import brynse.live_shadow as live_shadow
 
     rates: list[int] = []
 

@@ -1,7 +1,7 @@
-from fluxtuner_ripper.integrations.radio.models import TrackCandidate
-from fluxtuner_ripper.integrations.radio.orchestrator import BoundaryResolution
-from fluxtuner_ripper.integrations.radio.session import SegmentTransition, TrackTransition
-from fluxtuner_ripper.models import (
+from brynse.integrations.radio.models import TrackCandidate
+from brynse.integrations.radio.orchestrator import BoundaryResolution
+from brynse.integrations.radio.session import SegmentTransition, TrackTransition
+from brynse.models import (
     Segment,
     SplitDecision,
     SplitKind,

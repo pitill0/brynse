@@ -1,4 +1,4 @@
-from fluxtuner_ripper.ingest import EncodedStreamIngestor
+from brynse.ingest import EncodedStreamIngestor
 
 
 def _adts_frame(

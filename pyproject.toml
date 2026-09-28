@@ -3,14 +3,14 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "fluxtuner-ripper"
+name = "brynse"
 version = "0.1.0.dev0"
 description = "Boundary-driven continuous-stream segmentation engine."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MPL-2.0" }
 authors = [
-  { name = "FluxTuner contributors" },
+  { name = "Brynse contributors" },
 ]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
@@ -22,8 +22,8 @@ classifiers = [
 ]
 
 [project.scripts]
-fluxtuner-ripper = "fluxtuner_ripper.integrations.radio.cli:main"
-fluxtuner-ripper-segment = "fluxtuner_ripper.generic_cli:main"
+brynse-radio = "brynse.integrations.radio.cli:main"
+brynse = "brynse.generic_cli:main"
 
 [project.optional-dependencies]
 dev = [

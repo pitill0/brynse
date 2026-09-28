@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from fluxtuner_ripper.boundaries import (
+from brynse.boundaries import (
     BoundaryConfidence,
     BoundaryEvidence,
     BoundaryHypothesis,

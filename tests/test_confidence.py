@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from fluxtuner_ripper.boundaries import (
+from brynse.boundaries import (
     BoundaryConfidence,
     BoundaryEvidence,
     BoundaryHypothesis,
     BoundaryProposal,
     BoundaryProposalSource,
 )
-from fluxtuner_ripper.confidence import (
+from brynse.confidence import (
     BoundaryConfidenceRoute,
     ShadowBoundaryConfidenceEvaluator,
 )

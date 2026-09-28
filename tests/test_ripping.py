@@ -2,12 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
-from fluxtuner_ripper.integrations.radio.models import (
+from brynse.buffer import EncodedAudioRingBuffer
+from brynse.integrations.radio.models import (
     ContentKind,
     MetadataEvent,
 )
-from fluxtuner_ripper.models import SegmentByteRange, SplitDecision, SplitKind
+from brynse.models import SegmentByteRange, SplitDecision, SplitKind
 
 
 def test_content_kind_keeps_future_semantic_categories_explicit() -> None:
@@ -184,7 +184,7 @@ def _adts_frame(*, frame_length: int, sample_rate_index: int = 4, payload_byte: 
 
 
 def test_parse_mp3_frames_uses_each_frame_bitrate_for_vbr_timeline() -> None:
-    from fluxtuner_ripper.frames import parse_mp3_frames
+    from brynse.frames import parse_mp3_frames
 
     first = _mp3_frame(bitrate_index=9, payload_byte=1)
     second = _mp3_frame(bitrate_index=14, payload_byte=2)
@@ -200,7 +200,7 @@ def test_parse_mp3_frames_uses_each_frame_bitrate_for_vbr_timeline() -> None:
 
 
 def test_parse_mp3_frames_resynchronizes_after_leading_junk() -> None:
-    from fluxtuner_ripper.frames import parse_mp3_frames
+    from brynse.frames import parse_mp3_frames
 
     frame = _mp3_frame(bitrate_index=9)
     frames = parse_mp3_frames(b"junk" + frame)
@@ -210,7 +210,7 @@ def test_parse_mp3_frames_resynchronizes_after_leading_junk() -> None:
 
 
 def test_parse_adts_frames_handles_variable_frame_lengths() -> None:
-    from fluxtuner_ripper.frames import parse_adts_frames
+    from brynse.frames import parse_adts_frames
 
     first = _adts_frame(frame_length=900, payload_byte=1)
     second = _adts_frame(frame_length=931, payload_byte=2)
@@ -226,7 +226,7 @@ def test_parse_adts_frames_handles_variable_frame_lengths() -> None:
 
 
 def test_parse_adts_frames_resynchronizes_after_leading_junk() -> None:
-    from fluxtuner_ripper.frames import parse_adts_frames
+    from brynse.frames import parse_adts_frames
 
     frame = _adts_frame(frame_length=900)
     frames = parse_adts_frames(b"abc" + frame)
@@ -236,7 +236,7 @@ def test_parse_adts_frames_resynchronizes_after_leading_junk() -> None:
 
 
 def test_frame_at_or_before_offset_uses_frame_start_offsets() -> None:
-    from fluxtuner_ripper.frames import (
+    from brynse.frames import (
         frame_at_or_before_offset,
         parse_adts_frames,
     )
@@ -251,7 +251,7 @@ def test_frame_at_or_before_offset_uses_frame_start_offsets() -> None:
 
 
 def test_frame_nearest_time_returns_closest_frame_start() -> None:
-    from fluxtuner_ripper.frames import (
+    from brynse.frames import (
         frame_nearest_time,
         parse_adts_frames,
     )
@@ -273,7 +273,7 @@ def _icy_block(metadata: str) -> bytes:
 
 
 def test_icy_parser_strips_metadata_and_reports_clean_audio_offset() -> None:
-    from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
+    from brynse.integrations.radio.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     raw = b"abcd" + _icy_block("StreamTitle='Artist - Track';") + b"efgh"
@@ -288,7 +288,7 @@ def test_icy_parser_strips_metadata_and_reports_clean_audio_offset() -> None:
 
 
 def test_icy_parser_handles_zero_length_metadata_block() -> None:
-    from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
+    from brynse.integrations.radio.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=3)
 
@@ -300,7 +300,7 @@ def test_icy_parser_handles_zero_length_metadata_block() -> None:
 
 
 def test_icy_parser_handles_metadata_split_across_chunks() -> None:
-    from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
+    from brynse.integrations.radio.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     block = _icy_block("StreamTitle='Split Metadata';")
@@ -329,7 +329,7 @@ def test_icy_parser_handles_metadata_split_across_chunks() -> None:
 
 
 def test_icy_parser_handles_length_byte_as_its_own_chunk() -> None:
-    from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
+    from brynse.integrations.radio.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     block = _icy_block("StreamTitle='Chunky';")
@@ -348,7 +348,7 @@ def test_icy_parser_handles_length_byte_as_its_own_chunk() -> None:
 
 
 def test_icy_parser_emits_multiple_events_with_absolute_audio_offsets() -> None:
-    from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
+    from brynse.integrations.radio.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     raw = (
@@ -370,7 +370,7 @@ def test_icy_parser_emits_multiple_events_with_absolute_audio_offsets() -> None:
 
 
 def test_icy_parser_ignores_metadata_without_stream_title() -> None:
-    from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
+    from brynse.integrations.radio.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     raw = b"abcd" + _icy_block("StreamUrl='https://example.invalid';") + b"efgh"
@@ -382,7 +382,7 @@ def test_icy_parser_ignores_metadata_without_stream_title() -> None:
 
 
 def test_icy_parser_ignores_empty_stream_title() -> None:
-    from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
+    from brynse.integrations.radio.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
     raw = b"abcd" + _icy_block("StreamTitle='';") + b"efgh"
@@ -394,7 +394,7 @@ def test_icy_parser_ignores_empty_stream_title() -> None:
 
 
 def test_icy_parser_empty_feed_preserves_state() -> None:
-    from fluxtuner_ripper.integrations.radio.icy import IcyStreamParser
+    from brynse.integrations.radio.icy import IcyStreamParser
 
     parser = IcyStreamParser(metaint=4)
 
@@ -405,7 +405,7 @@ def test_icy_parser_empty_feed_preserves_state() -> None:
 
 
 def test_incremental_frame_timeline_handles_mp3_frame_split_across_feeds() -> None:
-    from fluxtuner_ripper.frames import IncrementalFrameTimeline
+    from brynse.frames import IncrementalFrameTimeline
 
     first = _mp3_frame(bitrate_index=9)
     second = _mp3_frame(bitrate_index=14)
@@ -426,7 +426,7 @@ def test_incremental_frame_timeline_handles_mp3_frame_split_across_feeds() -> No
 
 
 def test_incremental_frame_timeline_handles_adts_frame_split_across_feeds() -> None:
-    from fluxtuner_ripper.frames import IncrementalFrameTimeline
+    from brynse.frames import IncrementalFrameTimeline
 
     first = _adts_frame(frame_length=900)
     second = _adts_frame(frame_length=931)
@@ -446,7 +446,7 @@ def test_incremental_frame_timeline_handles_adts_frame_split_across_feeds() -> N
 
 
 def test_incremental_frame_timeline_resynchronizes_and_keeps_absolute_offsets() -> None:
-    from fluxtuner_ripper.frames import IncrementalFrameTimeline
+    from brynse.frames import IncrementalFrameTimeline
 
     frame = _adts_frame(frame_length=900)
     timeline = IncrementalFrameTimeline("aac")
@@ -458,7 +458,7 @@ def test_incremental_frame_timeline_resynchronizes_and_keeps_absolute_offsets() 
 
 
 def test_ripping_stream_ingestor_resolves_icy_metadata_to_exact_aac_time() -> None:
-    from fluxtuner_ripper.integrations.radio.ripping import RippingStreamIngestor
+    from brynse.integrations.radio.ripping import RippingStreamIngestor
 
     first = _adts_frame(frame_length=900)
     second = _adts_frame(frame_length=900)
@@ -482,7 +482,7 @@ def test_ripping_stream_ingestor_resolves_icy_metadata_to_exact_aac_time() -> No
 
 
 def test_ripping_stream_ingestor_survives_arbitrary_raw_chunk_boundaries() -> None:
-    from fluxtuner_ripper.integrations.radio.ripping import RippingStreamIngestor
+    from brynse.integrations.radio.ripping import RippingStreamIngestor
 
     first = _mp3_frame(bitrate_index=9)
     second = _mp3_frame(bitrate_index=14)
@@ -519,7 +519,7 @@ def test_ripping_stream_ingestor_survives_arbitrary_raw_chunk_boundaries() -> No
 
 
 def test_ripping_stream_ingestor_delays_boundary_metadata_until_next_frame_arrives() -> None:
-    from fluxtuner_ripper.integrations.radio.ripping import RippingStreamIngestor
+    from brynse.integrations.radio.ripping import RippingStreamIngestor
 
     first = _adts_frame(frame_length=900)
     second = _adts_frame(frame_length=900)
@@ -542,7 +542,7 @@ def test_ripping_stream_ingestor_delays_boundary_metadata_until_next_frame_arriv
 
 
 def test_ripping_stream_ingestor_prunes_frame_records_with_ring_buffer() -> None:
-    from fluxtuner_ripper.integrations.radio.ripping import RippingStreamIngestor
+    from brynse.integrations.radio.ripping import RippingStreamIngestor
 
     frame = _adts_frame(frame_length=900)
     ingestor = RippingStreamIngestor(
@@ -567,7 +567,7 @@ def _timed_metadata(
     offset: int,
     time_seconds: float,
 ):
-    from fluxtuner_ripper.integrations.radio.models import TimedMetadataEvent
+    from brynse.integrations.radio.models import TimedMetadataEvent
 
     return TimedMetadataEvent(
         title=title,
@@ -577,8 +577,8 @@ def _timed_metadata(
 
 
 def test_metadata_semantic_tracker_marks_short_lifetime_no_boundary() -> None:
-    from fluxtuner_ripper.integrations.radio.metadata import MetadataSemanticTracker
-    from fluxtuner_ripper.models import SplitKind
+    from brynse.integrations.radio.metadata import MetadataSemanticTracker
+    from brynse.models import SplitKind
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
 
@@ -599,7 +599,7 @@ def test_metadata_semantic_tracker_marks_short_lifetime_no_boundary() -> None:
 
 
 def test_metadata_semantic_tracker_confirms_durable_title_on_repeated_metadata() -> None:
-    from fluxtuner_ripper.integrations.radio.metadata import MetadataSemanticTracker
+    from brynse.integrations.radio.metadata import MetadataSemanticTracker
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
 
@@ -614,8 +614,8 @@ def test_metadata_semantic_tracker_confirms_durable_title_on_repeated_metadata()
 
 
 def test_metadata_semantic_tracker_confirms_durable_title_when_replaced() -> None:
-    from fluxtuner_ripper.integrations.radio.metadata import MetadataSemanticTracker
-    from fluxtuner_ripper.models import SplitKind
+    from brynse.integrations.radio.metadata import MetadataSemanticTracker
+    from brynse.models import SplitKind
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
 
@@ -633,7 +633,7 @@ def test_metadata_semantic_tracker_confirms_durable_title_when_replaced() -> Non
 
 
 def test_metadata_semantic_tracker_does_not_duplicate_confirmed_candidate() -> None:
-    from fluxtuner_ripper.integrations.radio.metadata import MetadataSemanticTracker
+    from brynse.integrations.radio.metadata import MetadataSemanticTracker
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
 
@@ -646,7 +646,7 @@ def test_metadata_semantic_tracker_does_not_duplicate_confirmed_candidate() -> N
 
 
 def test_metadata_semantic_tracker_confirm_current_without_repeat_packet() -> None:
-    from fluxtuner_ripper.integrations.radio.metadata import MetadataSemanticTracker
+    from brynse.integrations.radio.metadata import MetadataSemanticTracker
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
 
@@ -662,8 +662,8 @@ def test_metadata_semantic_tracker_confirm_current_without_repeat_packet() -> No
 
 
 def test_metadata_semantic_tracker_transient_bridge_sequence() -> None:
-    from fluxtuner_ripper.integrations.radio.metadata import MetadataSemanticTracker
-    from fluxtuner_ripper.models import SplitKind
+    from brynse.integrations.radio.metadata import MetadataSemanticTracker
+    from brynse.models import SplitKind
 
     tracker = MetadataSemanticTracker(transient_threshold_seconds=8.0)
 
@@ -689,7 +689,7 @@ def test_metadata_semantic_tracker_transient_bridge_sequence() -> None:
 
 
 def test_metadata_semantic_tracker_rejects_non_monotonic_time() -> None:
-    from fluxtuner_ripper.integrations.radio.metadata import MetadataSemanticTracker
+    from brynse.integrations.radio.metadata import MetadataSemanticTracker
 
     tracker = MetadataSemanticTracker()
 
@@ -700,9 +700,9 @@ def test_metadata_semantic_tracker_rejects_non_monotonic_time() -> None:
 
 
 def test_acoustic_window_extractor_returns_frame_aligned_aac_window() -> None:
-    from fluxtuner_ripper.acoustic import AcousticWindowExtractor
-    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
-    from fluxtuner_ripper.frames import IncrementalFrameTimeline
+    from brynse.acoustic import AcousticWindowExtractor
+    from brynse.buffer import EncodedAudioRingBuffer
+    from brynse.frames import IncrementalFrameTimeline
 
     frames = [_adts_frame(frame_length=900) for _ in range(10)]
     clean = b"".join(frames)
@@ -729,9 +729,9 @@ def test_acoustic_window_extractor_returns_frame_aligned_aac_window() -> None:
 
 
 def test_acoustic_window_extractor_clamps_to_missing_preroll() -> None:
-    from fluxtuner_ripper.acoustic import AcousticWindowExtractor
-    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
-    from fluxtuner_ripper.frames import IncrementalFrameTimeline
+    from brynse.acoustic import AcousticWindowExtractor
+    from brynse.buffer import EncodedAudioRingBuffer
+    from brynse.frames import IncrementalFrameTimeline
 
     frame = _adts_frame(frame_length=900)
     clean = frame * 12
@@ -757,9 +757,9 @@ def test_acoustic_window_extractor_clamps_to_missing_preroll() -> None:
 
 
 def test_acoustic_window_extractor_clamps_to_missing_postroll() -> None:
-    from fluxtuner_ripper.acoustic import AcousticWindowExtractor
-    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
-    from fluxtuner_ripper.frames import IncrementalFrameTimeline
+    from brynse.acoustic import AcousticWindowExtractor
+    from brynse.buffer import EncodedAudioRingBuffer
+    from brynse.frames import IncrementalFrameTimeline
 
     frame = _mp3_frame(bitrate_index=9)
     clean = frame * 6
@@ -784,9 +784,9 @@ def test_acoustic_window_extractor_clamps_to_missing_postroll() -> None:
 
 
 def test_acoustic_window_extractor_returns_none_without_retained_frames() -> None:
-    from fluxtuner_ripper.acoustic import AcousticWindowExtractor
-    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
-    from fluxtuner_ripper.frames import IncrementalFrameTimeline
+    from brynse.acoustic import AcousticWindowExtractor
+    from brynse.buffer import EncodedAudioRingBuffer
+    from brynse.frames import IncrementalFrameTimeline
 
     frame = _adts_frame(frame_length=900)
 
@@ -810,9 +810,9 @@ def test_acoustic_window_extractor_returns_none_without_retained_frames() -> Non
 
 
 def test_acoustic_window_extractor_handles_small_retained_tail() -> None:
-    from fluxtuner_ripper.acoustic import AcousticWindowExtractor
-    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
-    from fluxtuner_ripper.frames import IncrementalFrameTimeline
+    from brynse.acoustic import AcousticWindowExtractor
+    from brynse.buffer import EncodedAudioRingBuffer
+    from brynse.frames import IncrementalFrameTimeline
 
     frame = _adts_frame(frame_length=900)
     clean = frame * 5
@@ -837,7 +837,7 @@ def test_acoustic_window_extractor_handles_small_retained_tail() -> None:
 
 
 def _make_acoustic_window(data: bytes):
-    from fluxtuner_ripper.models import AcousticWindow
+    from brynse.models import AcousticWindow
 
     return AcousticWindow(
         start_offset=0,
@@ -849,7 +849,7 @@ def _make_acoustic_window(data: bytes):
 
 
 def test_decoded_pcm_reports_sample_count() -> None:
-    from fluxtuner_ripper.models import DecodedPcm
+    from brynse.models import DecodedPcm
 
     pcm = DecodedPcm(
         sample_rate=8000,
@@ -862,7 +862,7 @@ def test_decoded_pcm_reports_sample_count() -> None:
 
 
 def test_ffmpeg_acoustic_decoder_rejects_missing_binary() -> None:
-    from fluxtuner_ripper.acoustic import (
+    from brynse.acoustic import (
         AcousticDecodeError,
         FfmpegAcousticDecoder,
     )
@@ -876,7 +876,7 @@ def test_ffmpeg_acoustic_decoder_rejects_missing_binary() -> None:
 def test_ffmpeg_acoustic_decoder_rejects_invalid_audio_when_ffmpeg_available() -> None:
     import shutil
 
-    from fluxtuner_ripper.acoustic import (
+    from brynse.acoustic import (
         AcousticDecodeError,
         FfmpegAcousticDecoder,
     )
@@ -894,7 +894,7 @@ def test_ffmpeg_acoustic_decoder_decodes_mp3_window_to_mono_8khz() -> None:
     import shutil
     import subprocess
 
-    from fluxtuner_ripper.acoustic import FfmpegAcousticDecoder
+    from brynse.acoustic import FfmpegAcousticDecoder
 
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
@@ -935,7 +935,7 @@ def test_ffmpeg_acoustic_decoder_decodes_adts_aac_window_to_mono_8khz() -> None:
     import shutil
     import subprocess
 
-    from fluxtuner_ripper.acoustic import FfmpegAcousticDecoder
+    from brynse.acoustic import FfmpegAcousticDecoder
 
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
@@ -977,7 +977,7 @@ def test_ffmpeg_acoustic_decoder_decodes_adts_aac_window_to_mono_8khz() -> None:
 def _pcm_from_samples(samples: list[int], *, sample_rate: int = 8):
     from array import array
 
-    from fluxtuner_ripper.models import DecodedPcm
+    from brynse.models import DecodedPcm
 
     data = array("h", samples).tobytes()
     return DecodedPcm(
@@ -989,7 +989,7 @@ def _pcm_from_samples(samples: list[int], *, sample_rate: int = 8):
 
 
 def test_rms_acoustic_analyzer_reports_zero_for_silence() -> None:
-    from fluxtuner_ripper.acoustic import RmsAcousticAnalyzer
+    from brynse.acoustic import RmsAcousticAnalyzer
 
     analyzer = RmsAcousticAnalyzer(window_seconds=0.5)
     profile = analyzer.analyze(_pcm_from_samples([0] * 8, sample_rate=8))
@@ -999,7 +999,7 @@ def test_rms_acoustic_analyzer_reports_zero_for_silence() -> None:
 
 
 def test_rms_acoustic_analyzer_reports_constant_signal_level() -> None:
-    from fluxtuner_ripper.acoustic import RmsAcousticAnalyzer
+    from brynse.acoustic import RmsAcousticAnalyzer
 
     analyzer = RmsAcousticAnalyzer(window_seconds=0.5)
     profile = analyzer.analyze(_pcm_from_samples([1000] * 8, sample_rate=8))
@@ -1009,7 +1009,7 @@ def test_rms_acoustic_analyzer_reports_constant_signal_level() -> None:
 
 
 def test_rms_acoustic_analyzer_finds_known_energy_valley() -> None:
-    from fluxtuner_ripper.acoustic import RmsAcousticAnalyzer
+    from brynse.acoustic import RmsAcousticAnalyzer
 
     analyzer = RmsAcousticAnalyzer(window_seconds=0.5)
     pcm = _pcm_from_samples(
@@ -1027,7 +1027,7 @@ def test_rms_acoustic_analyzer_finds_known_energy_valley() -> None:
 
 
 def test_rms_acoustic_analyzer_handles_partial_final_window() -> None:
-    from fluxtuner_ripper.acoustic import RmsAcousticAnalyzer
+    from brynse.acoustic import RmsAcousticAnalyzer
 
     analyzer = RmsAcousticAnalyzer(window_seconds=0.5)
     profile = analyzer.analyze(_pcm_from_samples([1000] * 10, sample_rate=8))
@@ -1039,7 +1039,7 @@ def test_rms_acoustic_analyzer_handles_partial_final_window() -> None:
 
 
 def test_acoustic_profile_minimum_level_returns_none_when_empty() -> None:
-    from fluxtuner_ripper.models import AcousticProfile
+    from brynse.models import AcousticProfile
 
     profile = AcousticProfile(levels=())
 
@@ -1047,14 +1047,14 @@ def test_acoustic_profile_minimum_level_returns_none_when_empty() -> None:
 
 
 def test_rms_acoustic_analyzer_rejects_non_positive_window() -> None:
-    from fluxtuner_ripper.acoustic import RmsAcousticAnalyzer
+    from brynse.acoustic import RmsAcousticAnalyzer
 
     with pytest.raises(ValueError):
         RmsAcousticAnalyzer(window_seconds=0.0)
 
 
 def _profile_from_rms(values: list[float], *, window_seconds: float = 0.5):
-    from fluxtuner_ripper.models import (
+    from brynse.models import (
         AcousticLevel,
         AcousticProfile,
     )
@@ -1074,7 +1074,7 @@ def _profile_from_rms(values: list[float], *, window_seconds: float = 0.5):
 
 
 def test_acoustic_candidate_finder_finds_local_minima() -> None:
-    from fluxtuner_ripper.acoustic import AcousticCandidateFinder
+    from brynse.acoustic import AcousticCandidateFinder
 
     profile = _profile_from_rms([10.0, 2.0, 9.0, 1.0, 8.0])
     window = _make_acoustic_window(b"x" * 100)
@@ -1091,8 +1091,8 @@ def test_acoustic_candidate_finder_finds_local_minima() -> None:
 
 
 def test_acoustic_candidate_finder_maps_relative_to_absolute_time() -> None:
-    from fluxtuner_ripper.acoustic import AcousticCandidateFinder
-    from fluxtuner_ripper.models import AcousticWindow
+    from brynse.acoustic import AcousticCandidateFinder
+    from brynse.models import AcousticWindow
 
     profile = _profile_from_rms([5.0, 1.0, 4.0])
     window = AcousticWindow(
@@ -1114,8 +1114,8 @@ def test_acoustic_candidate_finder_maps_relative_to_absolute_time() -> None:
 
 
 def test_acoustic_candidate_finder_filters_by_center_radius() -> None:
-    from fluxtuner_ripper.acoustic import AcousticCandidateFinder
-    from fluxtuner_ripper.models import AcousticWindow
+    from brynse.acoustic import AcousticCandidateFinder
+    from brynse.models import AcousticWindow
 
     profile = _profile_from_rms([9.0, 1.0, 8.0, 2.0, 7.0])
     window = AcousticWindow(
@@ -1139,8 +1139,8 @@ def test_acoustic_candidate_finder_filters_by_center_radius() -> None:
 
 
 def test_acoustic_candidate_finder_returns_empty_for_empty_profile() -> None:
-    from fluxtuner_ripper.acoustic import AcousticCandidateFinder
-    from fluxtuner_ripper.models import AcousticProfile
+    from brynse.acoustic import AcousticCandidateFinder
+    from brynse.models import AcousticProfile
 
     candidates = AcousticCandidateFinder().find(
         profile=AcousticProfile(levels=()),
@@ -1151,7 +1151,7 @@ def test_acoustic_candidate_finder_returns_empty_for_empty_profile() -> None:
 
 
 def test_acoustic_candidate_finder_accepts_edge_minima() -> None:
-    from fluxtuner_ripper.acoustic import AcousticCandidateFinder
+    from brynse.acoustic import AcousticCandidateFinder
 
     profile = _profile_from_rms([1.0, 5.0, 2.0])
     candidates = AcousticCandidateFinder().find(
@@ -1163,7 +1163,7 @@ def test_acoustic_candidate_finder_accepts_edge_minima() -> None:
 
 
 def test_acoustic_candidate_finder_requires_center_for_radius() -> None:
-    from fluxtuner_ripper.acoustic import AcousticCandidateFinder
+    from brynse.acoustic import AcousticCandidateFinder
 
     with pytest.raises(ValueError):
         AcousticCandidateFinder().find(
@@ -1179,7 +1179,7 @@ def _track_candidate(
     start_time_seconds: float,
     start_offset: int = 0,
 ):
-    from fluxtuner_ripper.integrations.radio.models import TrackCandidate
+    from brynse.integrations.radio.models import TrackCandidate
 
     return TrackCandidate(
         title=title,
@@ -1191,7 +1191,7 @@ def _track_candidate(
 
 
 def _acoustic_candidate(*, time_seconds: float, rms: float):
-    from fluxtuner_ripper.models import AcousticBoundaryCandidate
+    from brynse.models import AcousticBoundaryCandidate
 
     return AcousticBoundaryCandidate(
         time_seconds=time_seconds,
@@ -1201,7 +1201,7 @@ def _acoustic_candidate(*, time_seconds: float, rms: float):
 
 
 def test_nearest_boundary_matcher_selects_closest_candidate() -> None:
-    from fluxtuner_ripper.matching import NearestBoundaryMatcher
+    from brynse.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher(search_radius_seconds=8.0)
     track = _track_candidate(start_time_seconds=100.0)
@@ -1221,7 +1221,7 @@ def test_nearest_boundary_matcher_selects_closest_candidate() -> None:
 
 
 def test_nearest_boundary_matcher_uses_rms_as_tie_breaker() -> None:
-    from fluxtuner_ripper.matching import NearestBoundaryMatcher
+    from brynse.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher(search_radius_seconds=8.0)
     track = _track_candidate(start_time_seconds=100.0)
@@ -1240,7 +1240,7 @@ def test_nearest_boundary_matcher_uses_rms_as_tie_breaker() -> None:
 
 
 def test_nearest_boundary_matcher_returns_none_outside_radius() -> None:
-    from fluxtuner_ripper.matching import NearestBoundaryMatcher
+    from brynse.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher(search_radius_seconds=2.0)
     track = _track_candidate(start_time_seconds=100.0)
@@ -1257,7 +1257,7 @@ def test_nearest_boundary_matcher_returns_none_outside_radius() -> None:
 
 
 def test_nearest_boundary_matcher_returns_none_without_candidates() -> None:
-    from fluxtuner_ripper.matching import NearestBoundaryMatcher
+    from brynse.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
@@ -1269,7 +1269,7 @@ def test_nearest_boundary_matcher_returns_none_without_candidates() -> None:
 
 
 def test_nearest_boundary_matcher_prefers_earlier_time_after_full_tie() -> None:
-    from fluxtuner_ripper.matching import NearestBoundaryMatcher
+    from brynse.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
@@ -1289,7 +1289,7 @@ def test_nearest_boundary_matcher_prefers_earlier_time_after_full_tie() -> None:
 def test_nearest_boundary_matcher_overrides_late_candidate_for_much_quieter_earlier_boundary() -> (
     None
 ):
-    from fluxtuner_ripper.matching import NearestBoundaryMatcher
+    from brynse.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
@@ -1308,7 +1308,7 @@ def test_nearest_boundary_matcher_overrides_late_candidate_for_much_quieter_earl
 
 
 def test_nearest_boundary_matcher_keeps_late_candidate_when_quiet_ratio_is_too_small() -> None:
-    from fluxtuner_ripper.matching import NearestBoundaryMatcher
+    from brynse.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
@@ -1326,7 +1326,7 @@ def test_nearest_boundary_matcher_keeps_late_candidate_when_quiet_ratio_is_too_s
 
 
 def test_nearest_boundary_matcher_does_not_override_candidate_already_before_metadata() -> None:
-    from fluxtuner_ripper.matching import NearestBoundaryMatcher
+    from brynse.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
@@ -1345,7 +1345,7 @@ def test_nearest_boundary_matcher_does_not_override_candidate_already_before_met
 
 
 def test_nearest_boundary_matcher_ignores_quieter_boundary_outside_override_radius() -> None:
-    from fluxtuner_ripper.matching import NearestBoundaryMatcher
+    from brynse.matching import NearestBoundaryMatcher
 
     matcher = NearestBoundaryMatcher()
     track = _track_candidate(start_time_seconds=100.0)
@@ -1363,8 +1363,8 @@ def test_nearest_boundary_matcher_ignores_quieter_boundary_outside_override_radi
 
 
 def test_boundary_relation_classifier_marks_close_candidates_as_agreement() -> None:
-    from fluxtuner_ripper.matching import BoundaryRelationClassifier
-    from fluxtuner_ripper.models import BoundaryRelation
+    from brynse.matching import BoundaryRelationClassifier
+    from brynse.models import BoundaryRelation
 
     classifier = BoundaryRelationClassifier(divergence_threshold_seconds=3.0)
 
@@ -1378,8 +1378,8 @@ def test_boundary_relation_classifier_marks_close_candidates_as_agreement() -> N
 
 
 def test_boundary_relation_classifier_marks_acoustic_candidate_earlier() -> None:
-    from fluxtuner_ripper.matching import BoundaryRelationClassifier
-    from fluxtuner_ripper.models import BoundaryRelation
+    from brynse.matching import BoundaryRelationClassifier
+    from brynse.models import BoundaryRelation
 
     classifier = BoundaryRelationClassifier(divergence_threshold_seconds=3.0)
 
@@ -1393,8 +1393,8 @@ def test_boundary_relation_classifier_marks_acoustic_candidate_earlier() -> None
 
 
 def test_boundary_relation_classifier_marks_semantic_candidate_earlier() -> None:
-    from fluxtuner_ripper.matching import BoundaryRelationClassifier
-    from fluxtuner_ripper.models import BoundaryRelation
+    from brynse.matching import BoundaryRelationClassifier
+    from brynse.models import BoundaryRelation
 
     classifier = BoundaryRelationClassifier(divergence_threshold_seconds=3.0)
 
@@ -1408,8 +1408,8 @@ def test_boundary_relation_classifier_marks_semantic_candidate_earlier() -> None
 
 
 def test_boundary_relation_classifier_treats_exact_threshold_as_agreement() -> None:
-    from fluxtuner_ripper.matching import BoundaryRelationClassifier
-    from fluxtuner_ripper.models import BoundaryRelation
+    from brynse.matching import BoundaryRelationClassifier
+    from brynse.models import BoundaryRelation
 
     classifier = BoundaryRelationClassifier(divergence_threshold_seconds=3.0)
 
@@ -1427,14 +1427,14 @@ def test_boundary_relation_classifier_treats_exact_threshold_as_agreement() -> N
 
 
 def test_boundary_relation_classifier_rejects_invalid_threshold() -> None:
-    from fluxtuner_ripper.matching import BoundaryRelationClassifier
+    from brynse.matching import BoundaryRelationClassifier
 
     with pytest.raises(ValueError):
         BoundaryRelationClassifier(divergence_threshold_seconds=0.0)
 
 
 def test_boundary_relation_classifier_rejects_negative_times() -> None:
-    from fluxtuner_ripper.matching import BoundaryRelationClassifier
+    from brynse.matching import BoundaryRelationClassifier
 
     classifier = BoundaryRelationClassifier()
 
@@ -1452,8 +1452,8 @@ def test_boundary_relation_classifier_rejects_negative_times() -> None:
 
 
 def test_temporal_split_policy_uses_acoustic_boundary_on_agreement() -> None:
-    from fluxtuner_ripper.matching import TemporalSplitPolicy
-    from fluxtuner_ripper.models import (
+    from brynse.matching import TemporalSplitPolicy
+    from brynse.models import (
         BoundaryRelation,
         BoundaryRelationResult,
         TemporalSplitKind,
@@ -1474,8 +1474,8 @@ def test_temporal_split_policy_uses_acoustic_boundary_on_agreement() -> None:
 
 
 def test_temporal_split_policy_uses_semantic_boundary_when_it_is_earlier() -> None:
-    from fluxtuner_ripper.matching import TemporalSplitPolicy
-    from fluxtuner_ripper.models import (
+    from brynse.matching import TemporalSplitPolicy
+    from brynse.models import (
         BoundaryRelation,
         BoundaryRelationResult,
         TemporalSplitKind,
@@ -1496,8 +1496,8 @@ def test_temporal_split_policy_uses_semantic_boundary_when_it_is_earlier() -> No
 
 
 def test_temporal_split_policy_creates_crossfade_when_acoustic_is_earlier() -> None:
-    from fluxtuner_ripper.matching import TemporalSplitPolicy
-    from fluxtuner_ripper.models import (
+    from brynse.matching import TemporalSplitPolicy
+    from brynse.models import (
         BoundaryRelation,
         BoundaryRelationResult,
         TemporalSplitKind,
@@ -1518,8 +1518,8 @@ def test_temporal_split_policy_creates_crossfade_when_acoustic_is_earlier() -> N
 
 
 def test_temporal_split_policy_uses_acoustic_boundary_when_semantic_is_earlier() -> None:
-    from fluxtuner_ripper.matching import TemporalSplitPolicy
-    from fluxtuner_ripper.models import (
+    from brynse.matching import TemporalSplitPolicy
+    from brynse.models import (
         BoundaryRelation,
         BoundaryRelationResult,
         TemporalSplitKind,
@@ -1540,7 +1540,7 @@ def test_temporal_split_policy_uses_acoustic_boundary_when_semantic_is_earlier()
 
 
 def test_temporal_split_decision_rejects_invalid_hard_cut() -> None:
-    from fluxtuner_ripper.models import (
+    from brynse.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1554,7 +1554,7 @@ def test_temporal_split_decision_rejects_invalid_hard_cut() -> None:
 
 
 def test_temporal_split_decision_rejects_invalid_crossfade() -> None:
-    from fluxtuner_ripper.models import (
+    from brynse.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1568,7 +1568,7 @@ def test_temporal_split_decision_rejects_invalid_crossfade() -> None:
 
 
 def test_temporal_split_decision_accepts_exclusion_gap() -> None:
-    from fluxtuner_ripper.models import (
+    from brynse.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1583,7 +1583,7 @@ def test_temporal_split_decision_accepts_exclusion_gap() -> None:
 
 
 def test_temporal_split_decision_rejects_collapsed_exclusion() -> None:
-    from fluxtuner_ripper.models import (
+    from brynse.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1597,9 +1597,9 @@ def test_temporal_split_decision_rejects_collapsed_exclusion() -> None:
 
 
 def test_temporal_split_aligner_maps_hard_cut_to_single_frame_offset() -> None:
-    from fluxtuner_ripper.frames import IncrementalFrameTimeline
-    from fluxtuner_ripper.matching import TemporalSplitAligner
-    from fluxtuner_ripper.models import (
+    from brynse.frames import IncrementalFrameTimeline
+    from brynse.matching import TemporalSplitAligner
+    from brynse.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1627,9 +1627,9 @@ def test_temporal_split_aligner_maps_hard_cut_to_single_frame_offset() -> None:
 
 
 def test_temporal_split_aligner_maps_crossfade_edges_independently() -> None:
-    from fluxtuner_ripper.frames import IncrementalFrameTimeline
-    from fluxtuner_ripper.matching import TemporalSplitAligner
-    from fluxtuner_ripper.models import (
+    from brynse.frames import IncrementalFrameTimeline
+    from brynse.matching import TemporalSplitAligner
+    from brynse.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1655,9 +1655,9 @@ def test_temporal_split_aligner_maps_crossfade_edges_independently() -> None:
 
 
 def test_temporal_split_aligner_maps_exclusion_edges_independently() -> None:
-    from fluxtuner_ripper.frames import IncrementalFrameTimeline
-    from fluxtuner_ripper.matching import TemporalSplitAligner
-    from fluxtuner_ripper.models import (
+    from brynse.frames import IncrementalFrameTimeline
+    from brynse.matching import TemporalSplitAligner
+    from brynse.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1684,9 +1684,9 @@ def test_temporal_split_aligner_maps_exclusion_edges_independently() -> None:
 
 
 def test_temporal_split_aligner_prefers_earlier_frame_on_exact_tie() -> None:
-    from fluxtuner_ripper.frames import IncrementalFrameTimeline
-    from fluxtuner_ripper.matching import TemporalSplitAligner
-    from fluxtuner_ripper.models import (
+    from brynse.frames import IncrementalFrameTimeline
+    from brynse.matching import TemporalSplitAligner
+    from brynse.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1714,12 +1714,12 @@ def test_temporal_split_aligner_prefers_earlier_frame_on_exact_tie() -> None:
 
 
 def test_temporal_split_aligner_rejects_time_before_retained_timeline() -> None:
-    from fluxtuner_ripper.frames import IncrementalFrameTimeline
-    from fluxtuner_ripper.matching import (
+    from brynse.frames import IncrementalFrameTimeline
+    from brynse.matching import (
         SplitAlignmentError,
         TemporalSplitAligner,
     )
-    from fluxtuner_ripper.models import (
+    from brynse.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1743,12 +1743,12 @@ def test_temporal_split_aligner_rejects_time_before_retained_timeline() -> None:
 
 
 def test_temporal_split_aligner_rejects_time_after_retained_timeline() -> None:
-    from fluxtuner_ripper.frames import IncrementalFrameTimeline
-    from fluxtuner_ripper.matching import (
+    from brynse.frames import IncrementalFrameTimeline
+    from brynse.matching import (
         SplitAlignmentError,
         TemporalSplitAligner,
     )
-    from fluxtuner_ripper.models import (
+    from brynse.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1771,12 +1771,12 @@ def test_temporal_split_aligner_rejects_time_after_retained_timeline() -> None:
 
 
 def test_temporal_split_aligner_rejects_collapsed_crossfade_after_alignment() -> None:
-    from fluxtuner_ripper.frames import IncrementalFrameTimeline
-    from fluxtuner_ripper.matching import (
+    from brynse.frames import IncrementalFrameTimeline
+    from brynse.matching import (
         SplitAlignmentError,
         TemporalSplitAligner,
     )
-    from fluxtuner_ripper.models import (
+    from brynse.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1801,12 +1801,12 @@ def test_temporal_split_aligner_rejects_collapsed_crossfade_after_alignment() ->
 
 
 def test_temporal_split_aligner_rejects_collapsed_exclusion_after_alignment() -> None:
-    from fluxtuner_ripper.frames import IncrementalFrameTimeline
-    from fluxtuner_ripper.matching import (
+    from brynse.frames import IncrementalFrameTimeline
+    from brynse.matching import (
         SplitAlignmentError,
         TemporalSplitAligner,
     )
-    from fluxtuner_ripper.models import (
+    from brynse.models import (
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1831,8 +1831,8 @@ def test_temporal_split_aligner_rejects_collapsed_exclusion_after_alignment() ->
 
 
 def test_track_range_planner_builds_hard_cut_ranges() -> None:
-    from fluxtuner_ripper.models import SplitDecision, SplitKind
-    from fluxtuner_ripper.output import SegmentRangePlanner
+    from brynse.models import SplitDecision, SplitKind
+    from brynse.output import SegmentRangePlanner
 
     decision = SplitDecision(
         kind=SplitKind.HARD_CUT,
@@ -1853,8 +1853,8 @@ def test_track_range_planner_builds_hard_cut_ranges() -> None:
 
 
 def test_track_range_planner_preserves_crossfade_overlap() -> None:
-    from fluxtuner_ripper.models import SplitDecision, SplitKind
-    from fluxtuner_ripper.output import SegmentRangePlanner
+    from brynse.models import SplitDecision, SplitKind
+    from brynse.output import SegmentRangePlanner
 
     decision = SplitDecision(
         kind=SplitKind.CROSSFADE,
@@ -1878,8 +1878,8 @@ def test_track_range_planner_preserves_crossfade_overlap() -> None:
 
 
 def test_track_range_planner_preserves_exclusion_gap() -> None:
-    from fluxtuner_ripper.models import SplitDecision, SplitKind
-    from fluxtuner_ripper.output import SegmentRangePlanner
+    from brynse.models import SplitDecision, SplitKind
+    from brynse.output import SegmentRangePlanner
 
     decision = SplitDecision(
         kind=SplitKind.EXCLUSION,
@@ -1901,8 +1901,8 @@ def test_track_range_planner_preserves_exclusion_gap() -> None:
 
 
 def test_track_range_planner_rejects_no_boundary() -> None:
-    from fluxtuner_ripper.models import SplitDecision, SplitKind
-    from fluxtuner_ripper.output import SegmentRangePlanner
+    from brynse.models import SplitDecision, SplitKind
+    from brynse.output import SegmentRangePlanner
 
     decision = SplitDecision(kind=SplitKind.NO_BOUNDARY)
 
@@ -1915,8 +1915,8 @@ def test_track_range_planner_rejects_no_boundary() -> None:
 
 
 def test_encoded_track_writer_returns_exact_hard_cut_bytes() -> None:
-    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
-    from fluxtuner_ripper.output import EncodedSegmentWriter
+    from brynse.buffer import EncodedAudioRingBuffer
+    from brynse.output import EncodedSegmentWriter
 
     source = EncodedAudioRingBuffer(max_bytes=20)
     source.append(b"abcdefghijklmnopqrst")
@@ -1930,8 +1930,8 @@ def test_encoded_track_writer_returns_exact_hard_cut_bytes() -> None:
 
 
 def test_encoded_track_writer_can_materialize_overlapping_tracks() -> None:
-    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
-    from fluxtuner_ripper.output import EncodedSegmentWriter
+    from brynse.buffer import EncodedAudioRingBuffer
+    from brynse.output import EncodedSegmentWriter
 
     source = EncodedAudioRingBuffer(max_bytes=20)
     source.append(b"abcdefghijklmnopqrst")
@@ -1952,8 +1952,8 @@ def test_encoded_track_writer_can_materialize_overlapping_tracks() -> None:
 
 
 def test_encoded_track_writer_rejects_evicted_range() -> None:
-    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
-    from fluxtuner_ripper.output import EncodedSegmentWriter
+    from brynse.buffer import EncodedAudioRingBuffer
+    from brynse.output import EncodedSegmentWriter
 
     source = EncodedAudioRingBuffer(max_bytes=5)
     source.append(b"abcdefghij")
@@ -1966,7 +1966,7 @@ def test_encoded_track_writer_rejects_evicted_range() -> None:
 
 
 def test_track_file_writer_uses_codec_extension() -> None:
-    from fluxtuner_ripper.output import SegmentFileWriter
+    from brynse.output import SegmentFileWriter
 
     writer = SegmentFileWriter()
 
@@ -1976,14 +1976,14 @@ def test_track_file_writer_uses_codec_extension() -> None:
 
 
 def test_track_file_writer_rejects_unsupported_codec() -> None:
-    from fluxtuner_ripper.output import SegmentFileWriter
+    from brynse.output import SegmentFileWriter
 
     with pytest.raises(ValueError):
         SegmentFileWriter().extension_for_codec("flac")
 
 
 def test_track_file_writer_persists_exact_bytes(tmp_path) -> None:
-    from fluxtuner_ripper.output import SegmentFileWriter
+    from brynse.output import SegmentFileWriter
 
     payload = b"encoded-track-bytes"
     writer = SegmentFileWriter()
@@ -2000,7 +2000,7 @@ def test_track_file_writer_persists_exact_bytes(tmp_path) -> None:
 
 
 def test_track_file_writer_replaces_existing_target_atomically(tmp_path) -> None:
-    from fluxtuner_ripper.output import SegmentFileWriter
+    from brynse.output import SegmentFileWriter
 
     target = tmp_path / "Track.aac"
     target.write_bytes(b"old")
@@ -2017,7 +2017,7 @@ def test_track_file_writer_replaces_existing_target_atomically(tmp_path) -> None
 
 
 def test_track_file_writer_leaves_no_temp_file_after_success(tmp_path) -> None:
-    from fluxtuner_ripper.output import SegmentFileWriter
+    from brynse.output import SegmentFileWriter
 
     SegmentFileWriter().write(
         directory=tmp_path,
@@ -2035,7 +2035,7 @@ def test_track_file_writer_leaves_no_temp_file_after_success(tmp_path) -> None:
 
 
 def test_track_file_writer_rejects_empty_stem_and_data(tmp_path) -> None:
-    from fluxtuner_ripper.output import SegmentFileWriter
+    from brynse.output import SegmentFileWriter
 
     writer = SegmentFileWriter()
 
@@ -2057,7 +2057,7 @@ def test_track_file_writer_rejects_empty_stem_and_data(tmp_path) -> None:
 
 
 def test_mp3_track_finalizer_rejects_missing_binary() -> None:
-    from fluxtuner_ripper.output import (
+    from brynse.output import (
         Mp3SegmentFinalizer,
         SegmentFinalizeError,
     )
@@ -2069,7 +2069,7 @@ def test_mp3_track_finalizer_rejects_missing_binary() -> None:
 
 
 def test_mp3_track_finalizer_rejects_empty_input() -> None:
-    from fluxtuner_ripper.output import Mp3SegmentFinalizer
+    from brynse.output import Mp3SegmentFinalizer
 
     with pytest.raises(ValueError):
         Mp3SegmentFinalizer().finalize(b"")
@@ -2080,7 +2080,7 @@ def test_mp3_track_finalizer_legacy_finalize_respects_timeout(
 ) -> None:
     import time
 
-    from fluxtuner_ripper.output import (
+    from brynse.output import (
         Mp3SegmentFinalizer,
         SegmentFinalizeError,
     )
@@ -2119,7 +2119,7 @@ time.sleep(60)
 def test_mp3_track_finalizer_rejects_invalid_mp3_when_ffmpeg_available() -> None:
     import shutil
 
-    from fluxtuner_ripper.output import (
+    from brynse.output import (
         Mp3SegmentFinalizer,
         SegmentFinalizeError,
     )
@@ -2140,7 +2140,7 @@ def test_mp3_track_finalizer_remuxes_mp3_without_transcoding() -> None:
     if ffmpeg is None:
         pytest.skip("ffmpeg is not installed")
 
-    from fluxtuner_ripper.output import Mp3SegmentFinalizer
+    from brynse.output import Mp3SegmentFinalizer
 
     generated = subprocess.run(
         [
@@ -2196,7 +2196,7 @@ def test_mp3_track_finalizer_preserves_decodable_duration() -> None:
     if ffmpeg is None:
         pytest.skip("ffmpeg is not installed")
 
-    from fluxtuner_ripper.output import Mp3SegmentFinalizer
+    from brynse.output import Mp3SegmentFinalizer
 
     generated = subprocess.run(
         [
@@ -2268,7 +2268,7 @@ def test_mp3_track_finalizer_preserves_decodable_duration() -> None:
 
 
 def test_aac_track_finalizer_rejects_missing_binary() -> None:
-    from fluxtuner_ripper.output import (
+    from brynse.output import (
         AacSegmentFinalizer,
         SegmentFinalizeError,
     )
@@ -2280,7 +2280,7 @@ def test_aac_track_finalizer_rejects_missing_binary() -> None:
 
 
 def test_aac_track_finalizer_rejects_empty_input() -> None:
-    from fluxtuner_ripper.output import AacSegmentFinalizer
+    from brynse.output import AacSegmentFinalizer
 
     with pytest.raises(ValueError):
         AacSegmentFinalizer().finalize(b"")
@@ -2291,7 +2291,7 @@ def test_aac_track_finalizer_legacy_finalize_respects_timeout(
 ) -> None:
     import time
 
-    from fluxtuner_ripper.output import (
+    from brynse.output import (
         AacSegmentFinalizer,
         SegmentFinalizeError,
     )
@@ -2330,7 +2330,7 @@ time.sleep(60)
 def test_aac_track_finalizer_rejects_invalid_aac_when_ffmpeg_available() -> None:
     import shutil
 
-    from fluxtuner_ripper.output import (
+    from brynse.output import (
         AacSegmentFinalizer,
         SegmentFinalizeError,
     )
@@ -2351,7 +2351,7 @@ def test_aac_track_finalizer_remuxes_adts_to_m4a_without_transcoding() -> None:
     if ffmpeg is None:
         pytest.skip("ffmpeg is not installed")
 
-    from fluxtuner_ripper.output import AacSegmentFinalizer
+    from brynse.output import AacSegmentFinalizer
 
     generated = subprocess.run(
         [
@@ -2410,7 +2410,7 @@ def test_aac_track_finalizer_preserves_decodable_duration() -> None:
     if ffmpeg is None:
         pytest.skip("ffmpeg is not installed")
 
-    from fluxtuner_ripper.output import AacSegmentFinalizer
+    from brynse.output import AacSegmentFinalizer
 
     generated = subprocess.run(
         [
@@ -2496,8 +2496,8 @@ class _FakeFinalizer:
 
 
 def test_track_output_service_composes_mp3_pipeline(tmp_path) -> None:
-    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
-    from fluxtuner_ripper.output import SegmentOutputService
+    from brynse.buffer import EncodedAudioRingBuffer
+    from brynse.output import SegmentOutputService
 
     source = EncodedAudioRingBuffer(max_bytes=20)
     source.append(b"abcdefghijklmnopqrst")
@@ -2519,8 +2519,8 @@ def test_track_output_service_composes_mp3_pipeline(tmp_path) -> None:
 
 
 def test_track_output_service_composes_aac_to_m4a_pipeline(tmp_path) -> None:
-    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
-    from fluxtuner_ripper.output import SegmentOutputService
+    from brynse.buffer import EncodedAudioRingBuffer
+    from brynse.output import SegmentOutputService
 
     source = EncodedAudioRingBuffer(max_bytes=20)
     source.append(b"abcdefghijklmnopqrst")
@@ -2542,8 +2542,8 @@ def test_track_output_service_composes_aac_to_m4a_pipeline(tmp_path) -> None:
 
 
 def test_track_output_service_rejects_unsupported_codec(tmp_path) -> None:
-    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
-    from fluxtuner_ripper.output import SegmentOutputService
+    from brynse.buffer import EncodedAudioRingBuffer
+    from brynse.output import SegmentOutputService
 
     source = EncodedAudioRingBuffer(max_bytes=10)
     source.append(b"abcdefghij")
@@ -2559,8 +2559,8 @@ def test_track_output_service_rejects_unsupported_codec(tmp_path) -> None:
 
 
 def test_track_output_service_rejects_evicted_range(tmp_path) -> None:
-    from fluxtuner_ripper.buffer import EncodedAudioRingBuffer
-    from fluxtuner_ripper.output import SegmentOutputService
+    from brynse.buffer import EncodedAudioRingBuffer
+    from brynse.output import SegmentOutputService
 
     source = EncodedAudioRingBuffer(max_bytes=5)
     source.append(b"abcdefghij")
@@ -2576,7 +2576,7 @@ def test_track_output_service_rejects_evicted_range(tmp_path) -> None:
 
 
 def test_public_package_api_exports_expected_symbols() -> None:
-    import fluxtuner_ripper
+    import brynse
 
     expected = {
         "AacSegmentFinalizer",
@@ -2597,7 +2597,7 @@ def test_public_package_api_exports_expected_symbols() -> None:
         "parse_mp3_frames",
     }
 
-    assert expected <= set(fluxtuner_ripper.__all__)
+    assert expected <= set(brynse.__all__)
 
     radio_integration_symbols = {
         "IcyStreamParser",
@@ -2605,21 +2605,21 @@ def test_public_package_api_exports_expected_symbols() -> None:
         "RippingStreamIngestor",
     }
 
-    assert radio_integration_symbols.isdisjoint(fluxtuner_ripper.__all__)
+    assert radio_integration_symbols.isdisjoint(brynse.__all__)
 
     for name in expected:
-        assert getattr(fluxtuner_ripper, name) is not None
+        assert getattr(brynse, name) is not None
 
 
 def test_public_package_api_version_matches_project_bootstrap() -> None:
-    import fluxtuner_ripper
+    import brynse
 
-    assert fluxtuner_ripper.__version__ == "0.1.0.dev0"
+    assert brynse.__version__ == "0.1.0.dev0"
 
 
 def test_encoded_track_writer_iterates_range_in_bounded_chunks() -> None:
-    from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import EncodedSegmentWriter
+    from brynse.models import SegmentByteRange
+    from brynse.output import EncodedSegmentWriter
 
     class _BoundedSource:
         def __init__(self, data: bytes, max_read_size: int) -> None:
@@ -2676,7 +2676,7 @@ def test_encoded_track_writer_iterates_range_in_bounded_chunks() -> None:
 def test_mp3_finalizer_streams_chunks_directly_to_output_file(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.output import Mp3SegmentFinalizer
+    from brynse.output import Mp3SegmentFinalizer
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg"
     fake_ffmpeg.write_text(
@@ -2716,7 +2716,7 @@ shutil.copyfileobj(sys.stdin.buffer, sys.stdout.buffer)
 def test_aac_finalizer_streams_chunks_directly_to_output_file(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.output import AacSegmentFinalizer
+    from brynse.output import AacSegmentFinalizer
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg"
     fake_ffmpeg.write_text(
@@ -2757,8 +2757,8 @@ output_path.write_bytes(sys.stdin.buffer.read())
 def test_track_output_service_streams_mp3_without_full_range_read(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import SegmentOutputService
+    from brynse.models import SegmentByteRange
+    from brynse.output import SegmentOutputService
 
     class _BoundedSource:
         def __init__(self, data: bytes, max_read_size: int) -> None:
@@ -2842,8 +2842,8 @@ def test_track_output_service_streams_mp3_without_full_range_read(
 def test_track_output_service_streams_aac_without_full_range_read(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import SegmentOutputService
+    from brynse.models import SegmentByteRange
+    from brynse.output import SegmentOutputService
 
     class _BoundedSource:
         def __init__(self, data: bytes, max_read_size: int) -> None:
@@ -2927,8 +2927,8 @@ def test_track_output_service_streams_aac_without_full_range_read(
 def test_track_output_service_rejects_segment_over_configured_size_limit(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import SegmentOutputService
+    from brynse.models import SegmentByteRange
+    from brynse.output import SegmentOutputService
 
     class _SourceThatMustNotBeRead:
         @property
@@ -2968,8 +2968,8 @@ def test_track_output_service_rejects_when_free_disk_space_is_too_low(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import SegmentOutputService
+    from brynse.models import SegmentByteRange
+    from brynse.output import SegmentOutputService
 
     class _SourceThatMustNotBeRead:
         @property
@@ -3024,8 +3024,8 @@ def test_track_output_service_requires_space_for_segment_plus_reserve(
 ) -> None:
     import shutil
 
-    from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import SegmentOutputService
+    from brynse.models import SegmentByteRange
+    from brynse.output import SegmentOutputService
 
     class _SourceThatMustNotBeRead:
         @property
@@ -3078,8 +3078,8 @@ def test_track_output_service_requires_space_for_segment_plus_reserve(
 def test_track_output_service_rejects_chunk_size_above_hard_limit(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import SegmentOutputService
+    from brynse.models import SegmentByteRange
+    from brynse.output import SegmentOutputService
 
     class _SourceThatMustNotBeRead:
         @property
@@ -3116,8 +3116,8 @@ def test_track_output_service_rejects_chunk_size_above_hard_limit(
 
 
 def test_encoded_track_writer_rejects_source_returning_wrong_chunk_size() -> None:
-    from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import EncodedSegmentWriter
+    from brynse.models import SegmentByteRange
+    from brynse.output import EncodedSegmentWriter
 
     class _BrokenSource:
         @property
@@ -3163,8 +3163,8 @@ def test_track_output_service_rejects_unsafe_output_stem(
     tmp_path: Path,
     stem: str,
 ) -> None:
-    from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import SegmentOutputService
+    from brynse.models import SegmentByteRange
+    from brynse.output import SegmentOutputService
 
     class _SourceThatMustNotBeRead:
         @property
@@ -3201,7 +3201,7 @@ def test_mp3_stream_finalizer_times_out_and_cleans_partial_output(
 ) -> None:
     import time
 
-    from fluxtuner_ripper.output import Mp3SegmentFinalizer, SegmentFinalizeError
+    from brynse.output import Mp3SegmentFinalizer, SegmentFinalizeError
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-timeout"
     fake_ffmpeg.write_text(
@@ -3253,7 +3253,7 @@ def test_mp3_stream_finalizer_times_out_when_ffmpeg_stops_consuming_stdin(
 ) -> None:
     import time
 
-    from fluxtuner_ripper.output import Mp3SegmentFinalizer, SegmentFinalizeError
+    from brynse.output import Mp3SegmentFinalizer, SegmentFinalizeError
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-no-stdin"
     fake_ffmpeg.write_text(
@@ -3297,7 +3297,7 @@ def test_aac_stream_finalizer_times_out_when_ffmpeg_stops_consuming_stdin(
 ) -> None:
     import time
 
-    from fluxtuner_ripper.output import AacSegmentFinalizer, SegmentFinalizeError
+    from brynse.output import AacSegmentFinalizer, SegmentFinalizeError
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-aac-no-stdin"
     fake_ffmpeg.write_text(
@@ -3350,7 +3350,7 @@ def test_mp3_stream_finalizer_does_not_create_unbounded_stderr_tempfile(
 ) -> None:
     import tempfile
 
-    from fluxtuner_ripper.output import Mp3SegmentFinalizer, SegmentFinalizeError
+    from brynse.output import Mp3SegmentFinalizer, SegmentFinalizeError
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-stderr"
     fake_ffmpeg.write_text(
@@ -3403,7 +3403,7 @@ def test_aac_stream_finalizer_does_not_create_unbounded_stderr_tempfile(
 ) -> None:
     import tempfile
 
-    from fluxtuner_ripper.output import AacSegmentFinalizer, SegmentFinalizeError
+    from brynse.output import AacSegmentFinalizer, SegmentFinalizeError
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-aac-stderr"
     fake_ffmpeg.write_text(
@@ -3454,8 +3454,8 @@ def test_streaming_segment_sink_uses_safe_output_service_factory_by_default(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    import fluxtuner_ripper.streaming_sink as streaming_sink
-    from fluxtuner_ripper.output import SegmentOutputService
+    import brynse.streaming_sink as streaming_sink
+    from brynse.output import SegmentOutputService
 
     class _FakeIngestor:
         def __init__(self) -> None:
@@ -3490,8 +3490,8 @@ def test_generic_segment_writer_uses_safe_output_service_factory_by_default(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    import fluxtuner_ripper.generic_output as generic_output
-    from fluxtuner_ripper.output import SegmentOutputService
+    import brynse.generic_output as generic_output
+    from brynse.output import SegmentOutputService
 
     class _FakeIngestor:
         pass
@@ -3525,8 +3525,8 @@ def test_session_output_writer_uses_safe_output_service_factory_by_default(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    import fluxtuner_ripper.integrations.radio.session_output as session_output
-    from fluxtuner_ripper.output import SegmentOutputService
+    import brynse.integrations.radio.session_output as session_output
+    from brynse.output import SegmentOutputService
 
     class _FakeIngestor:
         pass
@@ -3557,7 +3557,7 @@ def test_session_output_writer_uses_safe_output_service_factory_by_default(
 
 
 def test_safe_track_output_service_applies_runtime_disk_policy() -> None:
-    from fluxtuner_ripper.output import create_safe_segment_output_service
+    from brynse.output import create_safe_segment_output_service
 
     service = create_safe_segment_output_service()
 
@@ -3568,8 +3568,8 @@ def test_safe_track_output_service_applies_runtime_disk_policy() -> None:
 def test_track_output_service_derives_stream_finalizer_timeout_from_segment_size(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.models import SegmentByteRange
-    from fluxtuner_ripper.output import SegmentOutputService
+    from brynse.models import SegmentByteRange
+    from brynse.output import SegmentOutputService
 
     class _Source:
         def __init__(self, size: int) -> None:
@@ -3632,7 +3632,7 @@ def test_mp3_stream_finalizer_accepts_per_call_timeout_override(
 ) -> None:
     import time
 
-    from fluxtuner_ripper.output import Mp3SegmentFinalizer, SegmentFinalizeError
+    from brynse.output import Mp3SegmentFinalizer, SegmentFinalizeError
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-mp3-override-timeout"
     fake_ffmpeg.write_text(
@@ -3677,7 +3677,7 @@ def test_aac_stream_finalizer_accepts_per_call_timeout_override(
 ) -> None:
     import time
 
-    from fluxtuner_ripper.output import AacSegmentFinalizer, SegmentFinalizeError
+    from brynse.output import AacSegmentFinalizer, SegmentFinalizeError
 
     fake_ffmpeg = tmp_path / "fake-ffmpeg-aac-override-timeout"
     fake_ffmpeg.write_text(
@@ -3718,7 +3718,7 @@ time.sleep(60)
 
 
 def test_safe_track_output_service_applies_runtime_timeout_policy() -> None:
-    from fluxtuner_ripper.output import create_safe_segment_output_service
+    from brynse.output import create_safe_segment_output_service
 
     service = create_safe_segment_output_service()
 
@@ -3729,8 +3729,8 @@ def test_safe_track_output_service_applies_runtime_timeout_policy() -> None:
 def test_safe_streaming_pipeline_shares_bounded_spool_between_ingest_and_sink(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.ingest import EncodedStreamIngestor
-    from fluxtuner_ripper.streaming_runtime import create_safe_streaming_pipeline
+    from brynse.ingest import EncodedStreamIngestor
+    from brynse.streaming_runtime import create_safe_streaming_pipeline
 
     class _FakeResolver:
         def resolve_candidate(self, *, candidate, timeline, ring_buffer):
@@ -3763,11 +3763,11 @@ def test_async_streaming_runtime_propagates_spool_limit_and_cleans_up_tasks(
 ) -> None:
     import asyncio
 
-    from fluxtuner_ripper.ingest import EncodedStreamIngestor
-    from fluxtuner_ripper.spooling_ingest import SpoolingEncodedStreamIngestor
-    from fluxtuner_ripper.streaming_runner import StreamingGenericRunner
-    from fluxtuner_ripper.streaming_runtime import AsyncStreamingRuntime
-    from fluxtuner_ripper.streaming_spool import StreamingSpool
+    from brynse.ingest import EncodedStreamIngestor
+    from brynse.spooling_ingest import SpoolingEncodedStreamIngestor
+    from brynse.streaming_runner import StreamingGenericRunner
+    from brynse.streaming_runtime import AsyncStreamingRuntime
+    from brynse.streaming_spool import StreamingSpool
 
     class _FakeResolver:
         def resolve_candidate(self, *, candidate, timeline, ring_buffer):
@@ -3833,8 +3833,8 @@ def test_async_streaming_runtime_propagates_spool_limit_and_cleans_up_tasks(
 def test_safe_streaming_pipeline_close_releases_owned_spool(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.ingest import EncodedStreamIngestor
-    from fluxtuner_ripper.streaming_runtime import create_safe_streaming_pipeline
+    from brynse.ingest import EncodedStreamIngestor
+    from brynse.streaming_runtime import create_safe_streaming_pipeline
 
     class _FakeResolver:
         def resolve_candidate(self, *, candidate, timeline, ring_buffer):
@@ -3867,8 +3867,8 @@ def test_safe_streaming_pipeline_close_releases_owned_spool(
 def test_safe_streaming_pipeline_context_manager_closes_owned_spool(
     tmp_path: Path,
 ) -> None:
-    from fluxtuner_ripper.ingest import EncodedStreamIngestor
-    from fluxtuner_ripper.streaming_runtime import create_safe_streaming_pipeline
+    from brynse.ingest import EncodedStreamIngestor
+    from brynse.streaming_runtime import create_safe_streaming_pipeline
 
     class _FakeResolver:
         def resolve_candidate(self, *, candidate, timeline, ring_buffer):
@@ -3896,8 +3896,8 @@ def test_safe_streaming_pipeline_cleans_spool_when_construction_fails(
 ) -> None:
     import pytest
 
-    from fluxtuner_ripper.ingest import EncodedStreamIngestor
-    from fluxtuner_ripper.streaming_runtime import create_safe_streaming_pipeline
+    from brynse.ingest import EncodedStreamIngestor
+    from brynse.streaming_runtime import create_safe_streaming_pipeline
 
     class _FakeResolver:
         def resolve_candidate(self, *, candidate, timeline, ring_buffer):

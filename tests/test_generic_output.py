@@ -1,8 +1,8 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from fluxtuner_ripper.generic_output import GenericSegmentWriter
-from fluxtuner_ripper.models import SplitDecision, SplitKind
+from brynse.generic_output import GenericSegmentWriter
+from brynse.models import SplitDecision, SplitKind
 
 
 class _OutputService:
@@ -185,21 +185,21 @@ def test_generic_segment_writer_does_not_create_empty_final_segment(
 
 
 def test_generic_output_uses_segment_byte_range_contract() -> None:
-    source = Path("src/fluxtuner_ripper/generic_output.py").read_text()
+    source = Path("src/brynse/generic_output.py").read_text()
 
     assert "TrackByteRange" not in source
     assert "SegmentByteRange" in source
 
 
 def test_generic_output_uses_segment_range_planner() -> None:
-    source = Path("src/fluxtuner_ripper/generic_output.py").read_text()
+    source = Path("src/brynse/generic_output.py").read_text()
 
     assert "TrackRangePlanner" not in source
     assert "SegmentRangePlanner" in source
 
 
 def test_generic_output_uses_segment_output_service_contract() -> None:
-    source = Path("src/fluxtuner_ripper/generic_output.py").read_text()
+    source = Path("src/brynse/generic_output.py").read_text()
 
     assert "TrackOutputService" not in source
     assert "write_track" not in source

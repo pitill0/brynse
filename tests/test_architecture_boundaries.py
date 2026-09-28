@@ -51,7 +51,7 @@ CORE_MODULES = {
 
 
 def _src_root() -> Path:
-    return Path(__file__).resolve().parents[1] / "src/fluxtuner_ripper"
+    return Path(__file__).resolve().parents[1] / "src/brynse"
 
 
 def test_core_models_do_not_define_radio_models() -> None:
@@ -67,7 +67,7 @@ def test_core_models_do_not_define_radio_models() -> None:
 def test_core_models_do_not_depend_on_radio_models() -> None:
     source = (_src_root() / "models.py").read_text(encoding="utf-8")
 
-    assert "fluxtuner_ripper.integrations.radio.models" not in source
+    assert "brynse.integrations.radio.models" not in source
 
 
 def test_core_modules_do_not_import_radio_models() -> None:
@@ -82,7 +82,7 @@ def test_core_modules_do_not_import_radio_models() -> None:
 
         source = path.read_text(encoding="utf-8")
 
-        if "from fluxtuner_ripper.integrations.radio.models import" in source:
+        if "from brynse.integrations.radio.models import" in source:
             violations.append(name)
 
     assert not violations, "core modules depend on radio_models:\n" + "\n".join(violations)
@@ -92,10 +92,10 @@ def test_ripping_module_is_not_a_generic_facade() -> None:
     source = (_src_root() / "integrations/radio/ripping.py").read_text(encoding="utf-8")
 
     forbidden = {
-        "fluxtuner_ripper.acoustic",
-        "fluxtuner_ripper.matching",
-        "fluxtuner_ripper.integrations.radio.metadata",
-        "fluxtuner_ripper.output",
+        "brynse.acoustic",
+        "brynse.matching",
+        "brynse.integrations.radio.metadata",
+        "brynse.output",
     }
 
     violations = [module for module in sorted(forbidden) if module in source]
@@ -106,7 +106,7 @@ def test_ripping_module_is_not_a_generic_facade() -> None:
 def test_package_root_does_not_export_radio_models() -> None:
     source = (_src_root() / "__init__.py").read_text(encoding="utf-8")
 
-    assert "from fluxtuner_ripper.integrations.radio.models import" not in source
+    assert "from brynse.integrations.radio.models import" not in source
 
     violations = [name for name in RADIO_MODEL_NAMES if f'"{name}"' in source]
 

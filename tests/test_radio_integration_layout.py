@@ -29,7 +29,7 @@ LEGACY_MODULES = {
 
 def test_complete_radio_layer_lives_under_radio_integration() -> None:
     root = Path(__file__).resolve().parents[1]
-    package = root / "src/fluxtuner_ripper"
+    package = root / "src/brynse"
     radio = package / "integrations/radio"
 
     assert radio.is_dir()

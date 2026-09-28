@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from fluxtuner_ripper.machine import MachineError, SegmentResult
+from brynse.machine import MachineError, SegmentResult
 
 
 def test_machine_segment_source_consumes_stream_source() -> None:
-    from fluxtuner_ripper.machine import SegmentRequest, SegmentResult, segment_source
+    from brynse.machine import SegmentRequest, SegmentResult, segment_source
 
     class FakeSource:
         def __init__(self) -> None:
@@ -45,7 +45,7 @@ def test_machine_segment_source_consumes_stream_source() -> None:
 def test_segment_request_is_json_serializable() -> None:
     import json
 
-    from fluxtuner_ripper.machine import SegmentRequest
+    from brynse.machine import SegmentRequest
 
     request = SegmentRequest(
         codec="mp3",
@@ -65,7 +65,7 @@ def test_segment_request_is_json_serializable() -> None:
 
 def test_segment_source_accepts_segment_request() -> None:
 
-    from fluxtuner_ripper.machine import SegmentRequest, SegmentResult, segment_source
+    from brynse.machine import SegmentRequest, SegmentResult, segment_source
 
     class FakeSource:
         def __init__(self) -> None:
@@ -100,7 +100,7 @@ def test_segment_source_accepts_segment_request() -> None:
 
 def test_segment_source_rejects_legacy_parameters() -> None:
 
-    from fluxtuner_ripper.machine import segment_source
+    from brynse.machine import segment_source
 
     class FakeSource:
         @property
@@ -125,7 +125,7 @@ def test_segment_source_rejects_legacy_parameters() -> None:
 def test_segment_result_is_json_serializable() -> None:
     import json
 
-    from fluxtuner_ripper.machine import SegmentResult
+    from brynse.machine import SegmentResult
 
     result = SegmentResult(
         bytes_ingested=1234,
@@ -151,7 +151,7 @@ def test_segment_result_is_json_serializable() -> None:
 
 def test_segment_source_returns_segment_result() -> None:
 
-    from fluxtuner_ripper.machine import (
+    from brynse.machine import (
         SegmentRequest,
         SegmentResult,
         segment_source,
@@ -190,7 +190,7 @@ def test_segment_source_returns_segment_result() -> None:
 def test_machine_error_is_json_serializable() -> None:
     import json
 
-    from fluxtuner_ripper.machine import MachineError
+    from brynse.machine import MachineError
 
     error = MachineError(
         code="invalid_request",
@@ -209,8 +209,8 @@ def test_machine_error_is_json_serializable() -> None:
 
 
 def test_machine_classifies_validation_error() -> None:
-    from fluxtuner_ripper.generic_cli import GenericCliError
-    from fluxtuner_ripper.machine import MachineError, classify_machine_error
+    from brynse.generic_cli import GenericCliError
+    from brynse.machine import MachineError, classify_machine_error
 
     error = classify_machine_error(GenericCliError("--interval must be greater than zero"))
 
@@ -231,7 +231,7 @@ def test_machine_classifies_operational_errors(
     exc: Exception,
     code: str,
 ) -> None:
-    from fluxtuner_ripper.machine import MachineError, classify_machine_error
+    from brynse.machine import MachineError, classify_machine_error
 
     error = classify_machine_error(exc)
 
@@ -244,7 +244,7 @@ def test_machine_classifies_operational_errors(
 
 def test_run_segment_source_returns_structured_error() -> None:
 
-    from fluxtuner_ripper.machine import (
+    from brynse.machine import (
         MachineError,
         SegmentRequest,
         run_segment_source,
@@ -279,7 +279,7 @@ def test_run_segment_source_returns_structured_error() -> None:
 
 def test_run_segment_source_returns_segment_result() -> None:
 
-    from fluxtuner_ripper.machine import (
+    from brynse.machine import (
         SegmentRequest,
         SegmentResult,
         run_segment_source,
@@ -316,7 +316,7 @@ def test_run_segment_source_returns_segment_result() -> None:
 
 
 def test_segment_request_from_json() -> None:
-    from fluxtuner_ripper.machine import SegmentRequest, segment_request_from_json
+    from brynse.machine import SegmentRequest, segment_request_from_json
 
     request = segment_request_from_json(
         '{"codec":"mp3","provider":"fixed","interval_seconds":10.0}'
@@ -339,7 +339,7 @@ def test_segment_request_from_json() -> None:
 def test_segment_request_from_json_returns_machine_error_for_invalid_input(
     raw: str,
 ) -> None:
-    from fluxtuner_ripper.machine import MachineError, segment_request_from_json
+    from brynse.machine import MachineError, segment_request_from_json
 
     result = segment_request_from_json(raw)
 
@@ -389,7 +389,7 @@ def test_machine_response_to_json(
 ) -> None:
     import json
 
-    from fluxtuner_ripper.machine import machine_response_to_json
+    from brynse.machine import machine_response_to_json
 
     raw = machine_response_to_json(value)
 
@@ -399,7 +399,7 @@ def test_machine_response_to_json(
 def test_run_segment_json_returns_structured_json_error() -> None:
     import json
 
-    from fluxtuner_ripper.machine import run_segment_json
+    from brynse.machine import run_segment_json
 
     class EmptySource:
         @property
@@ -427,7 +427,7 @@ def test_run_segment_json_returns_structured_json_error() -> None:
 def test_run_segment_json_returns_structured_json_result() -> None:
     import json
 
-    from fluxtuner_ripper.machine import run_segment_json
+    from brynse.machine import run_segment_json
 
     class FakeSource:
         def __init__(self) -> None:
@@ -462,7 +462,7 @@ def test_run_segment_json_returns_structured_json_result() -> None:
 
 
 def test_machine_api_uses_generic_segment_output_errors() -> None:
-    source = Path("src/fluxtuner_ripper/machine.py").read_text()
+    source = Path("src/brynse/machine.py").read_text()
 
     assert "TrackFinalizeError" not in source
     assert "TrackFileWriteError" not in source

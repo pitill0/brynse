@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from fluxtuner_ripper.local_discontinuity import LocalDiscontinuityEvidence
-from fluxtuner_ripper.spectral import SpectralDistributionEvidence
-from fluxtuner_ripper.temporal_variability import TemporalVariabilityEvidence
-from fluxtuner_ripper.transition_evidence import (
+from brynse.local_discontinuity import LocalDiscontinuityEvidence
+from brynse.spectral import SpectralDistributionEvidence
+from brynse.temporal_variability import TemporalVariabilityEvidence
+from brynse.transition_evidence import (
     TransitionEvidenceExtractor,
     TransitionEvidenceState,
 )

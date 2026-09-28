@@ -1,5 +1,5 @@
-from fluxtuner_ripper.matching import NearestBoundaryMatcher
-from fluxtuner_ripper.models import AcousticBoundaryCandidate, BoundaryCandidate
+from brynse.matching import NearestBoundaryMatcher
+from brynse.models import AcousticBoundaryCandidate, BoundaryCandidate
 
 
 def test_generic_boundary_candidate_matches_nearest_acoustic_candidate() -> None:
