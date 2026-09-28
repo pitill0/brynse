@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import math
 import statistics
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
+
+from fluxtuner_ripper.acoustic import RmsAcousticAnalyzer
+from fluxtuner_ripper.hybrid import HybridAcousticSplitResolver
+from fluxtuner_ripper.local_discontinuity import LocalDiscontinuityAnalyzer
+from fluxtuner_ripper.models import AcousticWindow, DecodedPcm
+from fluxtuner_ripper.temporal_variability import TemporalVariabilityAnalyzer
 
 
 @dataclass(frozen=True)
@@ -253,6 +261,376 @@ def assign_family_rrf(
         )
 
     return tuple(ranked)
+
+
+MULTISIGNAL_SAMPLE_RATE = 16000
+MULTISIGNAL_D2_STEP_SECONDS = 0.25
+MULTISIGNAL_REGIME_SCALES = (
+    2.0,
+    3.0,
+    4.0,
+    6.0,
+    8.0,
+)
+
+
+class AcousticMultiSignalCandidateBuilder:
+    def __init__(
+        self,
+        *,
+        rms_analyzer: Any | None = None,
+        hybrid: Any | None = None,
+        local_analyzer: Any | None = None,
+        regime_ratio: Callable[..., float] | None = None,
+        novelty: Callable[..., float] | None = None,
+        d2_step_seconds: float = MULTISIGNAL_D2_STEP_SECONDS,
+    ) -> None:
+        if d2_step_seconds <= 0:
+            raise ValueError("d2_step_seconds must be greater than zero")
+
+        self._rms = (
+            rms_analyzer
+            if rms_analyzer is not None
+            else RmsAcousticAnalyzer(
+                window_seconds=0.05,
+            )
+        )
+
+        self._hybrid = (
+            hybrid
+            if hybrid is not None
+            else HybridAcousticSplitResolver(
+                boundary_distance_penalty=0.0,
+            )
+        )
+
+        self._local = local_analyzer if local_analyzer is not None else LocalDiscontinuityAnalyzer()
+
+        self._regime_ratio_fn = regime_ratio
+        self._novelty_fn = novelty
+        self._d2_step_seconds = d2_step_seconds
+
+    @staticmethod
+    def _cosine_distance(
+        left: np.ndarray,
+        right: np.ndarray,
+    ) -> float:
+        denominator = np.linalg.norm(left) * np.linalg.norm(right)
+
+        if denominator <= 1e-12:
+            return 0.0
+
+        similarity = float(np.dot(left, right) / denominator)
+
+        similarity = max(
+            -1.0,
+            min(
+                1.0,
+                similarity,
+            ),
+        )
+
+        return 1.0 - similarity
+
+    @staticmethod
+    def _geomean(
+        values: Sequence[float],
+    ) -> float:
+        return math.exp(
+            sum(
+                math.log(
+                    max(
+                        value,
+                        1e-12,
+                    )
+                )
+                for value in values
+            )
+            / len(values)
+        )
+
+    @staticmethod
+    def _pcm_samples(
+        pcm: DecodedPcm,
+    ) -> np.ndarray:
+        return (
+            np.frombuffer(
+                pcm.data,
+                dtype="<i2",
+            ).astype(np.float64)
+            / 32768.0
+        )
+
+    @staticmethod
+    def _mfcc_block(
+        *,
+        samples: np.ndarray,
+        window: AcousticWindow,
+        start: float,
+        end: float,
+    ) -> np.ndarray:
+        first = round((start - window.start_time_seconds) * MULTISIGNAL_SAMPLE_RATE)
+
+        last = round((end - window.start_time_seconds) * MULTISIGNAL_SAMPLE_RATE)
+
+        if first < 0 or last > len(samples) or last <= first:
+            raise RuntimeError("MFCC block outside decoded acoustic window")
+
+        segment = samples[first:last]
+
+        features = np.asarray(
+            TemporalVariabilityAnalyzer._block_features(
+                segment,
+                MULTISIGNAL_SAMPLE_RATE,
+                np,
+            ),
+            dtype=np.float64,
+        )
+
+        # Frozen experiment used only the 12 MFCC values:
+        # exclude log RMS at index 0 and chroma after index 12.
+        return features[1:13]
+
+    def _regime_ratio(
+        self,
+        *,
+        candidate_time: float,
+        scale: float,
+        samples: np.ndarray,
+        window: AcousticWindow,
+    ) -> float:
+        if self._regime_ratio_fn is not None:
+            return float(
+                self._regime_ratio_fn(
+                    candidate_time=candidate_time,
+                    scale=scale,
+                    samples=samples,
+                    window=window,
+                )
+            )
+
+        a = self._mfcc_block(
+            samples=samples,
+            window=window,
+            start=(candidate_time - 2.0 * scale),
+            end=(candidate_time - scale),
+        )
+
+        b = self._mfcc_block(
+            samples=samples,
+            window=window,
+            start=(candidate_time - scale),
+            end=candidate_time,
+        )
+
+        c = self._mfcc_block(
+            samples=samples,
+            window=window,
+            start=candidate_time,
+            end=(candidate_time + scale),
+        )
+
+        d = self._mfcc_block(
+            samples=samples,
+            window=window,
+            start=(candidate_time + scale),
+            end=(candidate_time + 2.0 * scale),
+        )
+
+        pre = self._cosine_distance(
+            a,
+            b,
+        )
+
+        post = self._cosine_distance(
+            c,
+            d,
+        )
+
+        cross = self._cosine_distance(
+            b,
+            c,
+        )
+
+        internal = (pre + post) / 2.0
+
+        return cross / max(
+            internal,
+            1e-9,
+        )
+
+    def _novelty(
+        self,
+        *,
+        candidate_time: float,
+        samples: np.ndarray,
+        window: AcousticWindow,
+    ) -> float:
+        if self._novelty_fn is not None:
+            return float(
+                self._novelty_fn(
+                    candidate_time=candidate_time,
+                    samples=samples,
+                    window=window,
+                )
+            )
+
+        relative_time = candidate_time - window.start_time_seconds
+
+        return forward_novelty(
+            samples,
+            center_seconds=relative_time,
+        )
+
+    def build(
+        self,
+        *,
+        semantic_time: float,
+        window: AcousticWindow,
+        pcm8: DecodedPcm,
+        pcm16: DecodedPcm,
+    ) -> tuple[MultiSignalCandidate, ...]:
+        if pcm8.sample_rate != NOVELTY_SAMPLE_RATE:
+            raise ValueError("multisignal novelty requires 8000 Hz PCM")
+
+        if pcm16.sample_rate != MULTISIGNAL_SAMPLE_RATE:
+            raise ValueError("multisignal evidence requires 16000 Hz PCM")
+
+        profile = self._rms.analyze(pcm8)
+
+        basins = self._hybrid._basins(
+            profile=profile,
+            window=window,
+            semantic_time_seconds=semantic_time,
+        )
+
+        basin_times = tuple(float(basin.center_time_seconds) for basin in basins)
+
+        d2_points: list[tuple[float, float]] = []
+
+        time = semantic_time - SEMANTIC_MAX_OFFSET_SECONDS
+
+        end = semantic_time - SEMANTIC_MIN_OFFSET_SECONDS
+
+        while time <= end + 1e-9:
+            evidence = self._local.analyze(
+                pcm=pcm16,
+                boundary_time_seconds=time,
+                absolute_start_time_seconds=(window.start_time_seconds),
+            )
+
+            if evidence is not None:
+                d2_points.append(
+                    (
+                        round(
+                            time,
+                            6,
+                        ),
+                        float(evidence.change_2s),
+                    )
+                )
+
+            time += self._d2_step_seconds
+
+        union = build_union_candidates(
+            semantic_time=semantic_time,
+            basin_times=basin_times,
+            d2_points=d2_points,
+        )
+
+        if not union:
+            return ()
+
+        samples8 = self._pcm_samples(pcm8)
+
+        samples16 = self._pcm_samples(pcm16)
+
+        family_inputs: list[FamilyRankCandidate] = []
+
+        novelty_by_time: dict[float, float] = {}
+
+        for candidate in union:
+            candidate_time = candidate.time_seconds
+
+            evidence = self._local.analyze(
+                pcm=pcm16,
+                boundary_time_seconds=(candidate_time),
+                absolute_start_time_seconds=(window.start_time_seconds),
+            )
+
+            if evidence is None:
+                continue
+
+            ratios = tuple(
+                self._regime_ratio(
+                    candidate_time=(candidate_time),
+                    scale=scale,
+                    samples=samples16,
+                    window=window,
+                )
+                for scale in MULTISIGNAL_REGIME_SCALES
+            )
+
+            family_inputs.append(
+                FamilyRankCandidate(
+                    time_seconds=(candidate_time),
+                    d250=float(evidence.change_250ms),
+                    d500=float(evidence.change_500ms),
+                    d1=float(evidence.change_1s),
+                    d2=float(evidence.change_2s),
+                    mfcc_geo=(self._geomean(ratios)),
+                )
+            )
+
+            novelty_by_time[candidate_time] = self._novelty(
+                candidate_time=(candidate_time),
+                samples=samples8,
+                window=window,
+            )
+
+        ranked = assign_family_rrf(family_inputs)
+
+        return tuple(
+            MultiSignalCandidate(
+                time_seconds=(candidate.time_seconds),
+                family_rrf=(candidate.family_rrf),
+                forward_novelty=(novelty_by_time[candidate.time_seconds]),
+            )
+            for candidate in ranked
+        )
+
+
+CandidateBuilder = Callable[
+    ...,
+    Sequence[MultiSignalCandidate],
+]
+
+
+class MultiSignalCandidateResolver:
+    def __init__(
+        self,
+        *,
+        candidate_builder: CandidateBuilder,
+        selector: MinimaxBoundarySelector | None = None,
+    ) -> None:
+        self._candidate_builder = candidate_builder
+        self._selector = selector if selector is not None else MinimaxBoundarySelector()
+
+    def resolve_selected_boundary(
+        self,
+        *,
+        semantic_time_seconds: float,
+    ) -> MultiSignalCandidate | None:
+        candidates = tuple(
+            self._candidate_builder(
+                semantic_time_seconds=(semantic_time_seconds),
+            )
+        )
+
+        if not candidates:
+            return None
+
+        return self._selector.select(candidates)
 
 
 class MinimaxBoundarySelector:
