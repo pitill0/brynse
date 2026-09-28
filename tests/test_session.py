@@ -418,3 +418,91 @@ def test_session_ignores_transient_bridge_without_exclusion_policy() -> None:
     assert len(result.transitions) == 1
     assert result.transitions[0].boundary == regular
     assert len(orchestrator.calls) == 1
+
+
+def test_session_defers_acoustic_boundary_until_settle_window_is_complete() -> None:
+    first = _track("Artist - First", 1000, 10.0)
+    second = _track("Artist - Second", 2000, 20.0)
+    boundary = _boundary(second)
+
+    ingestor = _Ingestor(
+        [
+            _ingest_event(first.title, 1000, 10.0),
+            _ingest_event(second.title, 2000, 20.0),
+            _ingest_event(second.title, 3000, 43.9),
+            _ingest_event(second.title, 3100, 44.0),
+        ]
+    )
+    orchestrator = _Orchestrator([boundary])
+
+    session = RippingSession(
+        ingestor=ingestor,
+        metadata_tracker=_MetadataTracker(
+            [
+                ((), (first,)),
+                ((), (second,)),
+                ((), ()),
+                ((), ()),
+            ]
+        ),
+        orchestrator=orchestrator,
+        acoustic_settle_seconds=24.0,
+    )
+
+    first_result = session.feed(b"one")
+    assert first_result.transitions == ()
+    assert session.current_track == first
+
+    # second becomes semantically durable, but acoustic evidence is not mature.
+    ingestor.timeline.frames = (
+        _Frame(
+            offset=3000,
+            length=100,
+            time_seconds=29.0,
+            samples=44100,
+            sample_rate=44100,
+        ),
+    )
+    second_result = session.feed(b"two")
+
+    assert second_result.confirmed_tracks == (second,)
+    assert second_result.transitions == ()
+    assert orchestrator.calls == []
+    assert session.current_track == first
+
+    # 23.9 s of post-anchor audio: still not mature.
+    ingestor.timeline.frames = (
+        _Frame(
+            offset=4390,
+            length=100,
+            time_seconds=42.9,
+            samples=44100,
+            sample_rate=44100,
+        ),
+    )
+    almost_result = session.feed(b"almost")
+
+    assert almost_result.transitions == ()
+    assert orchestrator.calls == []
+    assert session.current_track == first
+
+    # Exactly 24.0 s after the semantic anchor: resolve exactly once.
+    ingestor.timeline.frames = (
+        _Frame(
+            offset=4400,
+            length=100,
+            time_seconds=43.0,
+            samples=44100,
+            sample_rate=44100,
+        ),
+    )
+    ready_result = session.feed(b"ready")
+
+    assert len(ready_result.transitions) == 1
+    transition = ready_result.transitions[0]
+    assert transition.outgoing == first
+    assert transition.incoming == second
+    assert transition.boundary == boundary
+
+    assert len(orchestrator.calls) == 1
+    assert session.current_track == second

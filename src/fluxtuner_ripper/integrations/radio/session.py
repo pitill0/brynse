@@ -73,18 +73,83 @@ class RippingSession:
         orchestrator: BoundaryResolver | None = None,
         transient_exclusion_policy: Callable[[MetadataSemanticDecision], bool] | None = None,
         split_aligner: TemporalSplitAligner | None = None,
+        acoustic_settle_seconds: float = 0.0,
     ) -> None:
         self._ingestor = ingestor
         self._metadata_tracker = metadata_tracker or MetadataSemanticTracker()
         self._orchestrator = orchestrator or RippingOrchestrator()
         self._transient_exclusion_policy = transient_exclusion_policy
+        if acoustic_settle_seconds < 0:
+            raise ValueError("acoustic_settle_seconds must be non-negative")
+
         self._split_aligner = split_aligner or TemporalSplitAligner()
+        self._acoustic_settle_seconds = acoustic_settle_seconds
         self._current_track: TrackCandidate | None = None
+        self._pending_track: TrackCandidate | None = None
         self._pending_exclusion: MetadataSemanticDecision | None = None
 
     @property
     def current_track(self) -> TrackCandidate | None:
         return self._current_track
+
+    def _stream_end_time_seconds(self) -> float | None:
+        frames = self._ingestor.timeline.frames
+        if not frames:
+            return None
+
+        frame = frames[-1]
+        return frame.time_seconds + frame.samples / frame.sample_rate
+
+    def _pending_track_is_ready(
+        self,
+        track: TrackCandidate,
+    ) -> bool:
+        if self._acoustic_settle_seconds <= 0:
+            return True
+
+        stream_end = self._stream_end_time_seconds()
+        if stream_end is None:
+            return False
+
+        return stream_end >= (track.start_time_seconds + self._acoustic_settle_seconds)
+
+    def _resolve_track_boundary(
+        self,
+        track: TrackCandidate,
+    ) -> TrackTransition | None:
+        previous = self._current_track
+        if previous is None:
+            self._current_track = track
+            return None
+
+        boundary = self._orchestrator.resolve_boundary(
+            track=track,
+            timeline=self._ingestor.timeline,
+            ring_buffer=self._ingestor.ring_buffer,
+        )
+        if boundary is None:
+            return None
+
+        self._current_track = track
+
+        return TrackTransition(
+            outgoing=previous,
+            incoming=track,
+            boundary=boundary,
+        )
+
+    def _resolve_ready_pending_track(
+        self,
+    ) -> TrackTransition | None:
+        track = self._pending_track
+        if track is None:
+            return None
+
+        if not self._pending_track_is_ready(track):
+            return None
+
+        self._pending_track = None
+        return self._resolve_track_boundary(track)
 
     def _handle_confirmed_track(
         self,
@@ -96,21 +161,19 @@ class RippingSession:
             return None
 
         boundary = self._resolve_pending_exclusion(track)
-        if boundary is None:
-            boundary = self._orchestrator.resolve_boundary(
-                track=track,
-                timeline=self._ingestor.timeline,
-                ring_buffer=self._ingestor.ring_buffer,
+        if boundary is not None:
+            self._current_track = track
+            return TrackTransition(
+                outgoing=previous,
+                incoming=track,
+                boundary=boundary,
             )
-        if boundary is None:
+
+        if not self._pending_track_is_ready(track):
+            self._pending_track = track
             return None
 
-        self._current_track = track
-        return TrackTransition(
-            outgoing=previous,
-            incoming=track,
-            boundary=boundary,
-        )
+        return self._resolve_track_boundary(track)
 
     def _resolve_pending_exclusion(
         self,
@@ -199,6 +262,10 @@ class RippingSession:
         durable_tracks, durable_transitions = self._confirm_current_tracks()
         confirmed_tracks.extend(durable_tracks)
         transitions.extend(durable_transitions)
+
+        pending_transition = self._resolve_ready_pending_track()
+        if pending_transition is not None:
+            transitions.append(pending_transition)
 
         return SessionFeedResult(
             ingest=ingest,
