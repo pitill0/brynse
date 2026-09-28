@@ -312,3 +312,73 @@ def test_acoustic_multisignal_builder_scores_full_union_candidates() -> None:
     ]
 
     assert candidates[0].family_rrf == pytest.approx(1.0 / 2.0 + 1.0 / 3.0 + 1.0 / 3.0)
+
+
+def test_multisignal_resolver_selects_from_acoustic_builder() -> None:
+    class FakeAcousticBuilder:
+        def build(
+            self,
+            *,
+            semantic_time,
+            window,
+            pcm8,
+            pcm16,
+        ):
+            assert semantic_time == 10.0
+            assert window is acoustic_window
+            assert pcm8 is decoded_pcm8
+            assert pcm16 is decoded_pcm16
+
+            return (
+                MultiSignalCandidate(
+                    time_seconds=3.0,
+                    family_rrf=0.9,
+                    forward_novelty=0.1,
+                ),
+                MultiSignalCandidate(
+                    time_seconds=4.0,
+                    family_rrf=0.8,
+                    forward_novelty=0.8,
+                ),
+                MultiSignalCandidate(
+                    time_seconds=5.0,
+                    family_rrf=0.1,
+                    forward_novelty=0.9,
+                ),
+            )
+
+    acoustic_window = AcousticWindow(
+        start_offset=0,
+        end_offset=1,
+        start_time_seconds=0.0,
+        end_time_seconds=20.0,
+        data=b"x",
+    )
+
+    decoded_pcm8 = DecodedPcm(
+        sample_rate=8000,
+        channels=1,
+        sample_width_bytes=2,
+        data=b"\x00\x00" * (8000 * 20),
+    )
+
+    decoded_pcm16 = DecodedPcm(
+        sample_rate=16000,
+        channels=1,
+        sample_width_bytes=2,
+        data=b"\x00\x00" * (16000 * 20),
+    )
+
+    resolver = MultiSignalCandidateResolver(
+        candidate_builder=FakeAcousticBuilder(),
+    )
+
+    selected = resolver.resolve_acoustic_boundary(
+        semantic_time_seconds=10.0,
+        window=acoustic_window,
+        pcm8=decoded_pcm8,
+        pcm16=decoded_pcm16,
+    )
+
+    assert selected is not None
+    assert selected.time_seconds == 4.0

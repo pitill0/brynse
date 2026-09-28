@@ -616,6 +616,33 @@ class MultiSignalCandidateResolver:
         self._candidate_builder = candidate_builder
         self._selector = selector if selector is not None else MinimaxBoundarySelector()
 
+    def resolve_acoustic_boundary(
+        self,
+        *,
+        semantic_time_seconds: float,
+        window: AcousticWindow,
+        pcm8: DecodedPcm,
+        pcm16: DecodedPcm,
+    ) -> MultiSignalCandidate | None:
+        builder = self._candidate_builder
+
+        if not hasattr(builder, "build"):
+            raise TypeError("candidate_builder does not support acoustic build()")
+
+        candidates = tuple(
+            builder.build(
+                semantic_time=semantic_time_seconds,
+                window=window,
+                pcm8=pcm8,
+                pcm16=pcm16,
+            )
+        )
+
+        if not candidates:
+            return None
+
+        return self._selector.select(candidates)
+
     def resolve_selected_boundary(
         self,
         *,
