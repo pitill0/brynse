@@ -21,6 +21,10 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
 ]
 
+dependencies = [
+  "numpy>=1.26",
+]
+
 [project.scripts]
 brynse-radio = "brynse.integrations.radio.cli:main"
 brynse = "brynse.generic_cli:main"
