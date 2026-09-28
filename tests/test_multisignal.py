@@ -3,13 +3,18 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from fluxtuner_ripper.models import AcousticWindow, DecodedPcm
+from fluxtuner_ripper.models import (
+    AcousticWindow,
+    DecodedPcm,
+    TemporalSplitKind,
+)
 from fluxtuner_ripper.multisignal import (
     AcousticMultiSignalCandidateBuilder,
     FamilyRankCandidate,
     MinimaxBoundarySelector,
     MultiSignalCandidate,
     MultiSignalCandidateResolver,
+    MultiSignalTemporalResolver,
     assign_family_rrf,
     build_union_candidates,
     forward_novelty,
@@ -382,3 +387,88 @@ def test_multisignal_resolver_selects_from_acoustic_builder() -> None:
 
     assert selected is not None
     assert selected.time_seconds == 4.0
+
+
+def test_multisignal_temporal_resolver_uses_minimax_for_hard_cut() -> None:
+    class FakeHybrid:
+        def _select_crossfade_outgoing(self, **_):
+            return None
+
+    resolver = MultiSignalTemporalResolver(
+        hybrid=FakeHybrid(),
+    )
+
+    selected = MultiSignalCandidate(
+        time_seconds=4.0,
+        family_rrf=1.0,
+        forward_novelty=1.0,
+    )
+
+    decision = resolver.resolve(
+        selected=selected,
+        profile=object(),
+        window=object(),
+        semantic_time_seconds=8.0,
+    )
+
+    assert decision is not None
+    assert decision.kind is TemporalSplitKind.HARD_CUT
+    assert decision.incoming_start_seconds == 4.0
+    assert decision.outgoing_end_seconds == 4.0
+
+
+def test_multisignal_temporal_resolver_preserves_hybrid_outgoing_crossfade() -> None:
+    class FakeHybrid:
+        def _select_crossfade_outgoing(self, **_):
+            return SimpleNamespace(
+                time_seconds=9.5,
+            )
+
+    resolver = MultiSignalTemporalResolver(
+        hybrid=FakeHybrid(),
+    )
+
+    selected = MultiSignalCandidate(
+        time_seconds=4.0,
+        family_rrf=1.0,
+        forward_novelty=1.0,
+    )
+
+    decision = resolver.resolve(
+        selected=selected,
+        profile=object(),
+        window=object(),
+        semantic_time_seconds=8.0,
+    )
+
+    assert decision is not None
+    assert decision.kind is TemporalSplitKind.CROSSFADE
+    assert decision.incoming_start_seconds == 4.0
+    assert decision.outgoing_end_seconds == 9.5
+
+
+def test_multisignal_temporal_resolver_rejects_invalid_crossfade_order() -> None:
+    class FakeHybrid:
+        def _select_crossfade_outgoing(self, **_):
+            return SimpleNamespace(
+                time_seconds=3.5,
+            )
+
+    resolver = MultiSignalTemporalResolver(
+        hybrid=FakeHybrid(),
+    )
+
+    selected = MultiSignalCandidate(
+        time_seconds=4.0,
+        family_rrf=1.0,
+        forward_novelty=1.0,
+    )
+
+    decision = resolver.resolve(
+        selected=selected,
+        profile=object(),
+        window=object(),
+        semantic_time_seconds=8.0,
+    )
+
+    assert decision is None

@@ -11,7 +11,12 @@ import numpy as np
 from fluxtuner_ripper.acoustic import RmsAcousticAnalyzer
 from fluxtuner_ripper.hybrid import HybridAcousticSplitResolver
 from fluxtuner_ripper.local_discontinuity import LocalDiscontinuityAnalyzer
-from fluxtuner_ripper.models import AcousticWindow, DecodedPcm
+from fluxtuner_ripper.models import (
+    AcousticWindow,
+    DecodedPcm,
+    TemporalSplitDecision,
+    TemporalSplitKind,
+)
 from fluxtuner_ripper.temporal_variability import TemporalVariabilityAnalyzer
 
 
@@ -272,6 +277,47 @@ MULTISIGNAL_REGIME_SCALES = (
     6.0,
     8.0,
 )
+
+
+class MultiSignalTemporalResolver:
+    def __init__(
+        self,
+        *,
+        hybrid: Any | None = None,
+    ) -> None:
+        self._hybrid = hybrid if hybrid is not None else HybridAcousticSplitResolver()
+
+    def resolve(
+        self,
+        *,
+        selected: MultiSignalCandidate,
+        profile: Any,
+        window: Any,
+        semantic_time_seconds: float,
+    ) -> TemporalSplitDecision | None:
+        outgoing = self._hybrid._select_crossfade_outgoing(
+            profile=profile,
+            window=window,
+            semantic_time_seconds=semantic_time_seconds,
+        )
+
+        boundary = selected.time_seconds
+
+        if outgoing is None:
+            return TemporalSplitDecision(
+                kind=TemporalSplitKind.HARD_CUT,
+                incoming_start_seconds=boundary,
+                outgoing_end_seconds=boundary,
+            )
+
+        if boundary >= outgoing.time_seconds:
+            return None
+
+        return TemporalSplitDecision(
+            kind=TemporalSplitKind.CROSSFADE,
+            incoming_start_seconds=boundary,
+            outgoing_end_seconds=outgoing.time_seconds,
+        )
 
 
 class AcousticMultiSignalCandidateBuilder:
