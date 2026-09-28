@@ -662,6 +662,61 @@ def test_runner_closes_spool_when_discard_fails(
     assert spool.closed is True
 
 
+def test_open_stream_uses_interoperable_icy_request_headers(
+    monkeypatch,
+) -> None:
+    from io import BytesIO
+
+    import fluxtuner_ripper.integrations.radio.runner as runner
+
+    captured_request = None
+
+    class FakeResponse(BytesIO):
+        headers = {
+            "Content-Type": "audio/mpeg",
+            "icy-metaint": "16000",
+        }
+
+    def fake_urlopen(request, timeout):
+        nonlocal captured_request
+        captured_request = request
+        assert timeout == 20
+        return FakeResponse(b"radio-audio")
+
+    monkeypatch.setattr(runner.urllib.request, "urlopen", fake_urlopen)
+
+    stream, headers = runner.open_stream("https://example.invalid/stream")
+
+    try:
+        assert captured_request is not None
+        assert captured_request.get_header("Icy-metadata") == "1"
+        assert captured_request.get_header("User-agent") == "Mozilla/5.0"
+        assert headers["icy-metaint"] == "16000"
+    finally:
+        stream.close()
+
+
+def test_open_stream_wraps_remote_disconnect_as_ripping_run_error(
+    monkeypatch,
+) -> None:
+    import http.client
+
+    import pytest
+
+    import fluxtuner_ripper.integrations.radio.runner as runner
+
+    def fake_urlopen(request, timeout):
+        raise http.client.RemoteDisconnected("Remote end closed connection without response")
+
+    monkeypatch.setattr(runner.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(
+        runner.RippingRunError,
+        match="could not open stream",
+    ):
+        runner.open_stream("https://example.invalid/stream")
+
+
 def test_open_stream_source_wraps_radio_stream_and_headers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

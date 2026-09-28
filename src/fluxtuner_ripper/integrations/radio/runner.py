@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import threading
 import urllib.error
 import urllib.parse
@@ -128,13 +129,13 @@ def open_stream(url: str) -> tuple[BinaryIO, Mapping[str, str]]:
         url,
         headers={
             "Icy-MetaData": "1",
-            "User-Agent": "FluxTuner-Ripper/0.1",
+            "User-Agent": "Mozilla/5.0",
         },
     )
 
     try:
         response = urllib.request.urlopen(request, timeout=20)  # nosec B310
-    except (urllib.error.URLError, ValueError) as exc:
+    except (http.client.RemoteDisconnected, urllib.error.URLError, ValueError) as exc:
         raise RippingRunError(f"could not open stream: {exc}") from exc
 
     return response, response.headers
