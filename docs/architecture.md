@@ -42,7 +42,7 @@ flowchart TD
     E --> F[Boundary Resolution]
     F --> G[Segment Plan]
     G --> H[Materialization]
-    H --> I[Segment]
+    H --> I[Materialized Segment]
     I --> J[Sink]
 ```
 
@@ -210,6 +210,38 @@ sequenceDiagram
 The resolver operates on generic boundary contracts. Domain integrations may
 adapt their own semantic events into those contracts before resolution.
 
+### Current production radio resolver
+
+The first-party radio integration uses the frozen
+`MULTISIGNAL-RESOLVER-v2-MINIMAX` acoustic resolver. It is driven by a semantic
+radio candidate but resolves that candidate against generic acoustic and timeline
+evidence.
+
+The current production path:
+
+- waits until the required post-transition acoustic context is available rather
+  than forcing immediate resolution;
+- uses a fixed 24-second acoustic radius around the semantic transition;
+- generates the acoustic candidate set from BASIN candidates plus direct-D2 local
+  maxima;
+- combines family RRF ranking with forward-novelty ranking through the frozen
+  MINIMAX ordering;
+- uses MINIMAX for hard-cut boundaries;
+- uses MINIMAX for the incoming side of crossfades and the latest qualifying rise
+  for the outgoing side;
+- abstains when the resulting temporal ordering is invalid; and
+- uses the same multisignal resolver for MP3 and AAC.
+
+Transient/non-track exclusions remain a radio-session responsibility rather than
+being folded into the acoustic resolver. Metadata durability and acoustic
+settlement are therefore separate decisions with separate time horizons.
+
+The 24-second acoustic radius is a production invariant of the current radio
+integration, not a generic Brynse requirement. Other integrations may use different
+resolver evidence windows while preserving the same boundary contracts. The generic
+`brynse` CLI retains its source-agnostic resolver behavior; the radio production
+policy does not become a universal engine default.
+
 ## Segment planning
 
 Resolved boundaries are converted into segment plans.
@@ -291,6 +323,8 @@ Its current responsibilities include:
 - radio-specific track state
 - transient/non-track interval handling
 - adapting radio track candidates to generic boundary candidates
+- deferring candidate resolution until required acoustic context is available
+- invoking the generic multisignal acoustic resolver
 - radio-oriented orchestration
 - track-oriented output naming and persistence
 - the `brynse-radio` radio CLI
@@ -310,13 +344,15 @@ flowchart TD
     F --> G[Track Candidate]
     G --> H[Boundary Candidate Adapter]
 
-    H --> I[Generic Boundary Resolver]
-    E --> I
+    H --> I[Semantic Boundary Candidate]
+    E --> J[Acoustic / timeline context]
+    I --> K[Multisignal Boundary Resolver]
+    J --> K
 
-    I --> J[Resolved Boundary]
-    J --> K[Generic Segment Planning]
-    K --> L[Materialization]
-    L --> M[Track-oriented radio output]
+    K --> L[Resolved Boundary]
+    L --> M[Generic Segment Planning]
+    M --> N[Materialization]
+    N --> O[Track-oriented radio output]
 ```
 
 `TrackCandidate` and other track terminology exist only inside the radio
@@ -436,7 +472,11 @@ The following rules define the intended architecture:
    the engine.
 9. Materialization operates on retained source data rather than requiring the
    complete stream in memory.
-10. FluxTuner is a consumer of the engine, not part of the engine's domain model.
+10. Resolver deferral is valid when future evidence is required; candidate arrival
+    does not imply immediate boundary finalization.
+11. Distinct temporal evidence types must not be treated as interchangeable
+    timestamps.
+12. FluxTuner is a consumer of the engine, not part of the engine's domain model.
 
 ## Package layout
 
@@ -448,6 +488,9 @@ brynse/
     boundaries.py
     providers.py
     orchestrator.py
+    multisignal.py
+    acoustic.py
+    matching.py
     output.py
     source.py
     ingest.py

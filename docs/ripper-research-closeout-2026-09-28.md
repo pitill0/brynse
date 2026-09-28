@@ -5,6 +5,16 @@
 This document closes the current boundary-selection research cycle for
 Fluxtuner Ripper.
 
+> **Historical sequencing note:** this closeout records two successive states from
+> the same research cycle. The earlier sections describe the pre-transfer state,
+> when production still used `HybridCandidateResolver`. The later **Production
+> transfer and prospective validation** section records the subsequent frozen
+> transfer of `MULTISIGNAL-RESOLVER-v2-MINIMAX`, its untouched Corpus E evaluation,
+> and its acceptance as the production boundary resolver. The later section is the
+> final production status; the earlier statements are retained as historical
+> evidence rather than rewritten retrospectively. The project was subsequently
+> renamed Brynse; the historical project name is intentionally preserved here.
+
 The production radio path remains based on `HybridCandidateResolver`.
 No experimental selector from this research cycle is promoted directly
 into production.

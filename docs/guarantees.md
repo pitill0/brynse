@@ -164,6 +164,20 @@ A resolver may:
 Consumers should rely on resolved boundaries for segmentation decisions rather
 than assuming that candidate timestamps are final.
 
+## Resolution latency
+
+The engine does not guarantee immediate resolution when a candidate first arrives.
+A resolver may intentionally wait for bounded future context when later evidence is
+required to place the boundary correctly.
+
+This waiting period is part of boundary resolution rather than an ingestion stall.
+The retention layer must preserve the bounded working data required by the pending
+decision.
+
+The current first-party radio integration uses this mechanism to wait for its
+frozen acoustic post-context before settling semantic track candidates. The exact
+window is integration-specific and is not a universal Brynse guarantee.
+
 ## Provider-dependent behavior
 
 The engine guarantees the boundary-processing contract, not the quality of every
@@ -229,6 +243,11 @@ Such interpretation belongs to domain integrations or external intelligence.
 
 The core guarantees generic segmentation behavior around boundaries and retained
 source ranges.
+
+The engine also does not guarantee that different evidence timestamps around one
+transition are interchangeable. Acoustic change, semantic metadata change, incoming
+onset, outgoing end, or identity change may legitimately occur at different
+positions.
 
 ## Media preservation
 
@@ -347,6 +366,8 @@ The engine does not guarantee:
 - bit-for-bit output identity across all codecs and containers
 - deterministic behavior from nondeterministic external providers
 - successful materialization after required retained data has been reclaimed
+- immediate resolution when a resolver requires bounded future context
+- equality between timestamps that represent different transition semantics
 - interpretation of tracks, speakers, incidents, scenes, or other domain
   concepts by the core
 - compatibility with arbitrary future providers without adapting them to the

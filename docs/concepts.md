@@ -162,6 +162,13 @@ The resolver answers:
 
 Resolution is separate from candidate generation.
 
+Resolution may also be deferred. A candidate can arrive before the evidence
+required to resolve it is complete, especially on a live stream where useful
+post-transition context has not arrived yet.
+
+A deferred candidate is neither accepted nor rejected. It remains pending until
+the resolver has enough evidence to make an operational decision.
+
 ## Resolved boundary
 
 A **Resolved Boundary** is a segmentation point accepted by the engine after
@@ -361,6 +368,22 @@ boundary contract.
 A boundary candidate is provisional.
 
 A resolved boundary is accepted for segmentation.
+
+### Evidence timestamp vs boundary meaning
+
+Different evidence timestamps are not necessarily temporal synonyms. Depending on
+the provider or resolver, an observation may represent concepts such as:
+
+- incoming onset
+- outgoing end
+- acoustic change
+- identity transition
+- semantic cut
+- metadata transition
+
+An integration or adapter should preserve which temporal meaning an observation
+represents. The resolver may combine those observations, but the core should not
+assume that they identify the same instant.
 
 ### Segment plan vs segment
 

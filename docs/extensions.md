@@ -119,6 +119,21 @@ flowchart LR
     B --> E[Resolved Boundary]
 ```
 
+### Temporal evidence contract
+
+Providers, adapters, and resolvers should preserve the temporal meaning of their
+evidence. An incoming onset, outgoing end, acoustic change, identity transition,
+semantic cut, and metadata transition may occur at different instants.
+
+An extension should therefore not collapse unlike timing semantics into one
+undifferentiated timestamp merely because they refer to the same broad transition.
+If a resolver combines multiple evidence families, the interpretation of each
+family should remain explicit and independently testable.
+
+Resolvers may also require future context. In that case deferral is preferable to
+forcing a premature decision, and the surrounding runner must retain the bounded
+source context required to settle the pending candidate.
+
 ## Policy contract
 
 A policy constrains or influences deterministic engine behavior.

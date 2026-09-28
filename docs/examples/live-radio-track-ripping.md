@@ -114,7 +114,11 @@ radio semantic tracking
         ↓
 TrackCandidate
         ↓
-boundary adapter / resolver
+generic BoundaryCandidate adapter
+        ↓
+wait for bounded acoustic post-context
+        ↓
+MULTISIGNAL-RESOLVER-v2-MINIMAX
         ↓
 Resolved Boundary
         ↓
@@ -158,32 +162,38 @@ brynse-radio \
 This helps prevent short-lived metadata changes from being promoted directly
 into durable track transitions.
 
-## Acoustic boundary search
+## Acoustic boundary resolution
 
-The radio integration can refine semantic metadata transitions against nearby
-audio evidence.
+The radio integration resolves durable semantic metadata transitions against
+nearby acoustic and timeline evidence.
 
-The default acoustic search radius is:
-
-```text
-8 seconds
-```
-
-It can be changed with:
+The production radio path uses the frozen
+`MULTISIGNAL-RESOLVER-v2-MINIMAX` resolver. The acoustic radius is fixed at:
 
 ```text
---search-radius SECONDS
+24 seconds
 ```
 
-For MP3, the current runner uses the radio-specific orchestration adapter with
-acoustic matching and MP3 boundary refinement.
+This radius is not currently exposed as a CLI option. The runner deliberately
+defers resolution until the required post-transition acoustic context is available.
+Metadata durability remains a separate setting controlled by
+`--metadata-threshold`; acoustic settlement is not derived from that threshold.
 
-For AAC, the runner adapts the generic hybrid candidate resolver into the radio
-boundary contract.
+Within the acoustic window, the production resolver:
 
-This is an important architectural property: the radio integration consumes
-generic resolution machinery rather than placing radio semantics inside the
-core.
+- builds the candidate set from BASIN candidates plus direct-D2 local maxima;
+- ranks candidate evidence using family RRF and forward novelty;
+- selects hard-cut boundaries with the frozen MINIMAX ordering;
+- uses MINIMAX for the incoming side of a crossfade and the latest qualifying rise
+  for its outgoing side; and
+- abstains when the resulting ordering is invalid.
+
+MP3 and AAC use the same multisignal resolver. There is no MP3-only post-refinement
+stage in the frozen production path.
+
+This is an important architectural property: the radio integration supplies radio
+semantics, while the resolver operates on generic candidate, acoustic, and timeline
+evidence.
 
 ## Transient exclusion
 
@@ -295,6 +305,9 @@ The automated tests include:
 - direct runner consumption of `StreamSource`
 - metadata semantic tracking
 - transition creation
+- multisignal acoustic candidate generation and ranking
+- deferred resolution until required post-context is available
+- shared MP3/AAC multisignal resolution behavior
 - unresolved-boundary behavior
 - transient exclusion
 - track-range planning
@@ -311,6 +324,15 @@ a public radio service.
 
 Real radio streams have been used during development and boundary-validation
 work.
+
+The final frozen production resolver was also evaluated prospectively against
+untouched Corpus E. Excluding three pre-declared session-level exclusions, the
+resolver scored 15 transitions with MAE 0.562 s, median absolute error 0.200 s,
+12/15 within 1.00 s, and maximum error 2.375 s. No tuning was performed from the
+Corpus E results.
+
+See [`../ripper-research-closeout-2026-09-28.md`](../ripper-research-closeout-2026-09-28.md)
+for the frozen evaluation record and artifact hashes.
 
 That work validated real-stream behavior around:
 
