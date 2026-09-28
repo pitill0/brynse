@@ -19,16 +19,13 @@ from fluxtuner_ripper.integrations.radio.models import TimedMetadataEvent
 from fluxtuner_ripper.integrations.radio.orchestrator import (
     BoundaryResolver,
     CandidateBoundaryResolver,
-    RippingOrchestrator,
 )
 from fluxtuner_ripper.integrations.radio.ripping import RippingStreamIngestor
 from fluxtuner_ripper.integrations.radio.session import RippingSession
 from fluxtuner_ripper.integrations.radio.session_output import SessionOutputWriter, WrittenTrack
 from fluxtuner_ripper.integrations.radio.transient import ConservativeTransientExclusionPolicy
 from fluxtuner_ripper.live_shadow import LiveShadowBoundaryObserver
-from fluxtuner_ripper.matching import NearestBoundaryMatcher
-from fluxtuner_ripper.mp3_refinement import Mp3BoundaryRefiner
-from fluxtuner_ripper.orchestrator import HybridCandidateResolver
+from fluxtuner_ripper.orchestrator import MultiSignalAcousticCandidateResolver
 from fluxtuner_ripper.shadow import ShadowBoundaryAnalysis
 from fluxtuner_ripper.source import BinaryIOStreamSource, StreamSource
 from fluxtuner_ripper.streaming_spool import create_safe_streaming_spool
@@ -199,29 +196,25 @@ class RippingRunner:
             raise RippingRunError("ring_max_bytes must be greater than zero")
 
     def _build_orchestrator(self, codec: str) -> BoundaryResolver:
+        if codec not in {"aac", "mp3"}:
+            raise RippingRunError(f"unsupported codec: {codec!r}")
+
         config = self._config
-        extractor = AcousticWindowExtractor(
-            search_radius_seconds=config.search_radius_seconds,
-        )
-        decoder = FfmpegAcousticDecoder(
-            ffmpeg_binary=config.ffmpeg_binary,
-        )
 
-        if codec == "aac":
-            return CandidateBoundaryResolver(
-                HybridCandidateResolver(
-                    window_extractor=extractor,
-                    decoder=decoder,
-                )
+        return CandidateBoundaryResolver(
+            MultiSignalAcousticCandidateResolver(
+                window_extractor=AcousticWindowExtractor(
+                    search_radius_seconds=config.search_radius_seconds,
+                ),
+                decoder8=FfmpegAcousticDecoder(
+                    ffmpeg_binary=config.ffmpeg_binary,
+                    output_sample_rate=8000,
+                ),
+                decoder16=FfmpegAcousticDecoder(
+                    ffmpeg_binary=config.ffmpeg_binary,
+                    output_sample_rate=16000,
+                ),
             )
-
-        return RippingOrchestrator(
-            window_extractor=extractor,
-            decoder=decoder,
-            matcher=NearestBoundaryMatcher(
-                search_radius_seconds=config.search_radius_seconds,
-            ),
-            mp3_refiner=Mp3BoundaryRefiner(),
         )
 
     def run(
