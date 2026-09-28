@@ -1,4 +1,4 @@
-"""Command-line entry point for FluxTuner Ripper."""
+"""Command-line entry point for the Brynse radio integration."""
 
 from __future__ import annotations
 

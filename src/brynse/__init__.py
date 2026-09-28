@@ -1,4 +1,4 @@
-"""Public API for FluxTuner Ripper."""
+"""Public API for Brynse."""
 
 from brynse.acoustic import (
     AcousticCandidateFinder,
