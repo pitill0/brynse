@@ -39,6 +39,8 @@ _CONTENT_TYPE_CODECS = {
     "audio/mp3": "mp3",
 }
 
+_MULTISIGNAL_ACOUSTIC_RADIUS_SECONDS = 24.0
+
 
 class RippingRunError(RuntimeError):
     """Raised when a ripping run cannot be started or configured."""
@@ -53,7 +55,6 @@ class RippingRunConfig:
     codec: str = "auto"
     ffmpeg_binary: str = "ffmpeg"
     metadata_threshold_seconds: float = 8.0
-    search_radius_seconds: float = 8.0
     transient_exclusion: bool = True
     ring_max_bytes: int = _DEFAULT_RING_MAX_BYTES
 
@@ -188,8 +189,6 @@ class RippingRunner:
         config = self._config
         if config.metadata_threshold_seconds <= 0:
             raise RippingRunError("metadata threshold must be greater than zero")
-        if config.search_radius_seconds <= 0:
-            raise RippingRunError("search radius must be greater than zero")
         if not config.ffmpeg_binary.strip():
             raise RippingRunError("ffmpeg binary must not be empty")
         if config.ring_max_bytes <= 0:
@@ -204,7 +203,7 @@ class RippingRunner:
         return CandidateBoundaryResolver(
             MultiSignalAcousticCandidateResolver(
                 window_extractor=AcousticWindowExtractor(
-                    search_radius_seconds=config.search_radius_seconds,
+                    search_radius_seconds=_MULTISIGNAL_ACOUSTIC_RADIUS_SECONDS,
                 ),
                 decoder8=FfmpegAcousticDecoder(
                     ffmpeg_binary=config.ffmpeg_binary,
@@ -254,6 +253,7 @@ class RippingRunner:
                 ),
                 orchestrator=self._build_orchestrator(codec),
                 transient_exclusion_policy=transient_policy,
+                acoustic_settle_seconds=_MULTISIGNAL_ACOUSTIC_RADIUS_SECONDS,
             )
             self._session = session
             spool = create_safe_streaming_spool(

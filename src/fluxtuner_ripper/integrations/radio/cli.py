@@ -56,13 +56,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Metadata durability threshold (default: 8)",
     )
     parser.add_argument(
-        "--search-radius",
-        type=float,
-        default=8.0,
-        metavar="SECONDS",
-        help="Acoustic boundary search radius (default: 8)",
-    )
-    parser.add_argument(
         "--transient-exclusion",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -100,8 +93,6 @@ def _open_stream(url: str) -> StreamSource:
 def _validate_args(args: argparse.Namespace) -> None:
     if args.metadata_threshold <= 0:
         raise CliError("--metadata-threshold must be greater than zero")
-    if args.search_radius <= 0:
-        raise CliError("--search-radius must be greater than zero")
     if not args.ffmpeg.strip():
         raise CliError("--ffmpeg must not be empty")
 
@@ -116,7 +107,6 @@ def _run_stream(args: argparse.Namespace) -> int:
             codec=args.codec,
             ffmpeg_binary=args.ffmpeg,
             metadata_threshold_seconds=args.metadata_threshold,
-            search_radius_seconds=args.search_radius,
             transient_exclusion=args.transient_exclusion,
         ),
         stream_opener=_open_stream,

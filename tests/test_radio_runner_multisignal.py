@@ -33,7 +33,6 @@ def test_radio_runner_uses_multisignal_resolver_for_aac_and_mp3(
             url="https://example.invalid/stream",
             output_directory=tmp_path,
             ffmpeg_binary="/custom/ffmpeg",
-            search_radius_seconds=12.5,
         )
     )
 
@@ -53,7 +52,7 @@ def test_radio_runner_uses_multisignal_resolver_for_aac_and_mp3(
         decoder8 = kwargs["decoder8"]
         decoder16 = kwargs["decoder16"]
 
-        assert extractor.search_radius_seconds == 12.5
+        assert extractor.search_radius_seconds == 24.0
 
         assert decoder8.output_sample_rate == 8000
         assert decoder16.output_sample_rate == 16000
