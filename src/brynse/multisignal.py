@@ -437,6 +437,34 @@ class AcousticMultiSignalCandidateBuilder:
         # exclude log RMS at index 0 and chroma after index 12.
         return features[1:13]
 
+    @staticmethod
+    def _has_complete_regime_context(
+        *,
+        candidate_time: float,
+        samples: np.ndarray,
+        window: AcousticWindow,
+    ) -> bool:
+        max_scale = max(MULTISIGNAL_REGIME_SCALES)
+
+        required_start = candidate_time - 2.0 * max_scale
+        required_end = candidate_time + 2.0 * max_scale
+
+        first = round(
+            (required_start - window.start_time_seconds)
+            * MULTISIGNAL_SAMPLE_RATE
+        )
+
+        last = round(
+            (required_end - window.start_time_seconds)
+            * MULTISIGNAL_SAMPLE_RATE
+        )
+
+        return (
+            first >= 0
+            and last <= len(samples)
+            and last > first
+        )
+
     def _regime_ratio(
         self,
         *,
@@ -605,6 +633,16 @@ class AcousticMultiSignalCandidateBuilder:
             )
 
             if evidence is None:
+                continue
+
+            if (
+                self._regime_ratio_fn is None
+                and not self._has_complete_regime_context(
+                    candidate_time=candidate_time,
+                    samples=samples16,
+                    window=window,
+                )
+            ):
                 continue
 
             ratios = tuple(
