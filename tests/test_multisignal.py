@@ -327,6 +327,135 @@ def test_acoustic_multisignal_builder_scores_full_union_candidates() -> None:
     assert candidates[0].family_rrf == pytest.approx(1.0 / 2.0 + 1.0 / 3.0 + 1.0 / 3.0)
 
 
+def test_acoustic_multisignal_builder_abstains_without_complete_pre_context() -> None:
+    class FakeRmsAnalyzer:
+        def analyze(self, pcm):
+            return object()
+
+    class FakeHybrid:
+        def _basins(self, **_):
+            return (
+                SimpleNamespace(
+                    center_time_seconds=14.8,
+                ),
+            )
+
+    class FakeLocalAnalyzer:
+        def analyze(
+            self,
+            *,
+            pcm,
+            boundary_time_seconds,
+            absolute_start_time_seconds,
+        ):
+            del pcm
+            del absolute_start_time_seconds
+
+            if boundary_time_seconds != pytest.approx(14.8):
+                return None
+
+            return SimpleNamespace(
+                change_250ms=1.0,
+                change_500ms=1.0,
+                change_1s=1.0,
+                change_2s=1.0,
+            )
+
+    builder = AcousticMultiSignalCandidateBuilder(
+        rms_analyzer=FakeRmsAnalyzer(),
+        hybrid=FakeHybrid(),
+        local_analyzer=FakeLocalAnalyzer(),
+        novelty=lambda **_: pytest.fail(
+            "novelty must not be evaluated without complete regime context"
+        ),
+        d2_step_seconds=0.25,
+    )
+
+    window = AcousticWindow(
+        start_offset=0,
+        end_offset=1,
+        start_time_seconds=0.0,
+        end_time_seconds=30.0,
+        data=b"x",
+    )
+
+    pcm8 = DecodedPcm(
+        sample_rate=8000,
+        channels=1,
+        sample_width_bytes=2,
+        data=b"\x00\x00" * (8000 * 30),
+    )
+
+    pcm16 = DecodedPcm(
+        sample_rate=16000,
+        channels=1,
+        sample_width_bytes=2,
+        data=b"\x00\x00" * (16000 * 30),
+    )
+
+    candidates = builder.build(
+        semantic_time=21.8,
+        window=window,
+        pcm8=pcm8,
+        pcm16=pcm16,
+    )
+
+    assert candidates == ()
+
+
+def test_multisignal_resolver_abstains_when_acoustic_builder_has_no_valid_candidate() -> None:
+    class EmptyAcousticBuilder:
+        def build(
+            self,
+            *,
+            semantic_time,
+            window,
+            pcm8,
+            pcm16,
+        ):
+            del semantic_time
+            del window
+            del pcm8
+            del pcm16
+
+            return ()
+
+    acoustic_window = AcousticWindow(
+        start_offset=0,
+        end_offset=1,
+        start_time_seconds=0.0,
+        end_time_seconds=30.0,
+        data=b"x",
+    )
+
+    decoded_pcm8 = DecodedPcm(
+        sample_rate=8000,
+        channels=1,
+        sample_width_bytes=2,
+        data=b"\x00\x00" * (8000 * 30),
+    )
+
+    decoded_pcm16 = DecodedPcm(
+        sample_rate=16000,
+        channels=1,
+        sample_width_bytes=2,
+        data=b"\x00\x00" * (16000 * 30),
+    )
+
+    resolver = MultiSignalCandidateResolver(
+        candidate_builder=EmptyAcousticBuilder(),
+    )
+
+    selected = resolver.resolve_acoustic_boundary(
+        semantic_time_seconds=21.8,
+        window=acoustic_window,
+        pcm8=decoded_pcm8,
+        pcm16=decoded_pcm16,
+    )
+
+    assert selected is None
+
+
 def test_multisignal_resolver_selects_from_acoustic_builder() -> None:
     class FakeAcousticBuilder:
         def build(
@@ -480,6 +609,84 @@ def test_multisignal_temporal_resolver_rejects_invalid_crossfade_order() -> None
     )
 
     assert decision is None
+
+
+def test_multisignal_acoustic_candidate_resolver_propagates_abstention() -> None:
+    acoustic_window = AcousticWindow(
+        start_offset=0,
+        end_offset=1,
+        start_time_seconds=0.0,
+        end_time_seconds=30.0,
+        data=b"x",
+    )
+
+    pcm8 = DecodedPcm(
+        sample_rate=8000,
+        channels=1,
+        sample_width_bytes=2,
+        data=b"\x00\x00" * (8000 * 30),
+    )
+
+    pcm16 = DecodedPcm(
+        sample_rate=16000,
+        channels=1,
+        sample_width_bytes=2,
+        data=b"\x00\x00" * (16000 * 30),
+    )
+
+    class FakeWindowExtractor:
+        def extract(self, **_):
+            return acoustic_window
+
+    class FakeDecoder:
+        def __init__(self, result):
+            self.result = result
+
+        def decode(self, window):
+            assert window is acoustic_window
+            return self.result
+
+    class FakeAnalyzer:
+        def analyze(self, pcm):
+            assert pcm is pcm8
+            return object()
+
+    class EmptyBuilder:
+        def build(self, **_):
+            return ()
+
+    class FailingTemporalResolver:
+        def resolve(self, **_):
+            pytest.fail(
+                "temporal resolver must not run after multisignal abstention"
+            )
+
+    class FailingAligner:
+        def align(self, **_):
+            pytest.fail(
+                "split aligner must not run after multisignal abstention"
+            )
+
+    resolver = MultiSignalAcousticCandidateResolver(
+        window_extractor=FakeWindowExtractor(),
+        decoder8=FakeDecoder(pcm8),
+        decoder16=FakeDecoder(pcm16),
+        analyzer=FakeAnalyzer(),
+        candidate_builder=EmptyBuilder(),
+        temporal_resolver=FailingTemporalResolver(),
+        split_aligner=FailingAligner(),
+    )
+
+    resolution = resolver.resolve_candidate(
+        candidate=BoundaryCandidate(
+            time_seconds=21.8,
+            source="test",
+        ),
+        timeline=object(),
+        ring_buffer=object(),
+    )
+
+    assert resolution is None
 
 
 def test_multisignal_acoustic_candidate_resolver_composes_product_pipeline() -> None:
