@@ -366,3 +366,137 @@ def test_radio_cli_open_stream_returns_stream_source(
     opened = cli._open_stream("https://example.invalid/stream")
 
     assert opened is source
+
+
+# --- autonomous boundary CLI wiring ---
+
+
+def test_cli_disables_autonomous_boundaries_by_default() -> None:
+    args = _build_parser().parse_args(
+        [
+            "https://example.invalid/stream",
+            "--output",
+            "/tmp/tracks",
+        ]
+    )
+
+    assert args.autonomous_boundaries is False
+
+
+def test_cli_can_enable_autonomous_boundaries() -> None:
+    args = _build_parser().parse_args(
+        [
+            "https://example.invalid/stream",
+            "--output",
+            "/tmp/tracks",
+            "--autonomous-boundaries",
+        ]
+    )
+
+    assert args.autonomous_boundaries is True
+
+
+def test_cli_propagates_autonomous_boundaries_to_runner_config(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+
+    import brynse.integrations.radio.cli as cli
+
+    captured_configs: list[object] = []
+
+    class FakeRunner:
+        current_track_title = None
+
+        def __init__(
+            self,
+            config: object,
+            *,
+            stream_opener: object,
+        ) -> None:
+            captured_configs.append(config)
+
+        def run(self, **kwargs: object) -> object:
+            return SimpleNamespace(
+                codec="mp3",
+                metaint=16000,
+            )
+
+        def stop(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        cli,
+        "RippingRunner",
+        FakeRunner,
+    )
+
+    result = cli.main(
+        [
+            "https://example.invalid/stream",
+            "--output",
+            str(tmp_path / "tracks"),
+            "--autonomous-boundaries",
+        ]
+    )
+
+    assert result == 0
+    assert len(captured_configs) == 1
+    assert captured_configs[0].autonomous_boundaries is True
+
+
+def test_cli_reports_written_autonomous_segment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from types import SimpleNamespace
+
+    import brynse.integrations.radio.cli as cli
+
+    class FakeRunner:
+        current_track_title = None
+
+        def __init__(
+            self,
+            config: object,
+            *,
+            stream_opener: object,
+        ) -> None:
+            pass
+
+        def run(self, **kwargs: object) -> object:
+            on_segment_written = kwargs["on_segment_written"]
+            on_segment_written(
+                SimpleNamespace(
+                    path=tmp_path / "untracked_000000123456.mp3"
+                )
+            )
+            return SimpleNamespace(
+                codec="mp3",
+                metaint=16000,
+            )
+
+        def stop(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "RippingRunner", FakeRunner)
+
+    result = cli.main(
+        [
+            "https://example.invalid/stream",
+            "--output",
+            str(tmp_path / "tracks"),
+            "--autonomous-boundaries",
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert result == 0
+    assert (
+        f"autonomous written: "
+        f"{tmp_path / 'untracked_000000123456.mp3'}"
+        in captured.out
+    )

@@ -18,6 +18,7 @@ from brynse.integrations.radio.orchestrator import (
 )
 from brynse.integrations.radio.ripping import RippingStreamIngestor
 from brynse.matching import TemporalSplitAligner
+from brynse.orchestrator import CandidateResolution
 from brynse.models import (
     Segment,
     SplitKind,
@@ -32,7 +33,7 @@ class SegmentTransition:
 
     outgoing: Segment
     incoming: Segment
-    boundary: BoundaryResolution
+    boundary: CandidateResolution | BoundaryResolution
 
 
 @dataclass(frozen=True)

@@ -14,6 +14,9 @@ from pathlib import Path
 from typing import BinaryIO
 
 from brynse.acoustic import AcousticWindowExtractor, FfmpegAcousticDecoder
+from brynse.autonomous_promotion import AutonomousBoundaryPromoter
+from brynse.incoming_refinement import build_incoming_boundary_pipeline
+from brynse.integrations.radio.autonomous import AutonomousSegmentState
 from brynse.integrations.radio.metadata import MetadataSemanticTracker
 from brynse.integrations.radio.models import TimedMetadataEvent
 from brynse.integrations.radio.orchestrator import (
@@ -22,9 +25,14 @@ from brynse.integrations.radio.orchestrator import (
 )
 from brynse.integrations.radio.ripping import RippingStreamIngestor
 from brynse.integrations.radio.session import RippingSession
-from brynse.integrations.radio.session_output import SessionOutputWriter, WrittenTrack
+from brynse.integrations.radio.session_output import (
+    SessionOutputWriter,
+    WrittenSegment,
+    WrittenTrack,
+)
 from brynse.integrations.radio.transient import ConservativeTransientExclusionPolicy
 from brynse.live_shadow import LiveShadowBoundaryObserver
+from brynse.models import Segment
 from brynse.orchestrator import MultiSignalAcousticCandidateResolver
 from brynse.shadow import ShadowBoundaryAnalysis
 from brynse.source import BinaryIOStreamSource, StreamSource
@@ -40,6 +48,7 @@ _CONTENT_TYPE_CODECS = {
 }
 
 _MULTISIGNAL_ACOUSTIC_RADIUS_SECONDS = 24.0
+_AUTONOMOUS_MIN_OPEN_SECONDS = 8.0
 
 
 class RippingRunError(RuntimeError):
@@ -57,6 +66,7 @@ class RippingRunConfig:
     metadata_threshold_seconds: float = 8.0
     transient_exclusion: bool = True
     ring_max_bytes: int = _DEFAULT_RING_MAX_BYTES
+    autonomous_boundaries: bool = False
 
 
 @dataclass(frozen=True)
@@ -72,6 +82,7 @@ class RippingRunResult:
 StreamOpener = Callable[[str], StreamSource]
 MetadataCallback = Callable[[TimedMetadataEvent], None]
 TrackCallback = Callable[[WrittenTrack], None]
+SegmentCallback = Callable[[WrittenSegment], None]
 StartedCallback = Callable[[str, int], None]
 ShadowCallback = Callable[[ShadowBoundaryAnalysis], None]
 ShadowObserverFactory = Callable[[str], LiveShadowBoundaryObserver]
@@ -194,7 +205,12 @@ class RippingRunner:
         if config.ring_max_bytes <= 0:
             raise RippingRunError("ring_max_bytes must be greater than zero")
 
-    def _build_orchestrator(self, codec: str) -> BoundaryResolver:
+    def _build_orchestrator(
+        self,
+        codec: str,
+        *,
+        on_incoming_observation=None,
+    ) -> BoundaryResolver:
         if codec not in {"aac", "mp3"}:
             raise RippingRunError(f"unsupported codec: {codec!r}")
 
@@ -213,6 +229,10 @@ class RippingRunner:
                     ffmpeg_binary=config.ffmpeg_binary,
                     output_sample_rate=16000,
                 ),
+                incoming_refiner=build_incoming_boundary_pipeline(
+                    ffmpeg_binary=config.ffmpeg_binary,
+                    on_observation=on_incoming_observation,
+                ),
             )
         )
 
@@ -222,7 +242,9 @@ class RippingRunner:
         on_started: StartedCallback | None = None,
         on_metadata: MetadataCallback | None = None,
         on_track_written: TrackCallback | None = None,
+        on_segment_written: SegmentCallback | None = None,
         on_shadow_analysis: ShadowCallback | None = None,
+        on_incoming_observation=None,
     ) -> RippingRunResult:
         """Run until EOF or stop() is requested."""
         self._validate_config()
@@ -251,7 +273,10 @@ class RippingRunner:
                 metadata_tracker=MetadataSemanticTracker(
                     transient_threshold_seconds=config.metadata_threshold_seconds,
                 ),
-                orchestrator=self._build_orchestrator(codec),
+                orchestrator=self._build_orchestrator(
+                    codec,
+                    on_incoming_observation=on_incoming_observation,
+                ),
                 transient_exclusion_policy=transient_policy,
                 acoustic_settle_seconds=_MULTISIGNAL_ACOUSTIC_RADIUS_SECONDS,
             )
@@ -265,9 +290,23 @@ class RippingRunner:
                 codec=codec,
                 source=spool,
             )
+            autonomous_promoter = (
+                AutonomousBoundaryPromoter()
+                if config.autonomous_boundaries
+                else None
+            )
+            autonomous_state = (
+                AutonomousSegmentState()
+                if config.autonomous_boundaries
+                else None
+            )
+            shadow_enabled = (
+                on_shadow_analysis is not None
+                or config.autonomous_boundaries
+            )
             shadow_observer = (
                 self._shadow_observer_factory(config.ffmpeg_binary)
-                if on_shadow_analysis is not None
+                if shadow_enabled
                 else None
             )
 
@@ -290,13 +329,6 @@ class RippingRunner:
                 if result.ingest.audio:
                     spool.append(result.ingest.audio)
 
-                if shadow_observer is not None and on_shadow_analysis is not None:
-                    for analysis in shadow_observer.observe(
-                        timeline=ingestor.timeline,
-                        ring_buffer=ingestor.ring_buffer,
-                    ):
-                        on_shadow_analysis(analysis)
-
                 if on_metadata is not None:
                     for event in result.ingest.timed_metadata_events:
                         on_metadata(event)
@@ -304,12 +336,77 @@ class RippingRunner:
                 for transition in result.transitions:
                     written = output_writer.write_transition(transition)
 
+                    materialized_start = output_writer.retained_start_offset
+                    if (
+                        autonomous_state is not None
+                        and materialized_start is not None
+                    ):
+                        autonomous_state.observe_materialized_segment(
+                            Segment(
+                                start_offset=materialized_start,
+                                start_time_seconds=(
+                                    transition.boundary.temporal.incoming_start_seconds
+                                ),
+                                label=transition.incoming.title,
+                            )
+                        )
+
+
                     retained_start_offset = output_writer.retained_start_offset
                     if retained_start_offset is not None:
                         spool.discard_before(retained_start_offset)
 
                     if on_track_written is not None:
                         on_track_written(written)
+
+                if shadow_observer is not None:
+                    for analysis in shadow_observer.observe(
+                        timeline=ingestor.timeline,
+                        ring_buffer=ingestor.ring_buffer,
+                    ):
+                        if on_shadow_analysis is not None:
+                            on_shadow_analysis(analysis)
+
+                        if autonomous_promoter is None or autonomous_state is None:
+                            continue
+
+                        current_track = session.current_track
+                        if current_track is not None:
+                            autonomous_state.observe_known_segment(
+                                current_track.as_segment()
+                            )
+
+                        resolution = autonomous_promoter.promote(
+                            analysis=analysis,
+                            timeline=ingestor.timeline,
+                        )
+                        if resolution is None:
+                            continue
+
+                        incoming_start = resolution.split.incoming_start
+                        if (
+                            incoming_start is None
+                            or not output_writer.can_write_boundary_at(incoming_start)
+                        ):
+                            continue
+
+                        transition = autonomous_state.transition(
+                            resolution,
+                            minimum_open_seconds=_AUTONOMOUS_MIN_OPEN_SECONDS,
+                        )
+                        if transition is None:
+                            continue
+
+                        written_segment = output_writer.write_segment_transition(
+                            transition
+                        )
+
+                        retained_start_offset = output_writer.retained_start_offset
+                        if retained_start_offset is not None:
+                            spool.discard_before(retained_start_offset)
+
+                        if on_segment_written is not None:
+                            on_segment_written(written_segment)
 
             return RippingRunResult(
                 codec=codec,

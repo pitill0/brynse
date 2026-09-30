@@ -17,7 +17,7 @@ from brynse.integrations.radio.runner import (
     resolve_codec,
     resolve_metaint,
 )
-from brynse.integrations.radio.session_output import WrittenTrack
+from brynse.integrations.radio.session_output import WrittenSegment, WrittenTrack
 from brynse.source import StreamSource
 
 
@@ -60,6 +60,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Exclude short metadata intervals explicitly marked as ads/jingles (default: enabled)",
+    )
+    parser.add_argument(
+        "--autonomous-boundaries",
+        action="store_true",
+        help="Promote high-confidence autonomous acoustic boundaries (default: disabled)",
     )
     return parser
 
@@ -108,6 +113,7 @@ def _run_stream(args: argparse.Namespace) -> int:
             ffmpeg_binary=args.ffmpeg,
             metadata_threshold_seconds=args.metadata_threshold,
             transient_exclusion=args.transient_exclusion,
+            autonomous_boundaries=args.autonomous_boundaries,
         ),
         stream_opener=_open_stream,
     )
@@ -127,11 +133,61 @@ def _run_stream(args: argparse.Namespace) -> int:
     def print_written(written: WrittenTrack) -> None:
         print(f"written: {written.path}", flush=True)
 
+    def print_segment_written(written: WrittenSegment) -> None:
+        print(f"autonomous written: {written.path}", flush=True)
+
+
+    def print_incoming(observation) -> None:
+        selected = (
+            "-"
+            if observation.selected_time_seconds is None
+            else f"{observation.selected_time_seconds:.3f}"
+        )
+        decision = observation.decision
+        print(
+            "incoming:"
+            f" outgoing={observation.outgoing_end_seconds:.3f}"
+            f" hypotheses={len(observation.hypotheses)}"
+            f" analyses={len(observation.analyses)}"
+            f" selected={selected}"
+            f" result={decision.kind.value}"
+            f" incoming={decision.incoming_start_seconds:.3f}"
+            f" outgoing_end={decision.outgoing_end_seconds:.3f}",
+            flush=True,
+        )
+
+        for analysis in observation.analyses:
+            sources = ",".join(
+                sorted(proposal.source.value for proposal in analysis.hypothesis.proposals)
+            )
+            print(
+                "  incoming-analysis:"
+                f" time={analysis.hypothesis.time_seconds:.3f}"
+                f" sources={sources}"
+                f" confidence={analysis.assessment.candidate_confidence.value}",
+                flush=True,
+            )
+
+    def print_shadow(analysis) -> None:
+        sources = ",".join(
+            sorted(proposal.source.value for proposal in analysis.hypothesis.proposals)
+        )
+        print(
+            "shadow:"
+            f" time={analysis.hypothesis.time_seconds:.3f}"
+            f" sources={sources}"
+            f" confidence={analysis.assessment.candidate_confidence.value}",
+            flush=True,
+        )
+
     try:
         result = runner.run(
             on_started=print_started,
             on_metadata=print_metadata,
             on_track_written=print_written,
+            on_segment_written=print_segment_written,
+            on_shadow_analysis=print_shadow,
+            on_incoming_observation=print_incoming,
         )
     except KeyboardInterrupt:
         runner.stop()

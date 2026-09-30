@@ -44,6 +44,8 @@ class BoundaryEvidence:
 
     proposal: BoundaryProposal
     basin_depth: float | None = None
+    basin_start_seconds: float | None = None
+    basin_recovery_seconds: float | None = None
     local_change: float | None = None
     persistent_change: float | None = None
     structural_novelty: float | None = None
@@ -52,6 +54,8 @@ class BoundaryEvidence:
     def __post_init__(self) -> None:
         values = (
             ("basin_depth", self.basin_depth),
+            ("basin_start_seconds", self.basin_start_seconds),
+            ("basin_recovery_seconds", self.basin_recovery_seconds),
             ("local_change", self.local_change),
             ("persistent_change", self.persistent_change),
             ("structural_novelty", self.structural_novelty),
@@ -59,6 +63,15 @@ class BoundaryEvidence:
         for name, value in values:
             if value is not None and value < 0:
                 raise ValueError(f"{name} must be non-negative")
+
+
+@dataclass(frozen=True)
+class BasinGeometry:
+    """Preserved temporal geometry of one acoustic quiet basin."""
+
+    start_seconds: float
+    minimum_seconds: float
+    recovery_seconds: float
 
 
 @dataclass(frozen=True)
@@ -78,6 +91,24 @@ class BoundaryHypothesis:
         for item in self.evidence:
             if item.proposal not in self.proposals:
                 raise ValueError("evidence proposal must belong to the hypothesis")
+
+    @property
+    def basin_geometry(self) -> BasinGeometry | None:
+        """Return the complete basin geometry attached to this hypothesis."""
+        for item in self.evidence:
+            if item.proposal.source is not BoundaryProposalSource.BASIN:
+                continue
+            if (
+                item.basin_start_seconds is None
+                or item.basin_recovery_seconds is None
+            ):
+                continue
+            return BasinGeometry(
+                start_seconds=item.basin_start_seconds,
+                minimum_seconds=item.proposal.time_seconds,
+                recovery_seconds=item.basin_recovery_seconds,
+            )
+        return None
 
 
 class BoundaryReconciler:
@@ -138,3 +169,40 @@ class BoundaryReconciler:
             )
 
         return tuple(hypotheses)
+
+
+class AcousticBoundaryHypothesisBuilder:
+    """Build reconciled acoustic hypotheses from independent detectors."""
+
+    def __init__(
+        self,
+        *,
+        basin_detector,
+        structural_detector,
+        reconciler: BoundaryReconciler | None = None,
+    ) -> None:
+        self._basin_detector = basin_detector
+        self._structural_detector = structural_detector
+        self._reconciler = reconciler or BoundaryReconciler()
+
+    def build(
+        self,
+        *,
+        pcm,
+        absolute_start_time_seconds: float = 0.0,
+    ) -> tuple[BoundaryHypothesis, ...]:
+        evidence = (
+            *self._basin_detector.detect_evidence(
+                pcm=pcm,
+                absolute_start_time_seconds=absolute_start_time_seconds,
+            ),
+            *self._structural_detector.detect_evidence(
+                pcm=pcm,
+                absolute_start_time_seconds=absolute_start_time_seconds,
+            ),
+        )
+
+        return self._reconciler.reconcile(
+            tuple(item.proposal for item in evidence),
+            evidence=evidence,
+        )
