@@ -98,6 +98,30 @@ def test_adaptive_basin_detector_rejects_invalid_configuration(
         AdaptiveBasinBoundaryDetector(**kwargs)
 
 
+
+def test_adaptive_basin_detector_preserves_geometry_in_evidence() -> None:
+    levels = [1000] * 30 + [100, 80, 70, 90, 120] + [500] * 8 + [1000] * 20
+    detector = AdaptiveBasinBoundaryDetector()
+
+    evidence = detector.detect_evidence(
+        pcm=_pcm_from_levels(levels),
+        absolute_start_time_seconds=100.0,
+    )
+
+    assert len(evidence) == 1
+
+    item = evidence[0]
+
+    assert item.proposal.time_seconds == pytest.approx(103.25)
+    assert item.basin_start_seconds == pytest.approx(103.0)
+    assert item.basin_recovery_seconds >= 103.5
+    assert (
+        item.basin_start_seconds
+        < item.proposal.time_seconds
+        < item.basin_recovery_seconds
+    )
+
+
 def test_adaptive_basin_detector_exposes_depth_evidence() -> None:
     levels = [1000] * 30 + [100, 80, 70, 90, 120] + [500] * 8 + [1000] * 20
     detector = AdaptiveBasinBoundaryDetector()

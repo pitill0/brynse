@@ -313,6 +313,24 @@ class MultiSignalTemporalResolver:
         if boundary >= outgoing.time_seconds:
             return None
 
+        incoming_lead = semantic_time_seconds - boundary
+        outgoing_delay = outgoing.time_seconds - semantic_time_seconds
+
+        # A real crossfade is one local transition around the semantic
+        # handoff.  If the alleged outgoing edge is farther into the
+        # future than the selected incoming edge is into the past, the
+        # two edges are not locally coherent.  Keep the acoustic boundary
+        # instead of joining unrelated events across the window.
+        if (
+            incoming_lead >= 0.0
+            and outgoing_delay > incoming_lead
+        ):
+            return TemporalSplitDecision(
+                kind=TemporalSplitKind.HARD_CUT,
+                incoming_start_seconds=boundary,
+                outgoing_end_seconds=boundary,
+            )
+
         return TemporalSplitDecision(
             kind=TemporalSplitKind.CROSSFADE,
             incoming_start_seconds=boundary,

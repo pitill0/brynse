@@ -71,6 +71,14 @@ class SessionOutputWriter:
         """Return the earliest encoded offset still needed for the next track."""
         return self._current_start_offset
 
+    def can_write_boundary_at(self, incoming_start: int) -> bool:
+        """Return whether a boundary advances the currently open segment."""
+        if incoming_start < 0:
+            raise ValueError("incoming_start must be non-negative")
+
+        current_start = self._current_start_offset
+        return current_start is None or incoming_start > current_start
+
     def write_segment_transition(
         self,
         transition: SegmentTransition,

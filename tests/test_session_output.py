@@ -379,3 +379,36 @@ def test_session_output_writer_exposes_next_retained_start_offset(
     writer.write_transition(transition)
 
     assert writer.retained_start_offset == 4800
+
+
+# --- monotonic segment output guard ---
+
+
+def test_session_output_writer_rejects_boundary_at_or_before_open_segment(
+    tmp_path: Path,
+) -> None:
+    writer = SessionOutputWriter(
+        ingestor=_Ingestor(),
+        directory=tmp_path,
+        codec="mp3",
+        range_planner=_Planner(
+            SegmentWritePlan(
+                outgoing=SegmentByteRange(
+                    start_offset=1000,
+                    end_offset=5000,
+                ),
+                incoming=SegmentByteRange(
+                    start_offset=5000,
+                    end_offset=10000,
+                ),
+            )
+        ),
+        output_service=_Output(tmp_path / "track.mp3"),
+    )
+
+    writer.write_transition(_transition())
+
+    assert writer.retained_start_offset == 5000
+    assert writer.can_write_boundary_at(5001) is True
+    assert writer.can_write_boundary_at(5000) is False
+    assert writer.can_write_boundary_at(4999) is False

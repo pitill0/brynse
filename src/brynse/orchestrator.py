@@ -167,6 +167,7 @@ class MultiSignalAcousticCandidateResolver:
         candidate_resolver: MultiSignalCandidateResolver | None = None,
         temporal_resolver: MultiSignalTemporalResolver | None = None,
         split_aligner: TemporalSplitAligner | None = None,
+        incoming_refiner=None,
     ) -> None:
         self._window_extractor = (
             window_extractor
@@ -219,6 +220,7 @@ class MultiSignalAcousticCandidateResolver:
         )
 
         self._split_aligner = split_aligner if split_aligner is not None else TemporalSplitAligner()
+        self._incoming_refiner = incoming_refiner
 
     def resolve_candidate(
         self,
@@ -260,6 +262,14 @@ class MultiSignalAcousticCandidateResolver:
 
         if temporal is None:
             return None
+
+        if self._incoming_refiner is not None:
+            temporal = self._incoming_refiner.refine(
+                decision=temporal,
+                window=window,
+                pcm8=pcm8,
+                pcm16=pcm16,
+            )
 
         split = self._split_aligner.align(
             decision=temporal,

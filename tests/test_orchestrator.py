@@ -198,3 +198,180 @@ def test_orchestrator_composes_full_boundary_resolution() -> None:
     assert resolution.relation == relation
     assert resolution.temporal == temporal
     assert resolution.split == split
+
+
+def test_multisignal_resolver_applies_incoming_refinement_before_alignment() -> None:
+    from brynse.orchestrator import MultiSignalAcousticCandidateResolver
+
+    original = TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        incoming_start_seconds=100.0,
+        outgoing_end_seconds=100.0,
+    )
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        incoming_start_seconds=102.0,
+        outgoing_end_seconds=100.0,
+    )
+    aligned = SplitDecision(
+        kind=SplitKind.EXCLUSION,
+        incoming_start=4200,
+        outgoing_end=4000,
+    )
+
+    class WindowExtractor:
+        def extract(self, **kwargs):
+            return _window()
+
+    class Decoder:
+        def __init__(self, sample_rate):
+            self.sample_rate = sample_rate
+
+        def decode(self, window):
+            return DecodedPcm(
+                sample_rate=self.sample_rate,
+                channels=1,
+                sample_width_bytes=2,
+                data=b"\x00\x00",
+            )
+
+    class Analyzer:
+        def analyze(self, pcm):
+            return AcousticProfile(levels=())
+
+    selected = object()
+
+    class CandidateResolver:
+        def resolve_acoustic_boundary(self, **kwargs):
+            return selected
+
+    class TemporalResolver:
+        def resolve(self, **kwargs):
+            assert kwargs["selected"] is selected
+            return original
+
+    class IncomingRefiner:
+        def __init__(self):
+            self.calls = []
+
+        def refine(self, **kwargs):
+            self.calls.append(kwargs)
+            return refined
+
+    class Aligner:
+        def __init__(self):
+            self.calls = []
+
+        def align(self, **kwargs):
+            self.calls.append(kwargs)
+            return aligned
+
+    incoming_refiner = IncomingRefiner()
+    aligner = Aligner()
+
+    resolver = MultiSignalAcousticCandidateResolver(
+        window_extractor=WindowExtractor(),
+        decoder8=Decoder(8000),
+        decoder16=Decoder(16000),
+        analyzer=Analyzer(),
+        candidate_resolver=CandidateResolver(),
+        temporal_resolver=TemporalResolver(),
+        split_aligner=aligner,
+        incoming_refiner=incoming_refiner,
+    )
+
+    candidate = _track().as_boundary_candidate()
+
+    resolution = resolver.resolve_candidate(
+        candidate=candidate,
+        timeline=object(),
+        ring_buffer=object(),
+    )
+
+    assert resolution is not None
+    assert resolution.temporal == refined
+    assert resolution.split == aligned
+
+    assert len(incoming_refiner.calls) == 1
+    call = incoming_refiner.calls[0]
+    assert call["decision"] == original
+    assert call["window"] == _window()
+    assert call["pcm8"].sample_rate == 8000
+    assert call["pcm16"].sample_rate == 16000
+
+    assert len(aligner.calls) == 1
+    assert aligner.calls[0]["decision"] == refined
+
+
+def test_multisignal_resolver_preserves_hard_cut_without_incoming_refiner() -> None:
+    from brynse.orchestrator import MultiSignalAcousticCandidateResolver
+
+    original = TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        incoming_start_seconds=100.0,
+        outgoing_end_seconds=100.0,
+    )
+    aligned = SplitDecision(
+        kind=SplitKind.HARD_CUT,
+        incoming_start=4000,
+        outgoing_end=4000,
+    )
+
+    class WindowExtractor:
+        def extract(self, **kwargs):
+            return _window()
+
+    class Decoder:
+        def __init__(self, sample_rate):
+            self.sample_rate = sample_rate
+
+        def decode(self, window):
+            return DecodedPcm(
+                sample_rate=self.sample_rate,
+                channels=1,
+                sample_width_bytes=2,
+                data=b"\x00\x00",
+            )
+
+    class Analyzer:
+        def analyze(self, pcm):
+            return AcousticProfile(levels=())
+
+    class CandidateResolver:
+        def resolve_acoustic_boundary(self, **kwargs):
+            return object()
+
+    class TemporalResolver:
+        def resolve(self, **kwargs):
+            return original
+
+    class Aligner:
+        def __init__(self):
+            self.decisions = []
+
+        def align(self, **kwargs):
+            self.decisions.append(kwargs["decision"])
+            return aligned
+
+    aligner = Aligner()
+
+    resolver = MultiSignalAcousticCandidateResolver(
+        window_extractor=WindowExtractor(),
+        decoder8=Decoder(8000),
+        decoder16=Decoder(16000),
+        analyzer=Analyzer(),
+        candidate_resolver=CandidateResolver(),
+        temporal_resolver=TemporalResolver(),
+        split_aligner=aligner,
+    )
+
+    resolution = resolver.resolve_candidate(
+        candidate=_track().as_boundary_candidate(),
+        timeline=object(),
+        ring_buffer=object(),
+    )
+
+    assert resolution is not None
+    assert resolution.temporal == original
+    assert resolution.split == aligned
+    assert aligner.decisions == [original]

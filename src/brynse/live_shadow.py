@@ -8,7 +8,7 @@ from typing import Any
 from brynse.acoustic import FfmpegAcousticDecoder
 from brynse.basin import AdaptiveBasinBoundaryDetector
 from brynse.boundaries import (
-    BoundaryEvidence,
+    AcousticBoundaryHypothesisBuilder,
     BoundaryHypothesis,
     BoundaryProposalSource,
     BoundaryReconciler,
@@ -63,6 +63,11 @@ class LiveShadowBoundaryObserver:
         self._basin_detector = basin_detector or AdaptiveBasinBoundaryDetector()
         self._structural_detector = structural_detector or StructuralBoundaryDetector()
         self._reconciler = reconciler or BoundaryReconciler()
+        self._hypothesis_builder = AcousticBoundaryHypothesisBuilder(
+            basin_detector=self._basin_detector,
+            structural_detector=self._structural_detector,
+            reconciler=self._reconciler,
+        )
         self._shadow_analyzer = (
             shadow_analyzer
             if shadow_analyzer is not None
@@ -119,19 +124,9 @@ class LiveShadowBoundaryObserver:
         pcm = self._decoder.decode(window)
         absolute_start = window.start_time_seconds
 
-        evidence: tuple[BoundaryEvidence, ...] = (
-            *self._basin_detector.detect_evidence(
-                pcm=pcm,
-                absolute_start_time_seconds=absolute_start,
-            ),
-            *self._structural_detector.detect_evidence(
-                pcm=pcm,
-                absolute_start_time_seconds=absolute_start,
-            ),
-        )
-        hypotheses = self._reconciler.reconcile(
-            tuple(item.proposal for item in evidence),
-            evidence=evidence,
+        hypotheses = self._hypothesis_builder.build(
+            pcm=pcm,
+            absolute_start_time_seconds=absolute_start,
         )
         self._last_analysis_end = latest_end
 

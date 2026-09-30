@@ -182,6 +182,12 @@ class AdaptiveBasinBoundaryDetector:
                 BoundaryEvidence(
                     proposal=proposal,
                     basin_depth=basin.depth,
+                    basin_start_seconds=(
+                        absolute_start_time_seconds + basin.start_seconds
+                    ),
+                    basin_recovery_seconds=(
+                        absolute_start_time_seconds + basin.recovery_seconds
+                    ),
                 )
             )
 

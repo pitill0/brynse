@@ -70,6 +70,24 @@ def test_boundary_hypothesis_defaults_to_unresolved_confidence() -> None:
     assert hypothesis.confidence is BoundaryConfidence.UNRESOLVED
 
 
+
+def test_boundary_evidence_accepts_basin_geometry() -> None:
+    proposal = BoundaryProposal(
+        time_seconds=10.25,
+        source=BoundaryProposalSource.BASIN,
+    )
+
+    evidence = BoundaryEvidence(
+        proposal=proposal,
+        basin_depth=0.07,
+        basin_start_seconds=10.0,
+        basin_recovery_seconds=10.5,
+    )
+
+    assert evidence.basin_start_seconds == 10.0
+    assert evidence.basin_recovery_seconds == 10.5
+
+
 def test_reconciler_splits_proposals_when_cluster_span_exceeds_radius() -> None:
     proposals = (
         _proposal(274.75),
@@ -183,3 +201,115 @@ def test_reconciler_does_not_merge_structural_events_six_seconds_apart() -> None
     assert len(hypotheses) == 2
     assert hypotheses[0].time_seconds == pytest.approx(317.5)
     assert hypotheses[1].time_seconds == pytest.approx(323.5)
+
+
+def test_acoustic_hypothesis_builder_reconciles_basin_and_structural_evidence() -> None:
+    from brynse.boundaries import (
+        AcousticBoundaryHypothesisBuilder,
+        BoundaryEvidence,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+
+    basin = BoundaryProposal(
+        time_seconds=20.0,
+        source=BoundaryProposalSource.BASIN,
+    )
+    structural = BoundaryProposal(
+        time_seconds=20.5,
+        source=BoundaryProposalSource.STRUCTURAL,
+        strength=0.5,
+    )
+
+    basin_evidence = BoundaryEvidence(
+        proposal=basin,
+        basin_depth=0.04,
+    )
+    structural_evidence = BoundaryEvidence(
+        proposal=structural,
+        structural_novelty=0.5,
+    )
+
+    class Detector:
+        def __init__(self, evidence):
+            self.evidence = evidence
+            self.calls = []
+
+        def detect_evidence(self, **kwargs):
+            self.calls.append(kwargs)
+            return self.evidence
+
+    basin_detector = Detector((basin_evidence,))
+    structural_detector = Detector((structural_evidence,))
+
+    builder = AcousticBoundaryHypothesisBuilder(
+        basin_detector=basin_detector,
+        structural_detector=structural_detector,
+        reconciler=BoundaryReconciler(),
+    )
+
+    pcm = object()
+
+    hypotheses = builder.build(
+        pcm=pcm,
+        absolute_start_time_seconds=10.0,
+    )
+
+    assert len(hypotheses) == 1
+
+    hypothesis = hypotheses[0]
+
+    assert hypothesis.time_seconds == 20.25
+    assert hypothesis.proposals == (basin, structural)
+    assert hypothesis.evidence == (
+        basin_evidence,
+        structural_evidence,
+    )
+
+    assert basin_detector.calls == [
+        {
+            "pcm": pcm,
+            "absolute_start_time_seconds": 10.0,
+        }
+    ]
+    assert structural_detector.calls == [
+        {
+            "pcm": pcm,
+            "absolute_start_time_seconds": 10.0,
+        }
+    ]
+
+def test_boundary_hypothesis_exposes_its_basin_geometry() -> None:
+    basin = BoundaryProposal(
+        time_seconds=10.25,
+        source=BoundaryProposalSource.BASIN,
+    )
+    structural = BoundaryProposal(
+        time_seconds=10.4,
+        source=BoundaryProposalSource.STRUCTURAL,
+    )
+
+    basin_evidence = BoundaryEvidence(
+        proposal=basin,
+        basin_depth=0.05,
+        basin_start_seconds=10.0,
+        basin_recovery_seconds=10.7,
+    )
+    structural_evidence = BoundaryEvidence(
+        proposal=structural,
+        structural_novelty=0.5,
+    )
+
+    hypothesis = BoundaryHypothesis(
+        time_seconds=10.325,
+        proposals=(basin, structural),
+        evidence=(basin_evidence, structural_evidence),
+    )
+
+    geometry = hypothesis.basin_geometry
+
+    assert geometry is not None
+    assert geometry.start_seconds == 10.0
+    assert geometry.minimum_seconds == 10.25
+    assert geometry.recovery_seconds == 10.7
+
