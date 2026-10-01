@@ -142,6 +142,49 @@ def _routing_trace_record(observation) -> dict[str, object]:
             }
         )
 
+    outgoing_fades_detail = [
+        {
+            "start_time_seconds": fade.start_time_seconds,
+            "floor_time_seconds": fade.floor_time_seconds,
+            "rise_time_seconds": fade.rise_time_seconds,
+            "start_rms": fade.start_rms,
+            "floor_rms": fade.floor_rms,
+            "descent_ratio": fade.descent_ratio,
+            "descent_consistency": fade.descent_consistency,
+        }
+        for fade in context.fade.outgoing_fades
+    ]
+
+    incoming_fades_detail = [
+        {
+            "start_time_seconds": fade.start_time_seconds,
+            "established_time_seconds": fade.established_time_seconds,
+            "start_rms": fade.start_rms,
+            "established_rms": fade.established_rms,
+            "ascent_ratio": fade.ascent_ratio,
+            "ascent_consistency": fade.ascent_consistency,
+            "persistence_ratio": fade.persistence_ratio,
+        }
+        for fade in context.fade.incoming_fades
+    ]
+
+    fade_geometries_detail = [
+        {
+            "outgoing_floor_seconds": geometry.outgoing_floor_seconds,
+            "incoming_start_seconds": geometry.incoming_start_seconds,
+            "separation_seconds": round(geometry.separation_seconds, 6),
+            "overlap_seconds": round(geometry.overlap_seconds, 6),
+            "gap_seconds": round(geometry.gap_seconds, 6),
+            "outgoing_descent_consistency": (
+                geometry.outgoing.descent_consistency
+            ),
+            "incoming_ascent_consistency": (
+                geometry.incoming.ascent_consistency
+            ),
+        }
+        for geometry in context.fade.geometries
+    ]
+
     return {
         "reference_time_seconds": context.reference_time_seconds,
         "router_kind": observation.kind.value,
@@ -150,6 +193,12 @@ def _routing_trace_record(observation) -> dict[str, object]:
         "outgoing_end_seconds": temporal.outgoing_end_seconds,
         "fade_rise": context.fade.rise is not None,
         "fade_basins": len(context.fade.basins),
+        "fade_outgoing_count": len(context.fade.outgoing_fades),
+        "fade_incoming_count": len(context.fade.incoming_fades),
+        "fade_geometry_count": len(context.fade.geometries),
+        "fade_outgoing_detail": outgoing_fades_detail,
+        "fade_incoming_detail": incoming_fades_detail,
+        "fade_geometry_detail": fade_geometries_detail,
         "hypotheses": len(context.hypotheses),
         "hypotheses_detail": hypotheses_detail,
         "local_complete": all(value is not None for value in local_values),

@@ -14,7 +14,10 @@ from brynse.integrations.radio import cli
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
 from brynse.orchestrator import TransitionRoutingObservation
 from brynse.transition_evidence import (
+    FadeGeometryEvidence,
     FadeRoutingEvidence,
+    IncomingFadeEvidence,
+    OutgoingFadeEvidence,
     TransitionEvidenceState,
 )
 from brynse.transition_router import (
@@ -56,7 +59,36 @@ def _observation() -> TransitionRoutingObservation:
                     confidence=BoundaryConfidence.HIGH,
                 ),
             ),
-            fade=FadeRoutingEvidence(),
+            fade=FadeRoutingEvidence(
+                outgoing_fades=(
+                    outgoing := OutgoingFadeEvidence(
+                        start_time_seconds=99.0,
+                        floor_time_seconds=100.0,
+                        rise_time_seconds=101.0,
+                        start_rms=1200.0,
+                        floor_rms=120.0,
+                        descent_ratio=10.0,
+                        descent_consistency=0.9,
+                    ),
+                ),
+                incoming_fades=(
+                    incoming := IncomingFadeEvidence(
+                        start_time_seconds=100.4,
+                        established_time_seconds=101.0,
+                        start_rms=120.0,
+                        established_rms=1200.0,
+                        ascent_ratio=10.0,
+                        ascent_consistency=0.85,
+                        persistence_ratio=9.5,
+                    ),
+                ),
+                geometries=(
+                    FadeGeometryEvidence(
+                        outgoing=outgoing,
+                        incoming=incoming,
+                    ),
+                ),
+            ),
         ),
         kind=TransitionKind.HARD_CUT,
         temporal=TemporalSplitDecision(
@@ -92,6 +124,42 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
         "outgoing_end_seconds": 100.0,
         "fade_rise": False,
         "fade_basins": 0,
+        "fade_outgoing_count": 1,
+        "fade_incoming_count": 1,
+        "fade_geometry_count": 1,
+        "fade_outgoing_detail": [
+            {
+                "start_time_seconds": 99.0,
+                "floor_time_seconds": 100.0,
+                "rise_time_seconds": 101.0,
+                "start_rms": 1200.0,
+                "floor_rms": 120.0,
+                "descent_ratio": 10.0,
+                "descent_consistency": 0.9,
+            }
+        ],
+        "fade_incoming_detail": [
+            {
+                "start_time_seconds": 100.4,
+                "established_time_seconds": 101.0,
+                "start_rms": 120.0,
+                "established_rms": 1200.0,
+                "ascent_ratio": 10.0,
+                "ascent_consistency": 0.85,
+                "persistence_ratio": 9.5,
+            }
+        ],
+        "fade_geometry_detail": [
+            {
+                "outgoing_floor_seconds": 100.0,
+                "incoming_start_seconds": 100.4,
+                "separation_seconds": 0.4,
+                "overlap_seconds": 0.0,
+                "gap_seconds": 0.4,
+                "outgoing_descent_consistency": 0.9,
+                "incoming_ascent_consistency": 0.85,
+            }
+        ],
         "hypotheses": 1,
         "hypotheses_detail": [
             {
