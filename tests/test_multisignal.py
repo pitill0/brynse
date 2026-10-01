@@ -840,3 +840,36 @@ def test_multisignal_acoustic_candidate_resolver_composes_product_pipeline() -> 
     assert resolution.temporal.kind is TemporalSplitKind.HARD_CUT
     assert resolution.temporal.incoming_start_seconds == 4.0
     assert resolution.split is split
+
+
+def test_multisignal_temporal_resolver_exposes_fade_routing_evidence() -> None:
+    expected = object()
+
+    class FakeHybrid:
+        def __init__(self):
+            self.calls = []
+
+        def observe_fade_routing_evidence(self, **kwargs):
+            self.calls.append(kwargs)
+            return expected
+
+    hybrid = FakeHybrid()
+    resolver = MultiSignalTemporalResolver(hybrid=hybrid)
+
+    profile = object()
+    window = object()
+
+    result = resolver.observe_fade_routing_evidence(
+        profile=profile,
+        window=window,
+        semantic_time_seconds=427.6,
+    )
+
+    assert result is expected
+    assert hybrid.calls == [
+        {
+            "profile": profile,
+            "window": window,
+            "semantic_time_seconds": 427.6,
+        }
+    ]

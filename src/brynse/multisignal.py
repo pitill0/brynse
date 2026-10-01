@@ -287,6 +287,20 @@ class MultiSignalTemporalResolver:
     ) -> None:
         self._hybrid = hybrid if hybrid is not None else HybridAcousticSplitResolver()
 
+    def observe_fade_routing_evidence(
+        self,
+        *,
+        profile: Any,
+        window: Any,
+        semantic_time_seconds: float,
+    ):
+        """Return descriptive fade evidence without resolving temporal boundaries."""
+        return self._hybrid.observe_fade_routing_evidence(
+            profile=profile,
+            window=window,
+            semantic_time_seconds=semantic_time_seconds,
+        )
+
     def resolve(
         self,
         *,
