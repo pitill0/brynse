@@ -282,3 +282,49 @@ def test_hybrid_resolver_exposes_crossfade_rise_as_descriptive_evidence() -> Non
     assert not hasattr(evidence, "incoming_start_seconds")
     assert not hasattr(evidence, "outgoing_end_seconds")
     assert not hasattr(evidence, "kind")
+
+
+def test_hybrid_resolver_exposes_crossfade_basins_without_selecting_boundary() -> None:
+    values = [1000.0] * 180
+    values[28:42] = [
+        620.0,
+        600.0,
+        590.0,
+        580.0,
+        570.0,
+        560.0,
+        550.0,
+        540.0,
+        535.0,
+        540.0,
+        550.0,
+        565.0,
+        585.0,
+        610.0,
+    ]
+
+    evidence = HybridAcousticSplitResolver().observe_crossfade_basins(
+        profile=_profile(values),
+        window=_window(
+            len(values),
+            start_time_seconds=425.0,
+        ),
+        semantic_time_seconds=427.6,
+    )
+
+    assert evidence
+
+    basin = min(
+        evidence,
+        key=lambda item: abs(item.center_time_seconds - 426.75),
+    )
+
+    assert basin.center_time_seconds == pytest.approx(426.75)
+    assert basin.lead_seconds == pytest.approx(0.85)
+    assert basin.width_seconds > 0
+    assert basin.prominence > 0
+    assert basin.quietness > 0
+
+    assert not hasattr(basin, "incoming_start_seconds")
+    assert not hasattr(basin, "outgoing_end_seconds")
+    assert not hasattr(basin, "kind")

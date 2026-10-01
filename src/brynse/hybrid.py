@@ -32,6 +32,29 @@ class CrossfadeRiseEvidence:
 
 
 @dataclass(frozen=True)
+class CrossfadeBasinEvidence:
+    """Descriptive evidence for one crossfade-compatible quiet basin."""
+
+    center_time_seconds: float
+    lead_seconds: float
+    width_seconds: float
+    prominence: float
+    quietness: float
+
+    def __post_init__(self) -> None:
+        if self.center_time_seconds < 0:
+            raise ValueError("center_time_seconds must be non-negative")
+        if self.lead_seconds < 0:
+            raise ValueError("lead_seconds must be non-negative")
+        if self.width_seconds <= 0:
+            raise ValueError("width_seconds must be greater than zero")
+        if self.prominence < 0:
+            raise ValueError("prominence must be non-negative")
+        if self.quietness < 0:
+            raise ValueError("quietness must be non-negative")
+
+
+@dataclass(frozen=True)
 class CrossfadeBoundaryGeometry:
     """Resolved temporal boundaries for one plausible crossfade."""
 
@@ -292,6 +315,60 @@ class HybridAcousticSplitResolver:
 
         return min(basins, key=key)
 
+    def _eligible_crossfade_incoming_basins(
+        self,
+        *,
+        profile: AcousticProfile,
+        window: AcousticWindow,
+        semantic_time_seconds: float,
+    ) -> tuple[tuple[float, _QuietBasin], ...]:
+        eligible: list[tuple[float, _QuietBasin]] = []
+
+        for basin in self._basins(
+            profile=profile,
+            window=window,
+            semantic_time_seconds=semantic_time_seconds,
+        ):
+            lead = semantic_time_seconds - basin.center_time_seconds
+            if not (
+                self._crossfade_incoming_min_lead
+                <= lead
+                <= self._crossfade_incoming_max_lead
+            ):
+                continue
+
+            eligible.append((lead, basin))
+
+        return tuple(eligible)
+
+    def observe_crossfade_basins(
+        self,
+        *,
+        profile: AcousticProfile,
+        window: AcousticWindow,
+        semantic_time_seconds: float,
+    ) -> tuple[CrossfadeBasinEvidence, ...]:
+        """Return descriptive evidence for crossfade-compatible incoming basins."""
+        if semantic_time_seconds < 0:
+            raise ValueError("semantic_time_seconds must be non-negative")
+        if not profile.levels:
+            return ()
+
+        return tuple(
+            CrossfadeBasinEvidence(
+                center_time_seconds=basin.center_time_seconds,
+                lead_seconds=lead,
+                width_seconds=basin.width_seconds,
+                prominence=basin.prominence,
+                quietness=basin.quietness,
+            )
+            for lead, basin in self._eligible_crossfade_incoming_basins(
+                profile=profile,
+                window=window,
+                semantic_time_seconds=semantic_time_seconds,
+            )
+        )
+
     def _select_crossfade_incoming_basin(
         self,
         *,
@@ -299,18 +376,19 @@ class HybridAcousticSplitResolver:
         window: AcousticWindow,
         semantic_time_seconds: float,
     ) -> _QuietBasin | None:
-        eligible = []
-        for basin in self._basins(
-            profile=profile,
-            window=window,
-            semantic_time_seconds=semantic_time_seconds,
-        ):
-            lead = semantic_time_seconds - basin.center_time_seconds
-            if not (self._crossfade_incoming_min_lead <= lead <= self._crossfade_incoming_max_lead):
-                continue
-
-            score = self._basin_base_score(basin) * (1.0 + min(basin.width_seconds, 0.75))
-            eligible.append((score, lead, basin))
+        eligible = [
+            (
+                self._basin_base_score(basin)
+                * (1.0 + min(basin.width_seconds, 0.75)),
+                lead,
+                basin,
+            )
+            for lead, basin in self._eligible_crossfade_incoming_basins(
+                profile=profile,
+                window=window,
+                semantic_time_seconds=semantic_time_seconds,
+            )
+        ]
 
         if not eligible:
             return None
