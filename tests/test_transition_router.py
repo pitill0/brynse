@@ -128,3 +128,182 @@ def test_transition_routing_context_preserves_fade_evidence() -> None:
     assert not hasattr(context.fade, "incoming_start_seconds")
     assert not hasattr(context.fade, "outgoing_end_seconds")
     assert not hasattr(context.fade, "kind")
+
+
+def _interstitial_hypothesis(
+    *,
+    basin_time: float,
+    structural_time: float,
+    basin_start: float,
+    basin_recovery: float,
+):
+    from brynse.boundaries import (
+        BoundaryEvidence,
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+
+    basin = BoundaryProposal(
+        time_seconds=basin_time,
+        source=BoundaryProposalSource.BASIN,
+    )
+    structural = BoundaryProposal(
+        time_seconds=structural_time,
+        source=BoundaryProposalSource.STRUCTURAL,
+    )
+
+    return BoundaryHypothesis(
+        time_seconds=(basin_time + structural_time) / 2,
+        proposals=(basin, structural),
+        evidence=(
+            BoundaryEvidence(
+                proposal=basin,
+                basin_start_seconds=basin_start,
+                basin_recovery_seconds=basin_recovery,
+            ),
+        ),
+    )
+
+
+def test_default_transition_router_routes_clear_fade() -> None:
+    from brynse.transition_router import DefaultTransitionRouter
+
+    fade = FadeRoutingEvidence(
+        rise=CrossfadeRiseEvidence(
+            time_seconds=431.15,
+            jump_ratio=3.5,
+            persistence_ratio=4.0,
+            after_global_ratio=3.0,
+        ),
+        basins=(
+            CrossfadeBasinEvidence(
+                center_time_seconds=426.75,
+                lead_seconds=0.85,
+                width_seconds=0.7,
+                prominence=1.5,
+                quietness=1.8,
+            ),
+        ),
+    )
+
+    result = DefaultTransitionRouter().classify(
+        context=TransitionRoutingContext(
+            reference_time_seconds=427.6,
+            evidence=TransitionEvidenceState(),
+            fade=fade,
+        )
+    )
+
+    assert result is TransitionKind.FADE
+
+
+def test_default_transition_router_routes_clear_interstitial_pattern() -> None:
+    from brynse.transition_router import DefaultTransitionRouter
+
+    hypotheses = (
+        _interstitial_hypothesis(
+            basin_time=100.5,
+            structural_time=100.7,
+            basin_start=100.2,
+            basin_recovery=101.0,
+        ),
+        _interstitial_hypothesis(
+            basin_time=102.0,
+            structural_time=102.2,
+            basin_start=101.7,
+            basin_recovery=102.6,
+        ),
+    )
+
+    result = DefaultTransitionRouter().classify(
+        context=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=TransitionEvidenceState(),
+            hypotheses=hypotheses,
+        )
+    )
+
+    assert result is TransitionKind.INTERSTITIAL
+
+
+def test_default_transition_router_keeps_single_interstitial_event_ambiguous() -> None:
+    from brynse.transition_router import DefaultTransitionRouter
+
+    result = DefaultTransitionRouter().classify(
+        context=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=TransitionEvidenceState(),
+            hypotheses=(
+                _interstitial_hypothesis(
+                    basin_time=101.0,
+                    structural_time=101.2,
+                    basin_start=100.7,
+                    basin_recovery=101.6,
+                ),
+            ),
+        )
+    )
+
+    assert result is TransitionKind.AMBIGUOUS
+
+
+def test_default_transition_router_keeps_conflicting_clear_patterns_ambiguous() -> None:
+    from brynse.transition_router import DefaultTransitionRouter
+
+    fade = FadeRoutingEvidence(
+        rise=CrossfadeRiseEvidence(
+            time_seconds=105.0,
+            jump_ratio=2.5,
+            persistence_ratio=3.0,
+            after_global_ratio=2.0,
+        ),
+        basins=(
+            CrossfadeBasinEvidence(
+                center_time_seconds=99.0,
+                lead_seconds=1.0,
+                width_seconds=0.6,
+                prominence=1.2,
+                quietness=1.4,
+            ),
+        ),
+    )
+
+    hypotheses = (
+        _interstitial_hypothesis(
+            basin_time=101.0,
+            structural_time=101.2,
+            basin_start=100.7,
+            basin_recovery=101.6,
+        ),
+        _interstitial_hypothesis(
+            basin_time=103.0,
+            structural_time=103.2,
+            basin_start=102.7,
+            basin_recovery=103.6,
+        ),
+    )
+
+    result = DefaultTransitionRouter().classify(
+        context=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=TransitionEvidenceState(),
+            hypotheses=hypotheses,
+            fade=fade,
+        )
+    )
+
+    assert result is TransitionKind.AMBIGUOUS
+
+
+def test_default_transition_router_keeps_unresolved_context_ambiguous() -> None:
+    from brynse.transition_router import DefaultTransitionRouter
+
+    result = DefaultTransitionRouter().classify(
+        context=TransitionRoutingContext(
+            reference_time_seconds=42.0,
+            evidence=TransitionEvidenceState(),
+        )
+    )
+
+    assert result is TransitionKind.AMBIGUOUS
