@@ -13,6 +13,7 @@ from brynse.models import (
 from brynse.transition_evidence import (
     CrossfadeBasinEvidence,
     CrossfadeRiseEvidence,
+    FadeRoutingEvidence,
 )
 
 
@@ -313,6 +314,27 @@ class HybridAcousticSplitResolver:
             eligible.append((lead, basin))
 
         return tuple(eligible)
+
+    def observe_fade_routing_evidence(
+        self,
+        *,
+        profile: AcousticProfile,
+        window: AcousticWindow,
+        semantic_time_seconds: float,
+    ) -> FadeRoutingEvidence:
+        """Compose descriptive fade evidence without resolving temporal boundaries."""
+        return FadeRoutingEvidence(
+            rise=self.observe_crossfade_rise(
+                profile=profile,
+                window=window,
+                semantic_time_seconds=semantic_time_seconds,
+            ),
+            basins=self.observe_crossfade_basins(
+                profile=profile,
+                window=window,
+                semantic_time_seconds=semantic_time_seconds,
+            ),
+        )
 
     def observe_crossfade_basins(
         self,
