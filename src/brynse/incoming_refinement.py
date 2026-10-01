@@ -191,14 +191,16 @@ class IncomingBoundaryPipeline:
         window,
         pcm8,
         pcm16,
+        hypotheses=None,
     ) -> TemporalSplitDecision:
         absolute_start = window.start_time_seconds
         outgoing_end = decision.outgoing_end_seconds
 
-        hypotheses = self.observe_hypotheses(
-            window=window,
-            pcm8=pcm8,
-        )
+        if hypotheses is None:
+            hypotheses = self.observe_hypotheses(
+                window=window,
+                pcm8=pcm8,
+            )
 
         analyses = self._incoming_analyzer.analyze(
             hypotheses=hypotheses,

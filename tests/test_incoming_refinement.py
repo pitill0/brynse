@@ -576,3 +576,110 @@ def test_incoming_pipeline_exposes_hypotheses_without_refining() -> None:
             "absolute_start_time_seconds": 90.0,
         }
     ]
+
+
+def test_incoming_pipeline_reuses_preobserved_hypotheses() -> None:
+    from types import SimpleNamespace
+
+    from brynse.incoming_refinement import (
+        IncomingBoundaryDiscovery,
+        IncomingBoundaryPipeline,
+        IncomingBoundaryRefiner,
+    )
+    from brynse.models import TemporalSplitDecision, TemporalSplitKind
+
+    original = TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=100.0,
+    )
+
+    hypothesis = SimpleNamespace(time_seconds=102.0)
+    analysis = SimpleNamespace(
+        hypothesis=hypothesis,
+        assessment=SimpleNamespace(
+            candidate_confidence=BoundaryConfidence.HIGH,
+        ),
+    )
+
+    class Builder:
+        def build(self, **kwargs):
+            raise AssertionError("preobserved hypotheses must not be rebuilt")
+
+    class Analyzer:
+        def __init__(self):
+            self.calls = []
+
+        def analyze(self, **kwargs):
+            self.calls.append(kwargs)
+            return (analysis,)
+
+    analyzer = Analyzer()
+
+    pipeline = IncomingBoundaryPipeline(
+        hypothesis_builder=Builder(),
+        incoming_analyzer=analyzer,
+        discovery=IncomingBoundaryDiscovery(),
+        refiner=IncomingBoundaryRefiner(),
+    )
+
+    hypotheses = (hypothesis,)
+
+    result = pipeline.refine(
+        decision=original,
+        window=SimpleNamespace(start_time_seconds=90.0),
+        pcm8=object(),
+        pcm16=object(),
+        hypotheses=hypotheses,
+    )
+
+    assert result == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=102.0,
+    )
+
+    assert analyzer.calls[0]["hypotheses"] is hypotheses
+
+
+def test_incoming_pipeline_preserves_preobserved_empty_hypotheses() -> None:
+    from types import SimpleNamespace
+
+    from brynse.incoming_refinement import (
+        IncomingBoundaryDiscovery,
+        IncomingBoundaryPipeline,
+        IncomingBoundaryRefiner,
+    )
+    from brynse.models import TemporalSplitDecision, TemporalSplitKind
+
+    original = TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=100.0,
+    )
+
+    class Builder:
+        def build(self, **kwargs):
+            raise AssertionError("empty preobserved hypotheses must not be rebuilt")
+
+    class Analyzer:
+        def analyze(self, **kwargs):
+            assert kwargs["hypotheses"] == ()
+            return ()
+
+    pipeline = IncomingBoundaryPipeline(
+        hypothesis_builder=Builder(),
+        incoming_analyzer=Analyzer(),
+        discovery=IncomingBoundaryDiscovery(),
+        refiner=IncomingBoundaryRefiner(),
+    )
+
+    result = pipeline.refine(
+        decision=original,
+        window=SimpleNamespace(start_time_seconds=90.0),
+        pcm8=object(),
+        pcm16=object(),
+        hypotheses=(),
+    )
+
+    assert result is original
