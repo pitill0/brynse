@@ -295,7 +295,7 @@ class MultiSignalTemporalResolver:
         window: Any,
         semantic_time_seconds: float,
     ) -> TemporalSplitDecision | None:
-        outgoing = self._hybrid._select_crossfade_outgoing(
+        outgoing = self._hybrid.observe_crossfade_rise(
             profile=profile,
             window=window,
             semantic_time_seconds=semantic_time_seconds,

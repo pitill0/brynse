@@ -528,7 +528,7 @@ def test_multisignal_resolver_selects_from_acoustic_builder() -> None:
 
 def test_multisignal_temporal_resolver_uses_minimax_for_hard_cut() -> None:
     class FakeHybrid:
-        def _select_crossfade_outgoing(self, **_):
+        def observe_crossfade_rise(self, **_):
             return None
 
     resolver = MultiSignalTemporalResolver(
@@ -556,7 +556,7 @@ def test_multisignal_temporal_resolver_uses_minimax_for_hard_cut() -> None:
 
 def test_multisignal_temporal_resolver_preserves_hybrid_outgoing_crossfade() -> None:
     class FakeHybrid:
-        def _select_crossfade_outgoing(self, **_):
+        def observe_crossfade_rise(self, **_):
             return SimpleNamespace(
                 time_seconds=9.5,
             )
@@ -586,7 +586,7 @@ def test_multisignal_temporal_resolver_preserves_hybrid_outgoing_crossfade() -> 
 
 def test_multisignal_temporal_resolver_rejects_invalid_crossfade_order() -> None:
     class FakeHybrid:
-        def _select_crossfade_outgoing(self, **_):
+        def observe_crossfade_rise(self, **_):
             return SimpleNamespace(
                 time_seconds=3.5,
             )

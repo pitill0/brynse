@@ -258,3 +258,27 @@ def test_hybrid_resolver_exposes_no_crossfade_geometry_for_weak_rise() -> None:
     )
 
     assert geometry is None
+
+
+def test_hybrid_resolver_exposes_crossfade_rise_as_descriptive_evidence() -> None:
+    values = [1000.0] * 180
+    values[120:123] = [780.0, 800.0, 820.0]
+    values[123:140] = [3600.0] * 17
+
+    evidence = HybridAcousticSplitResolver().observe_crossfade_rise(
+        profile=_profile(values),
+        window=_window(
+            len(values),
+            start_time_seconds=425.0,
+        ),
+        semantic_time_seconds=427.6,
+    )
+
+    assert evidence is not None
+    assert evidence.time_seconds == pytest.approx(431.15)
+    assert evidence.jump_ratio > 0
+    assert evidence.persistence_ratio > 0
+    assert evidence.after_global_ratio > 0
+    assert not hasattr(evidence, "incoming_start_seconds")
+    assert not hasattr(evidence, "outgoing_end_seconds")
+    assert not hasattr(evidence, "kind")

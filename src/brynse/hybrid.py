@@ -24,7 +24,7 @@ class _QuietBasin:
 
 
 @dataclass(frozen=True)
-class _EnergyRise:
+class CrossfadeRiseEvidence:
     time_seconds: float
     jump_ratio: float
     persistence_ratio: float
@@ -169,7 +169,7 @@ class HybridAcousticSplitResolver:
         if not profile.levels:
             return None
 
-        outgoing = self._select_crossfade_outgoing(
+        outgoing = self.observe_crossfade_rise(
             profile=profile,
             window=window,
             semantic_time_seconds=semantic_time_seconds,
@@ -324,13 +324,13 @@ class HybridAcousticSplitResolver:
         )
         return eligible[0][2]
 
-    def _select_crossfade_outgoing(
+    def observe_crossfade_rise(
         self,
         *,
         profile: AcousticProfile,
         window: AcousticWindow,
         semantic_time_seconds: float,
-    ) -> _EnergyRise | None:
+    ) -> CrossfadeRiseEvidence | None:
         levels = profile.levels
         if len(levels) <= self._persistence_span_levels:
             return None
@@ -340,7 +340,7 @@ class HybridAcousticSplitResolver:
         if global_median <= 0:
             return None
 
-        qualifying: list[_EnergyRise] = []
+        qualifying: list[CrossfadeRiseEvidence] = []
 
         for index in range(
             self._edge_span_levels,
@@ -357,7 +357,7 @@ class HybridAcousticSplitResolver:
             if before <= 0:
                 continue
 
-            rise = _EnergyRise(
+            rise = CrossfadeRiseEvidence(
                 time_seconds=time_seconds,
                 jump_ratio=immediate / before,
                 persistence_ratio=persistent / before,
