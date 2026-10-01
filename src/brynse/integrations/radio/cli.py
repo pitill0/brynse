@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -66,6 +67,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Promote high-confidence autonomous acoustic boundaries (default: disabled)",
     )
+    parser.add_argument(
+        "--routing-trace",
+        type=Path,
+        help="Write shadow transition routing observations as JSONL",
+    )
     return parser
 
 
@@ -100,6 +106,35 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise CliError("--metadata-threshold must be greater than zero")
     if not args.ffmpeg.strip():
         raise CliError("--ffmpeg must not be empty")
+
+
+def _routing_trace_record(observation) -> dict[str, object]:
+    context = observation.context
+    evidence = context.evidence
+    temporal = observation.temporal
+
+    local_values = (
+        evidence.local_discontinuity_250ms,
+        evidence.local_discontinuity_500ms,
+        evidence.local_discontinuity_1s,
+        evidence.local_discontinuity_2s,
+    )
+
+    return {
+        "reference_time_seconds": context.reference_time_seconds,
+        "router_kind": observation.kind.value,
+        "temporal_kind": temporal.kind.value,
+        "incoming_start_seconds": temporal.incoming_start_seconds,
+        "outgoing_end_seconds": temporal.outgoing_end_seconds,
+        "fade_rise": context.fade.rise is not None,
+        "fade_basins": len(context.fade.basins),
+        "hypotheses": len(context.hypotheses),
+        "local_complete": all(value is not None for value in local_values),
+        "local_discontinuity_250ms": evidence.local_discontinuity_250ms,
+        "local_discontinuity_500ms": evidence.local_discontinuity_500ms,
+        "local_discontinuity_1s": evidence.local_discontinuity_1s,
+        "local_discontinuity_2s": evidence.local_discontinuity_2s,
+    }
 
 
 def _run_stream(args: argparse.Namespace) -> int:
@@ -180,6 +215,29 @@ def _run_stream(args: argparse.Namespace) -> int:
             flush=True,
         )
 
+    routing_trace = None
+    write_routing = None
+
+    if args.routing_trace is not None:
+        args.routing_trace.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            routing_trace = args.routing_trace.open("w", encoding="utf-8")
+        except OSError as exc:
+            raise CliError(
+                f"could not open routing trace {args.routing_trace}: {exc}"
+            ) from exc
+
+        def write_routing(observation) -> None:
+            assert routing_trace is not None
+            routing_trace.write(
+                json.dumps(
+                    _routing_trace_record(observation),
+                    sort_keys=True,
+                )
+                + "\n"
+            )
+            routing_trace.flush()
+
     try:
         result = runner.run(
             on_started=print_started,
@@ -188,6 +246,7 @@ def _run_stream(args: argparse.Namespace) -> int:
             on_segment_written=print_segment_written,
             on_shadow_analysis=print_shadow,
             on_incoming_observation=print_incoming,
+            on_routing_observation=write_routing,
         )
     except KeyboardInterrupt:
         runner.stop()
@@ -199,6 +258,10 @@ def _run_stream(args: argparse.Namespace) -> int:
             )
         print("stopped", file=sys.stderr)
         return 130
+    finally:
+        if routing_trace is not None:
+            routing_trace.close()
+
     print(f"codec: {result.codec}")
     print(f"icy-metaint: {result.metaint}")
     return 0
