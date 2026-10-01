@@ -307,3 +307,92 @@ def test_default_transition_router_keeps_unresolved_context_ambiguous() -> None:
     )
 
     assert result is TransitionKind.AMBIGUOUS
+
+
+def _complete_local_evidence() -> TransitionEvidenceState:
+    return TransitionEvidenceState(
+        local_discontinuity_250ms=0.21,
+        local_discontinuity_500ms=0.43,
+        local_discontinuity_1s=0.65,
+        local_discontinuity_2s=0.87,
+    )
+
+
+def test_default_transition_router_routes_complete_local_boundary_as_hard_cut() -> None:
+    from brynse.transition_router import DefaultTransitionRouter
+
+    result = DefaultTransitionRouter().classify(
+        context=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=_complete_local_evidence(),
+        )
+    )
+
+    assert result is TransitionKind.HARD_CUT
+
+
+def test_default_transition_router_keeps_incomplete_local_boundary_ambiguous() -> None:
+    from brynse.transition_router import DefaultTransitionRouter
+
+    result = DefaultTransitionRouter().classify(
+        context=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=TransitionEvidenceState(
+                local_discontinuity_250ms=0.21,
+                local_discontinuity_500ms=0.43,
+                local_discontinuity_1s=0.65,
+            ),
+        )
+    )
+
+    assert result is TransitionKind.AMBIGUOUS
+
+
+def test_default_transition_router_keeps_unpaired_fade_rise_ambiguous() -> None:
+    from brynse.transition_router import DefaultTransitionRouter
+
+    result = DefaultTransitionRouter().classify(
+        context=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=_complete_local_evidence(),
+            fade=FadeRoutingEvidence(
+                rise=CrossfadeRiseEvidence(
+                    time_seconds=104.0,
+                    jump_ratio=2.5,
+                    persistence_ratio=3.0,
+                    after_global_ratio=2.0,
+                ),
+            ),
+        )
+    )
+
+    assert result is TransitionKind.AMBIGUOUS
+
+
+def test_default_transition_router_prefers_clear_interstitial_over_hard_cut_fallback() -> None:
+    from brynse.transition_router import DefaultTransitionRouter
+
+    hypotheses = (
+        _interstitial_hypothesis(
+            basin_time=101.0,
+            structural_time=101.2,
+            basin_start=100.7,
+            basin_recovery=101.6,
+        ),
+        _interstitial_hypothesis(
+            basin_time=103.0,
+            structural_time=103.2,
+            basin_start=102.7,
+            basin_recovery=103.6,
+        ),
+    )
+
+    result = DefaultTransitionRouter().classify(
+        context=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=_complete_local_evidence(),
+            hypotheses=hypotheses,
+        )
+    )
+
+    assert result is TransitionKind.INTERSTITIAL

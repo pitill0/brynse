@@ -68,7 +68,27 @@ class DefaultTransitionRouter:
         if interstitial_like:
             return TransitionKind.INTERSTITIAL
 
+        if (
+            context.fade.rise is None
+            and self._has_complete_local_discontinuity(context.evidence)
+        ):
+            return TransitionKind.HARD_CUT
+
         return TransitionKind.AMBIGUOUS
+
+    @staticmethod
+    def _has_complete_local_discontinuity(
+        evidence: TransitionEvidenceState,
+    ) -> bool:
+        return all(
+            value is not None
+            for value in (
+                evidence.local_discontinuity_250ms,
+                evidence.local_discontinuity_500ms,
+                evidence.local_discontinuity_1s,
+                evidence.local_discontinuity_2s,
+            )
+        )
 
     @staticmethod
     def _has_interstitial_pattern(
