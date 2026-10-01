@@ -546,42 +546,43 @@ class HybridAcousticSplitResolver:
         )
 
         segments: list[tuple[int, int]] = []
+
         segment_start: int | None = None
-        last_decrease: int | None = None
-        plateau_levels = 0
+        floor_index: int | None = None
 
         def close_segment() -> None:
-            nonlocal segment_start, last_decrease, plateau_levels
+            nonlocal segment_start, floor_index
 
             if (
                 segment_start is not None
-                and last_decrease is not None
-                and last_decrease - segment_start
+                and floor_index is not None
+                and floor_index - segment_start
                 >= self._edge_span_levels
             ):
-                segments.append((segment_start, last_decrease))
+                segments.append((segment_start, floor_index))
 
             segment_start = None
-            last_decrease = None
-            plateau_levels = 0
+            floor_index = None
 
         for index in range(1, len(smoothed)):
-            left = smoothed[index - 1]
-            right = smoothed[index]
+            previous = smoothed[index - 1]
+            current = smoothed[index]
 
-            if right < left:
-                if segment_start is None:
+            if segment_start is None:
+                if current < previous:
                     segment_start = index - 1
-                last_decrease = index
-                plateau_levels = 0
+                    floor_index = index
                 continue
 
-            if right == left and segment_start is not None:
-                plateau_levels += 1
-                if plateau_levels < self._edge_span_levels:
-                    continue
+            assert floor_index is not None
 
-            close_segment()
+            if current < smoothed[floor_index]:
+                floor_index = index
+
+            start_level = smoothed[segment_start]
+
+            if current >= start_level:
+                close_segment()
 
         close_segment()
 

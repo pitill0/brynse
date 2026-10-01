@@ -720,3 +720,47 @@ def test_outgoing_fade_segment_stops_before_following_jingle_rise() -> None:
     assert fade.floor_time_seconds == pytest.approx(104.95)
     assert fade.rise_time_seconds == pytest.approx(105.0)
     assert fade.descent_consistency == pytest.approx(1.0)
+
+
+def test_outgoing_fade_merges_internal_recoveries_into_one_region() -> None:
+    values = [1200.0] * 220
+
+    fade = []
+    for index in range(80):
+        base = 1200.0 - index * 11.0
+
+        if index in {12, 13, 28, 29, 46, 47, 63}:
+            base += 45.0
+
+        fade.append(base)
+
+    values[40:120] = fade
+    values[120:137] = [3600.0] * 17
+
+    evidence = HybridAcousticSplitResolver().observe_outgoing_fades(
+        profile=_profile(values),
+        window=_window(
+            len(values),
+            start_time_seconds=100.0,
+        ),
+    )
+
+    relevant = [
+        item
+        for item in evidence
+        if (
+            item.start_time_seconds <= 102.1
+            and item.floor_time_seconds >= 105.8
+        )
+    ]
+
+    assert len(relevant) == 1
+
+    outgoing = relevant[0]
+
+    assert outgoing.start_time_seconds == pytest.approx(102.0)
+    assert outgoing.floor_time_seconds > 105.8
+    assert outgoing.rise_time_seconds == pytest.approx(106.0)
+    assert outgoing.start_rms > outgoing.floor_rms
+    assert outgoing.descent_ratio > 1.0
+    assert outgoing.descent_consistency < 1.0
