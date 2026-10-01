@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
 
 from brynse.boundaries import BoundaryHypothesis
-from brynse.transition_evidence import TransitionEvidenceState
+from brynse.transition_evidence import (
+    FadeRoutingEvidence,
+    TransitionEvidenceState,
+)
 
 
 class TransitionKind(StrEnum):
@@ -26,6 +29,7 @@ class TransitionRoutingContext:
     reference_time_seconds: float
     evidence: TransitionEvidenceState
     hypotheses: tuple[BoundaryHypothesis, ...] = ()
+    fade: FadeRoutingEvidence = field(default_factory=FadeRoutingEvidence)
 
     def __post_init__(self) -> None:
         if self.reference_time_seconds < 0:

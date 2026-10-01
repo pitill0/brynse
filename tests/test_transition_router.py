@@ -1,6 +1,11 @@
 import pytest
 
-from brynse.transition_evidence import TransitionEvidenceState
+from brynse.transition_evidence import (
+    CrossfadeBasinEvidence,
+    CrossfadeRiseEvidence,
+    FadeRoutingEvidence,
+    TransitionEvidenceState,
+)
 from brynse.transition_router import (
     TransitionKind,
     TransitionRouter,
@@ -43,6 +48,7 @@ def test_transition_routing_context_preserves_descriptive_inputs() -> None:
     assert context.reference_time_seconds == 120.5
     assert context.evidence is evidence
     assert context.hypotheses == ()
+    assert context.fade == FadeRoutingEvidence()
 
 
 def test_transition_routing_context_rejects_negative_reference_time() -> None:
@@ -88,3 +94,37 @@ def test_transition_routing_context_carries_no_resolved_boundary() -> None:
 
     assert not hasattr(context, "incoming_start_seconds")
     assert not hasattr(context, "outgoing_end_seconds")
+
+
+
+def test_transition_routing_context_preserves_fade_evidence() -> None:
+    rise = CrossfadeRiseEvidence(
+        time_seconds=431.15,
+        jump_ratio=3.5,
+        persistence_ratio=4.0,
+        after_global_ratio=3.0,
+    )
+    basin = CrossfadeBasinEvidence(
+        center_time_seconds=426.75,
+        lead_seconds=0.85,
+        width_seconds=0.7,
+        prominence=1.5,
+        quietness=1.8,
+    )
+    fade = FadeRoutingEvidence(
+        rise=rise,
+        basins=(basin,),
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=427.6,
+        evidence=TransitionEvidenceState(),
+        fade=fade,
+    )
+
+    assert context.fade is fade
+    assert context.fade.rise is rise
+    assert context.fade.basins == (basin,)
+    assert not hasattr(context.fade, "incoming_start_seconds")
+    assert not hasattr(context.fade, "outgoing_end_seconds")
+    assert not hasattr(context.fade, "kind")
