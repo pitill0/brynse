@@ -507,3 +507,84 @@ def test_outgoing_fade_consistency_distinguishes_fluctuating_energy() -> None:
 
     assert fade.descent_ratio > 1.0
     assert fade.descent_consistency < 0.75
+
+
+def test_hybrid_observes_gradual_incoming_fade() -> None:
+    values = [180.0] * 200
+    values[40:100] = [
+        180.0 + index * (1020.0 / 59)
+        for index in range(60)
+    ]
+    values[100:120] = [1200.0] * 20
+
+    evidence = HybridAcousticSplitResolver().observe_incoming_fades(
+        profile=_profile(values),
+        window=_window(
+            len(values),
+            start_time_seconds=100.0,
+        ),
+    )
+
+    assert evidence
+
+    fade = min(
+        evidence,
+        key=lambda item: abs(item.start_time_seconds - 102.0),
+    )
+
+    assert fade.start_time_seconds == pytest.approx(102.0)
+    assert fade.established_time_seconds >= fade.start_time_seconds
+    assert fade.established_rms > fade.start_rms
+    assert fade.ascent_ratio > 1.0
+    assert fade.ascent_consistency == pytest.approx(1.0)
+    assert fade.persistence_ratio > 1.0
+
+
+def test_incoming_fade_consistency_distinguishes_fluctuating_energy() -> None:
+    values = [180.0] * 200
+    values[40:100] = [
+        300.0 if index % 2 == 0 else 1200.0
+        for index in range(60)
+    ]
+    values[100:120] = [1200.0] * 20
+
+    evidence = HybridAcousticSplitResolver().observe_incoming_fades(
+        profile=_profile(values),
+        window=_window(
+            len(values),
+            start_time_seconds=100.0,
+        ),
+    )
+
+    assert evidence
+
+    fade = min(
+        evidence,
+        key=lambda item: abs(item.start_time_seconds - 102.0),
+    )
+
+    assert fade.ascent_ratio > 1.0
+    assert fade.ascent_consistency < 0.75
+
+
+def test_fade_routing_evidence_exposes_incoming_fades_descriptively() -> None:
+    values = [180.0] * 200
+    values[40:100] = [
+        180.0 + index * (1020.0 / 59)
+        for index in range(60)
+    ]
+    values[100:120] = [1200.0] * 20
+
+    evidence = HybridAcousticSplitResolver().observe_fade_routing_evidence(
+        profile=_profile(values),
+        window=_window(
+            len(values),
+            start_time_seconds=100.0,
+        ),
+        semantic_time_seconds=106.0,
+    )
+
+    assert evidence.incoming_fades
+    assert not hasattr(evidence, "incoming_start_seconds")
+    assert not hasattr(evidence, "outgoing_end_seconds")
+    assert not hasattr(evidence, "kind")

@@ -214,3 +214,25 @@ def test_outgoing_fade_evidence_preserves_descriptive_geometry() -> None:
     assert evidence.floor_rms == 180.0
     assert evidence.descent_ratio > 1.0
     assert evidence.descent_consistency == 1.0
+
+
+def test_incoming_fade_evidence_preserves_descriptive_geometry() -> None:
+    from brynse.transition_evidence import IncomingFadeEvidence
+
+    evidence = IncomingFadeEvidence(
+        start_time_seconds=102.0,
+        established_time_seconds=104.95,
+        start_rms=180.0,
+        established_rms=1200.0,
+        ascent_ratio=1200.0 / 180.0,
+        ascent_consistency=1.0,
+        persistence_ratio=1200.0 / 180.0,
+    )
+
+    assert evidence.start_time_seconds == 102.0
+    assert evidence.established_time_seconds == 104.95
+    assert evidence.start_rms == 180.0
+    assert evidence.established_rms == 1200.0
+    assert evidence.ascent_ratio > 1.0
+    assert evidence.ascent_consistency == 1.0
+    assert evidence.persistence_ratio > 1.0

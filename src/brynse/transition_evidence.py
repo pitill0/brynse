@@ -49,6 +49,37 @@ class OutgoingFadeEvidence:
 
 
 @dataclass(frozen=True)
+class IncomingFadeEvidence:
+    """Descriptive RMS geometry for one possible incoming fade."""
+
+    start_time_seconds: float
+    established_time_seconds: float
+    start_rms: float
+    established_rms: float
+    ascent_ratio: float
+    ascent_consistency: float
+    persistence_ratio: float
+
+    def __post_init__(self) -> None:
+        if self.start_time_seconds < 0:
+            raise ValueError("start_time_seconds must be non-negative")
+        if self.established_time_seconds < self.start_time_seconds:
+            raise ValueError(
+                "established_time_seconds must not precede start_time_seconds"
+            )
+        if self.start_rms < 0:
+            raise ValueError("start_rms must be non-negative")
+        if self.established_rms < 0:
+            raise ValueError("established_rms must be non-negative")
+        if self.ascent_ratio < 0:
+            raise ValueError("ascent_ratio must be non-negative")
+        if not 0.0 <= self.ascent_consistency <= 1.0:
+            raise ValueError("ascent_consistency must be between zero and one")
+        if self.persistence_ratio < 0:
+            raise ValueError("persistence_ratio must be non-negative")
+
+
+@dataclass(frozen=True)
 class CrossfadeBasinEvidence:
     """Descriptive evidence for one crossfade-compatible quiet basin."""
 
@@ -78,6 +109,7 @@ class FadeRoutingEvidence:
     rise: CrossfadeRiseEvidence | None = None
     basins: tuple[CrossfadeBasinEvidence, ...] = ()
     outgoing_fades: tuple[OutgoingFadeEvidence, ...] = ()
+    incoming_fades: tuple[IncomingFadeEvidence, ...] = ()
 
 
 @dataclass(frozen=True)

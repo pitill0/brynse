@@ -14,6 +14,7 @@ from brynse.transition_evidence import (
     CrossfadeBasinEvidence,
     CrossfadeRiseEvidence,
     FadeRoutingEvidence,
+    IncomingFadeEvidence,
     OutgoingFadeEvidence,
 )
 
@@ -343,6 +344,10 @@ class HybridAcousticSplitResolver:
                 profile=profile,
                 window=window,
             ),
+            incoming_fades=self.observe_incoming_fades(
+                profile=profile,
+                window=window,
+            ),
         )
 
     def observe_crossfade_basins(
@@ -574,6 +579,125 @@ class HybridAcousticSplitResolver:
                             level.rms
                             for level in levels[start_index : floor_index + 1]
                         ]
+                    ),
+                )
+            )
+
+        return tuple(observed)
+
+    @staticmethod
+    def _ascent_consistency(
+        rms_values: list[float],
+    ) -> float:
+        """Return how consistently a local RMS envelope ascends."""
+        if len(rms_values) < 2:
+            return 0.0
+
+        smoothed = [
+            statistics.median(
+                rms_values[
+                    max(0, index - 1) :
+                    min(len(rms_values), index + 2)
+                ]
+            )
+            for index in range(len(rms_values))
+        ]
+
+        ascending = sum(
+            right >= left
+            for left, right in zip(
+                smoothed,
+                smoothed[1:],
+                strict=False,
+            )
+        )
+
+        return ascending / (len(smoothed) - 1)
+
+    def observe_incoming_fades(
+        self,
+        *,
+        profile: AcousticProfile,
+        window: AcousticWindow,
+    ) -> tuple[IncomingFadeEvidence, ...]:
+        """Describe gradual RMS ascent geometry across the analysis window."""
+        levels = profile.levels
+        if len(levels) < self._persistence_span_levels + 2:
+            return ()
+
+        durations = [
+            level.end_time_seconds - level.start_time_seconds
+            for level in levels
+        ]
+        level_seconds = statistics.median(durations)
+        if level_seconds <= 0:
+            return ()
+
+        lookahead_levels = max(
+            2,
+            round(self._fade_observation_seconds / level_seconds),
+        )
+        absolute_times = [
+            window.start_time_seconds + level.start_time_seconds
+            for level in levels
+        ]
+
+        observed: list[IncomingFadeEvidence] = []
+
+        for start_index in range(
+            0,
+            len(levels) - self._persistence_span_levels,
+        ):
+            end_index = min(
+                len(levels) - self._persistence_span_levels,
+                start_index + lookahead_levels,
+            )
+            if end_index <= start_index:
+                continue
+
+            established_index = max(
+                range(start_index + 1, end_index + 1),
+                key=lambda index: levels[index].rms,
+            )
+
+            start_rms = levels[start_index].rms
+            established_rms = levels[established_index].rms
+
+            if established_rms <= start_rms:
+                continue
+
+            persistence = statistics.mean(
+                level.rms
+                for level in levels[
+                    established_index :
+                    established_index + self._persistence_span_levels
+                ]
+            )
+
+            observed.append(
+                IncomingFadeEvidence(
+                    start_time_seconds=absolute_times[start_index],
+                    established_time_seconds=absolute_times[established_index],
+                    start_rms=start_rms,
+                    established_rms=established_rms,
+                    ascent_ratio=(
+                        established_rms / max(start_rms, 1e-9)
+                    ),
+                    ascent_consistency=self._ascent_consistency(
+                        [
+                            level.rms
+                            for level in levels[
+                                start_index :
+                                min(
+                                    len(levels),
+                                    established_index
+                                    + self._persistence_span_levels,
+                                )
+                            ]
+                        ]
+                    ),
+                    persistence_ratio=(
+                        persistence / max(start_rms, 1e-9)
                     ),
                 )
             )
