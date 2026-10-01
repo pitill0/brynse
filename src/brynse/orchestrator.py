@@ -36,7 +36,12 @@ from brynse.multisignal import (
     MultiSignalTemporalResolver,
 )
 from brynse.transition_evidence import TransitionEvidenceExtractor
-from brynse.transition_router import TransitionRoutingContext
+from brynse.transition_router import (
+    DefaultTransitionRouter,
+    TransitionKind,
+    TransitionRouter,
+    TransitionRoutingContext,
+)
 
 
 @dataclass(frozen=True)
@@ -46,6 +51,15 @@ class CandidateResolution:
     candidate: BoundaryCandidate
     temporal: TemporalSplitDecision
     split: SplitDecision
+
+
+@dataclass(frozen=True)
+class TransitionRoutingObservation:
+    """Shadow comparison between router ownership and the final temporal decision."""
+
+    context: TransitionRoutingContext
+    kind: TransitionKind
+    temporal: TemporalSplitDecision
 
 
 @dataclass(frozen=True)
@@ -171,7 +185,9 @@ class MultiSignalAcousticCandidateResolver:
         temporal_resolver: MultiSignalTemporalResolver | None = None,
         split_aligner: TemporalSplitAligner | None = None,
         incoming_refiner=None,
+        transition_router: TransitionRouter | None = None,
         on_routing_context: Callable[[TransitionRoutingContext], None] | None = None,
+        on_routing_observation: Callable[[TransitionRoutingObservation], None] | None = None,
     ) -> None:
         self._window_extractor = (
             window_extractor
@@ -225,7 +241,11 @@ class MultiSignalAcousticCandidateResolver:
 
         self._split_aligner = split_aligner if split_aligner is not None else TemporalSplitAligner()
         self._incoming_refiner = incoming_refiner
+        self._transition_router = (
+            transition_router if transition_router is not None else DefaultTransitionRouter()
+        )
         self._on_routing_context = on_routing_context
+        self._on_routing_observation = on_routing_observation
 
     def resolve_candidate(
         self,
@@ -259,8 +279,13 @@ class MultiSignalAcousticCandidateResolver:
             return None
 
         routing_hypotheses = None
+        routing_context = None
+        routing_kind = None
 
-        if self._on_routing_context is not None:
+        if (
+            self._on_routing_context is not None
+            or self._on_routing_observation is not None
+        ):
             fade = self._temporal_resolver.observe_fade_routing_evidence(
                 profile=profile,
                 window=window,
@@ -274,17 +299,23 @@ class MultiSignalAcousticCandidateResolver:
                 if self._incoming_refiner is not None
                 else ()
             )
-            self._on_routing_context(
-                TransitionRoutingContext(
-                    reference_time_seconds=candidate.time_seconds,
-                    evidence=TransitionEvidenceExtractor().extract(
-                        spectral=None,
-                        local_discontinuity=selected.local_discontinuity,
-                    ),
-                    hypotheses=routing_hypotheses,
-                    fade=fade,
-                )
+            routing_context = TransitionRoutingContext(
+                reference_time_seconds=candidate.time_seconds,
+                evidence=TransitionEvidenceExtractor().extract(
+                    spectral=None,
+                    local_discontinuity=selected.local_discontinuity,
+                ),
+                hypotheses=routing_hypotheses,
+                fade=fade,
             )
+
+            if self._on_routing_context is not None:
+                self._on_routing_context(routing_context)
+
+            if self._on_routing_observation is not None:
+                routing_kind = self._transition_router.classify(
+                    context=routing_context,
+                )
 
         temporal = self._temporal_resolver.resolve(
             selected=selected,
@@ -312,6 +343,18 @@ class MultiSignalAcousticCandidateResolver:
                     pcm16=pcm16,
                     hypotheses=routing_hypotheses,
                 )
+
+        if self._on_routing_observation is not None:
+            if routing_context is None or routing_kind is None:
+                raise RuntimeError("routing observation requires classified context")
+
+            self._on_routing_observation(
+                TransitionRoutingObservation(
+                    context=routing_context,
+                    kind=routing_kind,
+                    temporal=temporal,
+                )
+            )
 
         split = self._split_aligner.align(
             decision=temporal,

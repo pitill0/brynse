@@ -390,6 +390,7 @@ def test_multisignal_resolver_observes_routing_context_without_changing_decision
     )
     from brynse.orchestrator import MultiSignalAcousticCandidateResolver
     from brynse.transition_evidence import FadeRoutingEvidence
+    from brynse.transition_router import TransitionKind
 
     window = _window()
     pcm8 = DecodedPcm(
@@ -493,9 +494,19 @@ def test_multisignal_resolver_observes_routing_context_without_changing_decision
             assert kwargs["decision"] is refined
             return aligned
 
+    class Router:
+        def __init__(self):
+            self.contexts = []
+
+        def classify(self, *, context):
+            self.contexts.append(context)
+            return TransitionKind.HARD_CUT
+
     temporal_resolver = TemporalResolver()
     incoming_refiner = IncomingRefiner()
+    router = Router()
     observed = []
+    routing_observations = []
 
     resolver = MultiSignalAcousticCandidateResolver(
         window_extractor=WindowExtractor(),
@@ -506,7 +517,9 @@ def test_multisignal_resolver_observes_routing_context_without_changing_decision
         temporal_resolver=temporal_resolver,
         split_aligner=Aligner(),
         incoming_refiner=incoming_refiner,
+        transition_router=router,
         on_routing_context=observed.append,
+        on_routing_observation=routing_observations.append,
     )
 
     candidate = _track().as_boundary_candidate()
@@ -520,6 +533,14 @@ def test_multisignal_resolver_observes_routing_context_without_changing_decision
     assert resolution is not None
     assert resolution.temporal is refined
     assert resolution.split is aligned
+
+    assert len(routing_observations) == 1
+    routing_observation = routing_observations[0]
+    assert routing_observation.kind is TransitionKind.HARD_CUT
+    assert routing_observation.temporal is refined
+    assert routing_observation.context is observed[0]
+
+    assert router.contexts == [observed[0]]
 
     assert len(observed) == 1
     context = observed[0]
