@@ -31,6 +31,33 @@ class _EnergyRise:
     after_global_ratio: float
 
 
+@dataclass(frozen=True)
+class CrossfadeBoundaryGeometry:
+    """Resolved temporal boundaries for one plausible crossfade."""
+
+    incoming_start_seconds: float
+    outgoing_end_seconds: float
+    outgoing_jump_ratio: float
+    outgoing_persistence_ratio: float
+    outgoing_after_global_ratio: float
+
+    def __post_init__(self) -> None:
+        if self.incoming_start_seconds < 0:
+            raise ValueError("incoming_start_seconds must be non-negative")
+        if self.outgoing_end_seconds < 0:
+            raise ValueError("outgoing_end_seconds must be non-negative")
+        if self.incoming_start_seconds >= self.outgoing_end_seconds:
+            raise ValueError(
+                "crossfade geometry requires incoming_start_seconds < outgoing_end_seconds"
+            )
+        if self.outgoing_jump_ratio < 0:
+            raise ValueError("outgoing_jump_ratio must be non-negative")
+        if self.outgoing_persistence_ratio < 0:
+            raise ValueError("outgoing_persistence_ratio must be non-negative")
+        if self.outgoing_after_global_ratio < 0:
+            raise ValueError("outgoing_after_global_ratio must be non-negative")
+
+
 class HybridAcousticSplitResolver:
     """Resolve one semantic transition from fine-grained RMS evidence.
 
@@ -101,13 +128,13 @@ class HybridAcousticSplitResolver:
         if not profile.levels:
             return None
 
-        outgoing = self._select_crossfade_outgoing(
+        crossfade = self.resolve_crossfade_geometry(
             profile=profile,
             window=window,
             semantic_time_seconds=semantic_time_seconds,
         )
 
-        if outgoing is None:
+        if crossfade is None:
             incoming = self._select_boundary_basin(
                 profile=profile,
                 window=window,
@@ -123,6 +150,33 @@ class HybridAcousticSplitResolver:
                 outgoing_end_seconds=boundary,
             )
 
+        return TemporalSplitDecision(
+            kind=TemporalSplitKind.CROSSFADE,
+            incoming_start_seconds=crossfade.incoming_start_seconds,
+            outgoing_end_seconds=crossfade.outgoing_end_seconds,
+        )
+
+    def resolve_crossfade_geometry(
+        self,
+        *,
+        profile: AcousticProfile,
+        window: AcousticWindow,
+        semantic_time_seconds: float,
+    ) -> CrossfadeBoundaryGeometry | None:
+        """Resolve crossfade boundaries without choosing a split kind."""
+        if semantic_time_seconds < 0:
+            raise ValueError("semantic_time_seconds must be non-negative")
+        if not profile.levels:
+            return None
+
+        outgoing = self._select_crossfade_outgoing(
+            profile=profile,
+            window=window,
+            semantic_time_seconds=semantic_time_seconds,
+        )
+        if outgoing is None:
+            return None
+
         incoming = self._select_crossfade_incoming_basin(
             profile=profile,
             window=window,
@@ -133,10 +187,12 @@ class HybridAcousticSplitResolver:
         if incoming.center_time_seconds >= outgoing.time_seconds:
             return None
 
-        return TemporalSplitDecision(
-            kind=TemporalSplitKind.CROSSFADE,
+        return CrossfadeBoundaryGeometry(
             incoming_start_seconds=incoming.center_time_seconds,
             outgoing_end_seconds=outgoing.time_seconds,
+            outgoing_jump_ratio=outgoing.jump_ratio,
+            outgoing_persistence_ratio=outgoing.persistence_ratio,
+            outgoing_after_global_ratio=outgoing.after_global_ratio,
         )
 
     def _basins(

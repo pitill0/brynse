@@ -193,3 +193,68 @@ def test_hybrid_resolver_rejects_negative_semantic_time() -> None:
             window=_window(3),
             semantic_time_seconds=-1.0,
         )
+
+
+def test_hybrid_resolver_exposes_crossfade_geometry_without_split_decision() -> None:
+    values = [1000.0] * 180
+    values[28:42] = [
+        620.0,
+        600.0,
+        590.0,
+        580.0,
+        570.0,
+        560.0,
+        550.0,
+        540.0,
+        535.0,
+        540.0,
+        550.0,
+        565.0,
+        585.0,
+        610.0,
+    ]
+    values[120:123] = [780.0, 800.0, 820.0]
+    values[123:140] = [3600.0] * 17
+
+    geometry = HybridAcousticSplitResolver().resolve_crossfade_geometry(
+        profile=_profile(values),
+        window=_window(
+            len(values),
+            start_time_seconds=425.0,
+        ),
+        semantic_time_seconds=427.6,
+    )
+
+    assert geometry is not None
+    assert geometry.incoming_start_seconds == pytest.approx(426.75)
+    assert geometry.outgoing_end_seconds == pytest.approx(431.15)
+    assert geometry.incoming_start_seconds < geometry.outgoing_end_seconds
+    assert not hasattr(geometry, "kind")
+
+
+def test_hybrid_resolver_exposes_no_crossfade_geometry_for_weak_rise() -> None:
+    values = [600.0] * 180
+    values[40:49] = [
+        230.0,
+        215.0,
+        200.0,
+        185.0,
+        175.0,
+        180.0,
+        195.0,
+        210.0,
+        225.0,
+    ]
+    values[125:128] = [200.0, 210.0, 220.0]
+    values[128:145] = [700.0] * 17
+
+    geometry = HybridAcousticSplitResolver().resolve_crossfade_geometry(
+        profile=_profile(values),
+        window=_window(
+            len(values),
+            start_time_seconds=40.0,
+        ),
+        semantic_time_seconds=43.5,
+    )
+
+    assert geometry is None
