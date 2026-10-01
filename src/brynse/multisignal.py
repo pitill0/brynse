@@ -10,7 +10,10 @@ import numpy as np
 
 from brynse.acoustic import RmsAcousticAnalyzer
 from brynse.hybrid import HybridAcousticSplitResolver
-from brynse.local_discontinuity import LocalDiscontinuityAnalyzer
+from brynse.local_discontinuity import (
+    LocalDiscontinuityAnalyzer,
+    LocalDiscontinuityEvidence,
+)
 from brynse.models import (
     AcousticWindow,
     DecodedPcm,
@@ -25,6 +28,7 @@ class MultiSignalCandidate:
     time_seconds: float
     family_rrf: float
     forward_novelty: float
+    local_discontinuity: LocalDiscontinuityEvidence | None = None
 
 
 NOVELTY_SAMPLE_RATE = 8000
@@ -654,6 +658,7 @@ class AcousticMultiSignalCandidateBuilder:
         family_inputs: list[FamilyRankCandidate] = []
 
         novelty_by_time: dict[float, float] = {}
+        local_evidence_by_time: dict[float, LocalDiscontinuityEvidence] = {}
 
         for candidate in union:
             candidate_time = candidate.time_seconds
@@ -666,6 +671,8 @@ class AcousticMultiSignalCandidateBuilder:
 
             if evidence is None:
                 continue
+
+            local_evidence_by_time[candidate_time] = evidence
 
             if (
                 self._regime_ratio_fn is None
@@ -711,6 +718,7 @@ class AcousticMultiSignalCandidateBuilder:
                 time_seconds=(candidate.time_seconds),
                 family_rrf=(candidate.family_rrf),
                 forward_novelty=(novelty_by_time[candidate.time_seconds]),
+                local_discontinuity=local_evidence_by_time[candidate.time_seconds],
             )
             for candidate in ranked
         )

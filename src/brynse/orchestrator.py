@@ -35,7 +35,7 @@ from brynse.multisignal import (
     MultiSignalCandidateResolver,
     MultiSignalTemporalResolver,
 )
-from brynse.transition_evidence import TransitionEvidenceState
+from brynse.transition_evidence import TransitionEvidenceExtractor
 from brynse.transition_router import TransitionRoutingContext
 
 
@@ -277,7 +277,10 @@ class MultiSignalAcousticCandidateResolver:
             self._on_routing_context(
                 TransitionRoutingContext(
                     reference_time_seconds=candidate.time_seconds,
-                    evidence=TransitionEvidenceState(),
+                    evidence=TransitionEvidenceExtractor().extract(
+                        spectral=None,
+                        local_discontinuity=selected.local_discontinuity,
+                    ),
                     hypotheses=routing_hypotheses,
                     fade=fade,
                 )

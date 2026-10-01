@@ -873,3 +873,24 @@ def test_multisignal_temporal_resolver_exposes_fade_routing_evidence() -> None:
             "semantic_time_seconds": 427.6,
         }
     ]
+
+
+def test_multisignal_candidate_preserves_selected_local_discontinuity() -> None:
+    from brynse.local_discontinuity import LocalDiscontinuityEvidence
+    from brynse.multisignal import MultiSignalCandidate
+
+    local = LocalDiscontinuityEvidence(
+        change_250ms=0.21,
+        change_500ms=0.43,
+        change_1s=0.65,
+        change_2s=0.87,
+    )
+
+    candidate = MultiSignalCandidate(
+        time_seconds=100.0,
+        family_rrf=0.75,
+        forward_novelty=0.42,
+        local_discontinuity=local,
+    )
+
+    assert candidate.local_discontinuity is local

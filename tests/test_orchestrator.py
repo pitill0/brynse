@@ -405,7 +405,21 @@ def test_multisignal_resolver_observes_routing_context_without_changing_decision
         data=b"\x00\x00",
     )
     profile = AcousticProfile(levels=())
-    selected = object()
+    from brynse.local_discontinuity import LocalDiscontinuityEvidence
+    from brynse.multisignal import MultiSignalCandidate
+
+    local = LocalDiscontinuityEvidence(
+        change_250ms=0.21,
+        change_500ms=0.43,
+        change_1s=0.65,
+        change_2s=0.87,
+    )
+    selected = MultiSignalCandidate(
+        time_seconds=100.0,
+        family_rrf=0.75,
+        forward_novelty=0.42,
+        local_discontinuity=local,
+    )
 
     original = TemporalSplitDecision(
         kind=TemporalSplitKind.HARD_CUT,
@@ -517,10 +531,10 @@ def test_multisignal_resolver_observes_routing_context_without_changing_decision
         "variability_ratio_16s": None,
         "variability_ratio_24s": None,
         "variability_ratio_40s": None,
-        "local_discontinuity_250ms": None,
-        "local_discontinuity_500ms": None,
-        "local_discontinuity_1s": None,
-        "local_discontinuity_2s": None,
+        "local_discontinuity_250ms": 0.21,
+        "local_discontinuity_500ms": 0.43,
+        "local_discontinuity_1s": 0.65,
+        "local_discontinuity_2s": 0.87,
     }
     assert context.fade is fade
     assert context.hypotheses is hypotheses
