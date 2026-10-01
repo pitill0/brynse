@@ -192,3 +192,25 @@ def test_fade_routing_evidence_preserves_descriptive_observations() -> None:
 
     assert evidence.rise is rise
     assert evidence.basins == (basin,)
+
+
+def test_outgoing_fade_evidence_preserves_descriptive_geometry() -> None:
+    from brynse.transition_evidence import OutgoingFadeEvidence
+
+    evidence = OutgoingFadeEvidence(
+        start_time_seconds=102.0,
+        floor_time_seconds=104.95,
+        rise_time_seconds=105.0,
+        start_rms=1200.0,
+        floor_rms=180.0,
+        descent_ratio=1200.0 / 180.0,
+        descent_consistency=1.0,
+    )
+
+    assert evidence.start_time_seconds == 102.0
+    assert evidence.floor_time_seconds == 104.95
+    assert evidence.rise_time_seconds == 105.0
+    assert evidence.start_rms == 1200.0
+    assert evidence.floor_rms == 180.0
+    assert evidence.descent_ratio > 1.0
+    assert evidence.descent_consistency == 1.0

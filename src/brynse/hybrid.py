@@ -14,6 +14,7 @@ from brynse.transition_evidence import (
     CrossfadeBasinEvidence,
     CrossfadeRiseEvidence,
     FadeRoutingEvidence,
+    OutgoingFadeEvidence,
 )
 
 
@@ -77,6 +78,7 @@ class HybridAcousticSplitResolver:
         crossfade_min_delay_seconds: float = 1.0,
         crossfade_incoming_min_lead_seconds: float = 0.50,
         crossfade_incoming_max_lead_seconds: float = 2.50,
+        fade_observation_seconds: float = 8.0,
     ) -> None:
         if basin_ratio <= 1.0:
             raise ValueError("basin_ratio must be greater than one")
@@ -100,6 +102,8 @@ class HybridAcousticSplitResolver:
             raise ValueError("crossfade_incoming_min_lead_seconds must be non-negative")
         if crossfade_incoming_max_lead_seconds <= crossfade_incoming_min_lead_seconds:
             raise ValueError("crossfade_incoming_max_lead_seconds must exceed minimum lead")
+        if fade_observation_seconds <= 0:
+            raise ValueError("fade_observation_seconds must be greater than zero")
 
         self._basin_ratio = basin_ratio
         self._max_basin_width = max_basin_width_seconds
@@ -112,6 +116,7 @@ class HybridAcousticSplitResolver:
         self._crossfade_min_delay = crossfade_min_delay_seconds
         self._crossfade_incoming_min_lead = crossfade_incoming_min_lead_seconds
         self._crossfade_incoming_max_lead = crossfade_incoming_max_lead_seconds
+        self._fade_observation_seconds = fade_observation_seconds
 
     def resolve(
         self,
@@ -334,6 +339,10 @@ class HybridAcousticSplitResolver:
                 window=window,
                 semantic_time_seconds=semantic_time_seconds,
             ),
+            outgoing_fades=self.observe_outgoing_fades(
+                profile=profile,
+                window=window,
+            ),
         )
 
     def observe_crossfade_basins(
@@ -449,6 +458,127 @@ class HybridAcousticSplitResolver:
                 qualifying.append(rise)
 
         return tuple(qualifying)
+
+    @staticmethod
+    def _descent_consistency(
+        rms_values: list[float],
+    ) -> float:
+        """Return how consistently a local RMS envelope descends."""
+        if len(rms_values) < 2:
+            return 0.0
+
+        smoothed = [
+            statistics.median(
+                rms_values[
+                    max(0, index - 1) :
+                    min(len(rms_values), index + 2)
+                ]
+            )
+            for index in range(len(rms_values))
+        ]
+
+        descending = sum(
+            right <= left
+            for left, right in zip(
+                smoothed,
+                smoothed[1:],
+                strict=False,
+            )
+        )
+
+        return descending / (len(smoothed) - 1)
+
+    def observe_outgoing_fades(
+        self,
+        *,
+        profile: AcousticProfile,
+        window: AcousticWindow,
+    ) -> tuple[OutgoingFadeEvidence, ...]:
+        """Describe RMS decay geometry immediately preceding strong rises."""
+        levels = profile.levels
+        if len(levels) < 2:
+            return ()
+
+        rises = self.observe_energy_rises(
+            profile=profile,
+            window=window,
+        )
+        if not rises:
+            return ()
+
+        durations = [
+            level.end_time_seconds - level.start_time_seconds
+            for level in levels
+        ]
+        level_seconds = statistics.median(durations)
+        if level_seconds <= 0:
+            return ()
+
+        lookback_levels = max(
+            2,
+            round(self._fade_observation_seconds / level_seconds),
+        )
+        observed: list[OutgoingFadeEvidence] = []
+
+        absolute_times = [
+            window.start_time_seconds + level.start_time_seconds
+            for level in levels
+        ]
+
+        for rise in rises:
+            rise_index = min(
+                range(len(levels)),
+                key=lambda index: abs(
+                    absolute_times[index] - rise.time_seconds
+                ),
+            )
+            if rise_index <= 0:
+                continue
+
+            pre_rise_start = max(
+                0,
+                rise_index - self._edge_span_levels,
+            )
+            floor_index = min(
+                range(pre_rise_start, rise_index),
+                key=lambda index: levels[index].rms,
+            )
+
+            lookback_start = max(
+                0,
+                floor_index - lookback_levels,
+            )
+            start_index = max(
+                range(lookback_start, floor_index + 1),
+                key=lambda index: levels[index].rms,
+            )
+
+            if start_index >= floor_index:
+                continue
+
+            start_rms = levels[start_index].rms
+            floor_rms = levels[floor_index].rms
+            if start_rms <= floor_rms:
+                continue
+
+            observed.append(
+                OutgoingFadeEvidence(
+                    start_time_seconds=absolute_times[start_index],
+                    floor_time_seconds=absolute_times[floor_index],
+                    rise_time_seconds=rise.time_seconds,
+                    start_rms=start_rms,
+                    floor_rms=floor_rms,
+                    descent_ratio=start_rms / max(floor_rms, 1e-9),
+                    descent_consistency=self._descent_consistency(
+                        [
+                            level.rms
+                            for level in levels[start_index : floor_index + 1]
+                        ]
+                    ),
+                )
+            )
+
+        return tuple(observed)
 
     def observe_crossfade_rise(
         self,

@@ -426,3 +426,84 @@ def test_crossfade_rise_keeps_existing_post_semantic_policy() -> None:
         for rise in generic
     )
     assert crossfade is None
+
+
+def test_hybrid_observes_outgoing_fade_before_strong_rise() -> None:
+    values = [1000.0] * 200
+    values[40:100] = [
+        1200.0 - index * (1020.0 / 59)
+        for index in range(60)
+    ]
+    values[100:117] = [3600.0] * 17
+
+    evidence = HybridAcousticSplitResolver().observe_outgoing_fades(
+        profile=_profile(values),
+        window=_window(
+            len(values),
+            start_time_seconds=100.0,
+        ),
+    )
+
+    assert evidence
+    fade = min(
+        evidence,
+        key=lambda item: abs(item.rise_time_seconds - 105.0),
+    )
+
+    assert fade.start_time_seconds == pytest.approx(102.0)
+    assert fade.floor_time_seconds == pytest.approx(104.95)
+    assert fade.rise_time_seconds == pytest.approx(105.0)
+    assert fade.start_rms > fade.floor_rms
+    assert fade.descent_ratio > 1.0
+    assert fade.descent_consistency == pytest.approx(1.0)
+
+
+def test_fade_routing_evidence_exposes_outgoing_fade_without_changing_boundaries() -> None:
+    values = [1000.0] * 200
+    values[40:100] = [
+        1200.0 - index * (1020.0 / 59)
+        for index in range(60)
+    ]
+    values[100:117] = [3600.0] * 17
+
+    evidence = HybridAcousticSplitResolver().observe_fade_routing_evidence(
+        profile=_profile(values),
+        window=_window(
+            len(values),
+            start_time_seconds=100.0,
+        ),
+        semantic_time_seconds=106.0,
+    )
+
+    assert evidence.outgoing_fades
+    assert evidence.rise is None
+    assert not hasattr(evidence, "incoming_start_seconds")
+    assert not hasattr(evidence, "outgoing_end_seconds")
+    assert not hasattr(evidence, "kind")
+
+
+def test_outgoing_fade_consistency_distinguishes_fluctuating_energy() -> None:
+    values = [1000.0] * 200
+    values[40:100] = [
+        1200.0 if index % 2 == 0 else 300.0
+        for index in range(60)
+    ]
+    values[99] = 180.0
+    values[100:117] = [3600.0] * 17
+
+    evidence = HybridAcousticSplitResolver().observe_outgoing_fades(
+        profile=_profile(values),
+        window=_window(
+            len(values),
+            start_time_seconds=100.0,
+        ),
+    )
+
+    assert evidence
+    fade = min(
+        evidence,
+        key=lambda item: abs(item.rise_time_seconds - 105.0),
+    )
+
+    assert fade.descent_ratio > 1.0
+    assert fade.descent_consistency < 0.75
