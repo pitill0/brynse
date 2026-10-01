@@ -372,3 +372,57 @@ def test_hybrid_resolver_composes_fade_routing_evidence_without_boundaries() -> 
     assert not hasattr(evidence, "incoming_start_seconds")
     assert not hasattr(evidence, "outgoing_end_seconds")
     assert not hasattr(evidence, "kind")
+
+
+def test_hybrid_observes_strong_energy_rise_before_semantic_reference() -> None:
+    values = [1000.0] * 200
+    values[80:83] = [180.0, 190.0, 200.0]
+    values[83:100] = [3600.0] * 17
+
+    resolver = HybridAcousticSplitResolver()
+    profile = _profile(values)
+    window = _window(
+        len(values),
+        start_time_seconds=100.0,
+    )
+
+    rises = resolver.observe_energy_rises(
+        profile=profile,
+        window=window,
+    )
+
+    assert rises
+    assert any(
+        rise.time_seconds == pytest.approx(104.15)
+        for rise in rises
+    )
+
+
+def test_crossfade_rise_keeps_existing_post_semantic_policy() -> None:
+    values = [1000.0] * 200
+    values[80:83] = [180.0, 190.0, 200.0]
+    values[83:100] = [3600.0] * 17
+
+    resolver = HybridAcousticSplitResolver()
+    profile = _profile(values)
+    window = _window(
+        len(values),
+        start_time_seconds=100.0,
+    )
+
+    generic = resolver.observe_energy_rises(
+        profile=profile,
+        window=window,
+    )
+    crossfade = resolver.observe_crossfade_rise(
+        profile=profile,
+        window=window,
+        semantic_time_seconds=106.0,
+    )
+
+    assert generic
+    assert any(
+        rise.time_seconds == pytest.approx(104.15)
+        for rise in generic
+    )
+    assert crossfade is None

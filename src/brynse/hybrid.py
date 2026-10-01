@@ -397,21 +397,21 @@ class HybridAcousticSplitResolver:
         )
         return eligible[0][2]
 
-    def observe_crossfade_rise(
+    def observe_energy_rises(
         self,
         *,
         profile: AcousticProfile,
         window: AcousticWindow,
-        semantic_time_seconds: float,
-    ) -> CrossfadeRiseEvidence | None:
+    ) -> tuple[CrossfadeRiseEvidence, ...]:
+        """Return strong persistent energy rises across the full RMS window."""
         levels = profile.levels
         if len(levels) <= self._persistence_span_levels:
-            return None
+            return ()
 
         rms_values = [level.rms for level in levels]
         global_median = statistics.median(rms_values)
         if global_median <= 0:
-            return None
+            return ()
 
         qualifying: list[CrossfadeRiseEvidence] = []
 
@@ -419,19 +419,23 @@ class HybridAcousticSplitResolver:
             self._edge_span_levels,
             len(levels) - self._persistence_span_levels,
         ):
-            time_seconds = window.start_time_seconds + levels[index].start_time_seconds
-            delay = time_seconds - semantic_time_seconds
-            if delay < self._crossfade_min_delay:
-                continue
-
-            before = statistics.mean(rms_values[index - self._edge_span_levels : index])
-            immediate = statistics.mean(rms_values[index : index + self._edge_span_levels])
-            persistent = statistics.mean(rms_values[index : index + self._persistence_span_levels])
+            before = statistics.mean(
+                rms_values[index - self._edge_span_levels : index]
+            )
+            immediate = statistics.mean(
+                rms_values[index : index + self._edge_span_levels]
+            )
+            persistent = statistics.mean(
+                rms_values[index : index + self._persistence_span_levels]
+            )
             if before <= 0:
                 continue
 
             rise = CrossfadeRiseEvidence(
-                time_seconds=time_seconds,
+                time_seconds=(
+                    window.start_time_seconds
+                    + levels[index].start_time_seconds
+                ),
                 jump_ratio=immediate / before,
                 persistence_ratio=persistent / before,
                 after_global_ratio=persistent / global_median,
@@ -443,6 +447,27 @@ class HybridAcousticSplitResolver:
                 and rise.after_global_ratio >= self._crossfade_min_after_global
             ):
                 qualifying.append(rise)
+
+        return tuple(qualifying)
+
+    def observe_crossfade_rise(
+        self,
+        *,
+        profile: AcousticProfile,
+        window: AcousticWindow,
+        semantic_time_seconds: float,
+    ) -> CrossfadeRiseEvidence | None:
+        qualifying = tuple(
+            rise
+            for rise in self.observe_energy_rises(
+                profile=profile,
+                window=window,
+            )
+            if (
+                rise.time_seconds - semantic_time_seconds
+                >= self._crossfade_min_delay
+            )
+        )
 
         if not qualifying:
             return None
