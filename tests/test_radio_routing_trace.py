@@ -3,6 +3,13 @@ from argparse import Namespace
 from pathlib import Path
 from types import SimpleNamespace
 
+from brynse.boundaries import (
+    BoundaryConfidence,
+    BoundaryEvidence,
+    BoundaryHypothesis,
+    BoundaryProposal,
+    BoundaryProposalSource,
+)
 from brynse.integrations.radio import cli
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
 from brynse.orchestrator import TransitionRoutingObservation
@@ -25,6 +32,29 @@ def _observation() -> TransitionRoutingObservation:
                 local_discontinuity_500ms=0.43,
                 local_discontinuity_1s=0.65,
                 local_discontinuity_2s=0.87,
+            ),
+            hypotheses=(
+                BoundaryHypothesis(
+                    time_seconds=101.1,
+                    proposals=(
+                        basin := BoundaryProposal(
+                            time_seconds=101.0,
+                            source=BoundaryProposalSource.BASIN,
+                        ),
+                        BoundaryProposal(
+                            time_seconds=101.2,
+                            source=BoundaryProposalSource.STRUCTURAL,
+                        ),
+                    ),
+                    evidence=(
+                        BoundaryEvidence(
+                            proposal=basin,
+                            basin_start_seconds=100.7,
+                            basin_recovery_seconds=101.6,
+                        ),
+                    ),
+                    confidence=BoundaryConfidence.HIGH,
+                ),
             ),
             fade=FadeRoutingEvidence(),
         ),
@@ -62,7 +92,17 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
         "outgoing_end_seconds": 100.0,
         "fade_rise": False,
         "fade_basins": 0,
-        "hypotheses": 0,
+        "hypotheses": 1,
+        "hypotheses_detail": [
+            {
+                "time_seconds": 101.1,
+                "sources": ["basin", "structural"],
+                "confidence": "high",
+                "basin_start_seconds": 100.7,
+                "basin_minimum_seconds": 101.0,
+                "basin_recovery_seconds": 101.6,
+            }
+        ],
         "local_complete": True,
         "local_discontinuity_250ms": 0.21,
         "local_discontinuity_500ms": 0.43,

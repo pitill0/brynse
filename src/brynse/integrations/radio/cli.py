@@ -120,6 +120,28 @@ def _routing_trace_record(observation) -> dict[str, object]:
         evidence.local_discontinuity_2s,
     )
 
+    hypotheses_detail = []
+    for hypothesis in context.hypotheses:
+        geometry = hypothesis.basin_geometry
+        hypotheses_detail.append(
+            {
+                "time_seconds": hypothesis.time_seconds,
+                "sources": sorted(
+                    proposal.source.value for proposal in hypothesis.proposals
+                ),
+                "confidence": hypothesis.confidence.value,
+                "basin_start_seconds": (
+                    None if geometry is None else geometry.start_seconds
+                ),
+                "basin_minimum_seconds": (
+                    None if geometry is None else geometry.minimum_seconds
+                ),
+                "basin_recovery_seconds": (
+                    None if geometry is None else geometry.recovery_seconds
+                ),
+            }
+        )
+
     return {
         "reference_time_seconds": context.reference_time_seconds,
         "router_kind": observation.kind.value,
@@ -129,6 +151,7 @@ def _routing_trace_record(observation) -> dict[str, object]:
         "fade_rise": context.fade.rise is not None,
         "fade_basins": len(context.fade.basins),
         "hypotheses": len(context.hypotheses),
+        "hypotheses_detail": hypotheses_detail,
         "local_complete": all(value is not None for value in local_values),
         "local_discontinuity_250ms": evidence.local_discontinuity_250ms,
         "local_discontinuity_500ms": evidence.local_discontinuity_500ms,
