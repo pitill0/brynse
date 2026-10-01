@@ -150,3 +150,45 @@ def test_transition_evidence_state_exposes_missing_values_as_none() -> None:
         "local_discontinuity_1s": None,
         "local_discontinuity_2s": None,
     }
+
+
+def test_fade_routing_evidence_defaults_to_no_fade_observations() -> None:
+    from brynse.transition_evidence import FadeRoutingEvidence
+
+    evidence = FadeRoutingEvidence()
+
+    assert evidence.rise is None
+    assert evidence.basins == ()
+    assert not hasattr(evidence, "incoming_start_seconds")
+    assert not hasattr(evidence, "outgoing_end_seconds")
+    assert not hasattr(evidence, "kind")
+
+
+def test_fade_routing_evidence_preserves_descriptive_observations() -> None:
+    from brynse.transition_evidence import (
+        CrossfadeBasinEvidence,
+        CrossfadeRiseEvidence,
+        FadeRoutingEvidence,
+    )
+
+    rise = CrossfadeRiseEvidence(
+        time_seconds=431.15,
+        jump_ratio=3.5,
+        persistence_ratio=4.0,
+        after_global_ratio=3.0,
+    )
+    basin = CrossfadeBasinEvidence(
+        center_time_seconds=426.75,
+        lead_seconds=0.85,
+        width_seconds=0.7,
+        prominence=1.5,
+        quietness=1.8,
+    )
+
+    evidence = FadeRoutingEvidence(
+        rise=rise,
+        basins=(basin,),
+    )
+
+    assert evidence.rise is rise
+    assert evidence.basins == (basin,)

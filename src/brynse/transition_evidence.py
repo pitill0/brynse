@@ -10,6 +10,47 @@ from brynse.temporal_variability import TemporalVariabilityEvidence
 
 
 @dataclass(frozen=True)
+class CrossfadeRiseEvidence:
+    """Descriptive evidence for one persistent post-reference energy rise."""
+
+    time_seconds: float
+    jump_ratio: float
+    persistence_ratio: float
+    after_global_ratio: float
+
+
+@dataclass(frozen=True)
+class CrossfadeBasinEvidence:
+    """Descriptive evidence for one crossfade-compatible quiet basin."""
+
+    center_time_seconds: float
+    lead_seconds: float
+    width_seconds: float
+    prominence: float
+    quietness: float
+
+    def __post_init__(self) -> None:
+        if self.center_time_seconds < 0:
+            raise ValueError("center_time_seconds must be non-negative")
+        if self.lead_seconds < 0:
+            raise ValueError("lead_seconds must be non-negative")
+        if self.width_seconds <= 0:
+            raise ValueError("width_seconds must be greater than zero")
+        if self.prominence < 0:
+            raise ValueError("prominence must be non-negative")
+        if self.quietness < 0:
+            raise ValueError("quietness must be non-negative")
+
+
+@dataclass(frozen=True)
+class FadeRoutingEvidence:
+    """Descriptive evidence available when considering fade ownership."""
+
+    rise: CrossfadeRiseEvidence | None = None
+    basins: tuple[CrossfadeBasinEvidence, ...] = ()
+
+
+@dataclass(frozen=True)
 class TransitionEvidenceState:
     """Read-only multi-signal evidence state for one candidate transition."""
 
