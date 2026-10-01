@@ -589,14 +589,18 @@ class HybridAcousticSplitResolver:
         observed: list[OutgoingFadeEvidence] = []
 
         for raw_start_index, smoothed_floor_index in segments:
+            effective_start_index = max(
+                raw_start_index,
+                smoothed_floor_index - lookback_levels,
+            )
+
             start_search_start = max(
                 0,
-                raw_start_index - 1,
-                smoothed_floor_index - lookback_levels,
+                effective_start_index - 1,
             )
             start_search_end = min(
                 len(levels),
-                raw_start_index + 2,
+                effective_start_index + 2,
             )
             start_index = max(
                 range(start_search_start, start_search_end),

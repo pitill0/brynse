@@ -764,3 +764,40 @@ def test_outgoing_fade_merges_internal_recoveries_into_one_region() -> None:
     assert outgoing.start_rms > outgoing.floor_rms
     assert outgoing.descent_ratio > 1.0
     assert outgoing.descent_consistency < 1.0
+
+
+def test_outgoing_fade_handles_macro_region_longer_than_observation_window() -> None:
+    values = [1400.0] * 400
+
+    values[40:260] = [
+        1400.0 - index * (1200.0 / 219)
+        for index in range(220)
+    ]
+    values[260:277] = [3600.0] * 17
+
+    evidence = HybridAcousticSplitResolver().observe_outgoing_fades(
+        profile=_profile(values),
+        window=_window(
+            len(values),
+            start_time_seconds=100.0,
+        ),
+    )
+
+    assert evidence
+
+    fade = min(
+        evidence,
+        key=lambda item: abs(item.floor_time_seconds - 112.95),
+    )
+
+    assert fade.floor_time_seconds == pytest.approx(112.95)
+    assert fade.rise_time_seconds == pytest.approx(113.0)
+
+    # Geometry is intentionally bounded by fade_observation_seconds.
+    duration = (
+        fade.floor_time_seconds - fade.start_time_seconds
+    )
+    assert duration == pytest.approx(8.1)
+
+    assert fade.start_time_seconds < fade.floor_time_seconds
+    assert fade.start_rms > fade.floor_rms
