@@ -507,16 +507,9 @@ class HybridAcousticSplitResolver:
         profile: AcousticProfile,
         window: AcousticWindow,
     ) -> tuple[OutgoingFadeEvidence, ...]:
-        """Describe RMS decay geometry immediately preceding strong rises."""
+        """Describe sustained descending RMS-envelope segments."""
         levels = profile.levels
         if len(levels) < 2:
-            return ()
-
-        rises = self.observe_energy_rises(
-            profile=profile,
-            window=window,
-        )
-        if not rises:
             return ()
 
         durations = [
@@ -531,62 +524,138 @@ class HybridAcousticSplitResolver:
             2,
             round(self._fade_observation_seconds / level_seconds),
         )
-        observed: list[OutgoingFadeEvidence] = []
 
         absolute_times = [
             window.start_time_seconds + level.start_time_seconds
             for level in levels
         ]
-
-        for rise in rises:
-            rise_index = min(
-                range(len(levels)),
-                key=lambda index: abs(
-                    absolute_times[index] - rise.time_seconds
-                ),
+        rms_values = [level.rms for level in levels]
+        smoothed = [
+            statistics.median(
+                rms_values[
+                    max(0, index - 1) :
+                    min(len(rms_values), index + 2)
+                ]
             )
-            if rise_index <= 0:
+            for index in range(len(rms_values))
+        ]
+
+        rises = self.observe_energy_rises(
+            profile=profile,
+            window=window,
+        )
+
+        segments: list[tuple[int, int]] = []
+        segment_start: int | None = None
+        last_decrease: int | None = None
+        plateau_levels = 0
+
+        def close_segment() -> None:
+            nonlocal segment_start, last_decrease, plateau_levels
+
+            if (
+                segment_start is not None
+                and last_decrease is not None
+                and last_decrease - segment_start
+                >= self._edge_span_levels
+            ):
+                segments.append((segment_start, last_decrease))
+
+            segment_start = None
+            last_decrease = None
+            plateau_levels = 0
+
+        for index in range(1, len(smoothed)):
+            left = smoothed[index - 1]
+            right = smoothed[index]
+
+            if right < left:
+                if segment_start is None:
+                    segment_start = index - 1
+                last_decrease = index
+                plateau_levels = 0
                 continue
 
-            pre_rise_start = max(
-                0,
-                rise_index - self._edge_span_levels,
-            )
-            floor_index = min(
-                range(pre_rise_start, rise_index),
-                key=lambda index: levels[index].rms,
-            )
+            if right == left and segment_start is not None:
+                plateau_levels += 1
+                if plateau_levels < self._edge_span_levels:
+                    continue
 
-            lookback_start = max(
+            close_segment()
+
+        close_segment()
+
+        observed: list[OutgoingFadeEvidence] = []
+
+        for raw_start_index, smoothed_floor_index in segments:
+            start_search_start = max(
                 0,
-                floor_index - lookback_levels,
+                raw_start_index - 1,
+                smoothed_floor_index - lookback_levels,
+            )
+            start_search_end = min(
+                len(levels),
+                raw_start_index + 2,
             )
             start_index = max(
-                range(lookback_start, floor_index + 1),
-                key=lambda index: levels[index].rms,
+                range(start_search_start, start_search_end),
+                key=lambda index: (
+                    levels[index].rms,
+                    index,
+                ),
             )
 
-            if start_index >= floor_index:
+            floor_search_start = max(
+                start_index + 1,
+                smoothed_floor_index - 1,
+            )
+            floor_search_end = min(
+                len(levels),
+                smoothed_floor_index + 2,
+            )
+            if floor_search_start >= floor_search_end:
                 continue
+
+            floor_index = min(
+                range(floor_search_start, floor_search_end),
+                key=lambda index: levels[index].rms,
+            )
 
             start_rms = levels[start_index].rms
             floor_rms = levels[floor_index].rms
             if start_rms <= floor_rms:
                 continue
 
+            floor_time = absolute_times[floor_index]
+
+            later_rises = [
+                rise
+                for rise in rises
+                if (
+                    rise.time_seconds > floor_time
+                    and rise.time_seconds - floor_time
+                    <= self._fade_observation_seconds
+                )
+            ]
+            rise_time = (
+                None
+                if not later_rises
+                else min(
+                    later_rises,
+                    key=lambda rise: rise.time_seconds,
+                ).time_seconds
+            )
+
             observed.append(
                 OutgoingFadeEvidence(
                     start_time_seconds=absolute_times[start_index],
-                    floor_time_seconds=absolute_times[floor_index],
-                    rise_time_seconds=rise.time_seconds,
+                    floor_time_seconds=floor_time,
+                    rise_time_seconds=rise_time,
                     start_rms=start_rms,
                     floor_rms=floor_rms,
                     descent_ratio=start_rms / max(floor_rms, 1e-9),
                     descent_consistency=self._descent_consistency(
-                        [
-                            level.rms
-                            for level in levels[start_index : floor_index + 1]
-                        ]
+                        rms_values[start_index : floor_index + 1]
                     ),
                 )
             )
@@ -606,10 +675,15 @@ class HybridAcousticSplitResolver:
         geometries: list[FadeGeometryEvidence] = []
 
         for outgoing in outgoing_fades:
+            anchor_time = (
+                outgoing.floor_time_seconds
+                if outgoing.rise_time_seconds is None
+                else outgoing.rise_time_seconds
+            )
             eligible = [
                 incoming
                 for incoming in incoming_fades
-                if incoming.start_time_seconds <= outgoing.rise_time_seconds
+                if incoming.start_time_seconds <= anchor_time
             ]
             if not eligible:
                 continue
@@ -619,7 +693,7 @@ class HybridAcousticSplitResolver:
                 key=lambda item: (
                     abs(
                         item.established_time_seconds
-                        - outgoing.rise_time_seconds
+                        - anchor_time
                     ),
                     -item.ascent_consistency,
                     -item.ascent_ratio,

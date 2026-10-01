@@ -482,7 +482,7 @@ def test_fade_routing_evidence_exposes_outgoing_fade_without_changing_boundaries
     assert not hasattr(evidence, "kind")
 
 
-def test_outgoing_fade_consistency_distinguishes_fluctuating_energy() -> None:
+def test_outgoing_fade_rejects_fluctuating_energy() -> None:
     values = [1000.0] * 200
     values[40:100] = [
         1200.0 if index % 2 == 0 else 300.0
@@ -499,14 +499,11 @@ def test_outgoing_fade_consistency_distinguishes_fluctuating_energy() -> None:
         ),
     )
 
-    assert evidence
-    fade = min(
-        evidence,
-        key=lambda item: abs(item.rise_time_seconds - 105.0),
+    assert not any(
+        fade.start_time_seconds <= 102.0
+        and fade.floor_time_seconds >= 104.9
+        for fade in evidence
     )
-
-    assert fade.descent_ratio > 1.0
-    assert fade.descent_consistency < 0.75
 
 
 def test_hybrid_observes_gradual_incoming_fade() -> None:
@@ -662,3 +659,64 @@ def test_fade_routing_evidence_exposes_reconciled_geometry() -> None:
     assert geometry.incoming in evidence.incoming_fades
     assert not hasattr(geometry, "kind")
     assert not hasattr(geometry, "outgoing_end_seconds")
+
+
+
+def test_outgoing_fade_exists_without_following_rise() -> None:
+    values = [1200.0] * 200
+    values[40:100] = [
+        1200.0 - index * (1020.0 / 59)
+        for index in range(60)
+    ]
+    values[100:] = [180.0] * 100
+
+    evidence = HybridAcousticSplitResolver().observe_outgoing_fades(
+        profile=_profile(values),
+        window=_window(
+            len(values),
+            start_time_seconds=100.0,
+        ),
+    )
+
+    assert evidence
+
+    fade = min(
+        evidence,
+        key=lambda item: abs(item.floor_time_seconds - 104.95),
+    )
+
+    assert fade.start_time_seconds == pytest.approx(102.0)
+    assert fade.floor_time_seconds == pytest.approx(104.95)
+    assert fade.rise_time_seconds is None
+    assert fade.start_rms > fade.floor_rms
+    assert fade.descent_ratio > 1.0
+    assert fade.descent_consistency == pytest.approx(1.0)
+
+
+def test_outgoing_fade_segment_stops_before_following_jingle_rise() -> None:
+    values = [1200.0] * 200
+    values[40:100] = [
+        1200.0 - index * (1020.0 / 59)
+        for index in range(60)
+    ]
+    values[100:117] = [3600.0] * 17
+    values[117:] = [1400.0] * 83
+
+    evidence = HybridAcousticSplitResolver().observe_outgoing_fades(
+        profile=_profile(values),
+        window=_window(
+            len(values),
+            start_time_seconds=100.0,
+        ),
+    )
+
+    assert evidence
+
+    fade = min(
+        evidence,
+        key=lambda item: abs(item.floor_time_seconds - 104.95),
+    )
+
+    assert fade.floor_time_seconds == pytest.approx(104.95)
+    assert fade.rise_time_seconds == pytest.approx(105.0)
+    assert fade.descent_consistency == pytest.approx(1.0)

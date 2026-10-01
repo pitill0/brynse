@@ -25,7 +25,7 @@ class OutgoingFadeEvidence:
 
     start_time_seconds: float
     floor_time_seconds: float
-    rise_time_seconds: float
+    rise_time_seconds: float | None
     start_rms: float
     floor_rms: float
     descent_ratio: float
@@ -36,8 +36,13 @@ class OutgoingFadeEvidence:
             raise ValueError("start_time_seconds must be non-negative")
         if self.floor_time_seconds < self.start_time_seconds:
             raise ValueError("floor_time_seconds must not precede start_time_seconds")
-        if self.rise_time_seconds < self.floor_time_seconds:
-            raise ValueError("rise_time_seconds must not precede floor_time_seconds")
+        if (
+            self.rise_time_seconds is not None
+            and self.rise_time_seconds < self.floor_time_seconds
+        ):
+            raise ValueError(
+                "rise_time_seconds must not precede floor_time_seconds"
+            )
         if self.start_rms < 0:
             raise ValueError("start_rms must be non-negative")
         if self.floor_rms < 0:
