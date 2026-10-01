@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -34,6 +35,8 @@ from brynse.multisignal import (
     MultiSignalCandidateResolver,
     MultiSignalTemporalResolver,
 )
+from brynse.transition_evidence import TransitionEvidenceState
+from brynse.transition_router import TransitionRoutingContext
 
 
 @dataclass(frozen=True)
@@ -168,6 +171,7 @@ class MultiSignalAcousticCandidateResolver:
         temporal_resolver: MultiSignalTemporalResolver | None = None,
         split_aligner: TemporalSplitAligner | None = None,
         incoming_refiner=None,
+        on_routing_context: Callable[[TransitionRoutingContext], None] | None = None,
     ) -> None:
         self._window_extractor = (
             window_extractor
@@ -221,6 +225,7 @@ class MultiSignalAcousticCandidateResolver:
 
         self._split_aligner = split_aligner if split_aligner is not None else TemporalSplitAligner()
         self._incoming_refiner = incoming_refiner
+        self._on_routing_context = on_routing_context
 
     def resolve_candidate(
         self,
@@ -253,6 +258,31 @@ class MultiSignalAcousticCandidateResolver:
         if selected is None:
             return None
 
+        routing_hypotheses = None
+
+        if self._on_routing_context is not None:
+            fade = self._temporal_resolver.observe_fade_routing_evidence(
+                profile=profile,
+                window=window,
+                semantic_time_seconds=candidate.time_seconds,
+            )
+            routing_hypotheses = (
+                self._incoming_refiner.observe_hypotheses(
+                    window=window,
+                    pcm8=pcm8,
+                )
+                if self._incoming_refiner is not None
+                else ()
+            )
+            self._on_routing_context(
+                TransitionRoutingContext(
+                    reference_time_seconds=candidate.time_seconds,
+                    evidence=TransitionEvidenceState(),
+                    hypotheses=routing_hypotheses,
+                    fade=fade,
+                )
+            )
+
         temporal = self._temporal_resolver.resolve(
             selected=selected,
             profile=profile,
@@ -264,12 +294,21 @@ class MultiSignalAcousticCandidateResolver:
             return None
 
         if self._incoming_refiner is not None:
-            temporal = self._incoming_refiner.refine(
-                decision=temporal,
-                window=window,
-                pcm8=pcm8,
-                pcm16=pcm16,
-            )
+            if routing_hypotheses is None:
+                temporal = self._incoming_refiner.refine(
+                    decision=temporal,
+                    window=window,
+                    pcm8=pcm8,
+                    pcm16=pcm16,
+                )
+            else:
+                temporal = self._incoming_refiner.refine(
+                    decision=temporal,
+                    window=window,
+                    pcm8=pcm8,
+                    pcm16=pcm16,
+                    hypotheses=routing_hypotheses,
+                )
 
         split = self._split_aligner.align(
             decision=temporal,

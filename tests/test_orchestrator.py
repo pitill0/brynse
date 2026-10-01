@@ -375,3 +375,172 @@ def test_multisignal_resolver_preserves_hard_cut_without_incoming_refiner() -> N
     assert resolution.temporal == original
     assert resolution.split == aligned
     assert aligner.decisions == [original]
+
+
+def test_multisignal_resolver_observes_routing_context_without_changing_decision() -> None:
+    from types import SimpleNamespace
+
+    from brynse.models import (
+        AcousticProfile,
+        DecodedPcm,
+        SplitDecision,
+        SplitKind,
+        TemporalSplitDecision,
+        TemporalSplitKind,
+    )
+    from brynse.orchestrator import MultiSignalAcousticCandidateResolver
+    from brynse.transition_evidence import FadeRoutingEvidence
+
+    window = _window()
+    pcm8 = DecodedPcm(
+        sample_rate=8000,
+        channels=1,
+        sample_width_bytes=2,
+        data=b"\x00\x00",
+    )
+    pcm16 = DecodedPcm(
+        sample_rate=16000,
+        channels=1,
+        sample_width_bytes=2,
+        data=b"\x00\x00",
+    )
+    profile = AcousticProfile(levels=())
+    selected = object()
+
+    original = TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        incoming_start_seconds=100.0,
+        outgoing_end_seconds=100.0,
+    )
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        incoming_start_seconds=102.0,
+        outgoing_end_seconds=100.0,
+    )
+    aligned = SplitDecision(
+        kind=SplitKind.EXCLUSION,
+        incoming_start=4100,
+        outgoing_end=4000,
+    )
+
+    fade = FadeRoutingEvidence()
+    hypothesis = SimpleNamespace(time_seconds=102.0)
+    hypotheses = (hypothesis,)
+
+    class WindowExtractor:
+        def extract(self, **kwargs):
+            return window
+
+    class Decoder:
+        def __init__(self, result):
+            self.result = result
+
+        def decode(self, acoustic_window):
+            assert acoustic_window is window
+            return self.result
+
+    class Analyzer:
+        def analyze(self, pcm):
+            assert pcm is pcm8
+            return profile
+
+    class CandidateResolver:
+        def resolve_acoustic_boundary(self, **kwargs):
+            return selected
+
+    class TemporalResolver:
+        def __init__(self):
+            self.fade_calls = []
+            self.resolve_calls = []
+
+        def observe_fade_routing_evidence(self, **kwargs):
+            self.fade_calls.append(kwargs)
+            return fade
+
+        def resolve(self, **kwargs):
+            self.resolve_calls.append(kwargs)
+            return original
+
+    class IncomingRefiner:
+        def __init__(self):
+            self.observe_calls = []
+            self.refine_calls = []
+
+        def observe_hypotheses(self, **kwargs):
+            self.observe_calls.append(kwargs)
+            return hypotheses
+
+        def refine(self, **kwargs):
+            self.refine_calls.append(kwargs)
+            return refined
+
+    class Aligner:
+        def align(self, **kwargs):
+            assert kwargs["decision"] is refined
+            return aligned
+
+    temporal_resolver = TemporalResolver()
+    incoming_refiner = IncomingRefiner()
+    observed = []
+
+    resolver = MultiSignalAcousticCandidateResolver(
+        window_extractor=WindowExtractor(),
+        decoder8=Decoder(pcm8),
+        decoder16=Decoder(pcm16),
+        analyzer=Analyzer(),
+        candidate_resolver=CandidateResolver(),
+        temporal_resolver=temporal_resolver,
+        split_aligner=Aligner(),
+        incoming_refiner=incoming_refiner,
+        on_routing_context=observed.append,
+    )
+
+    candidate = _track().as_boundary_candidate()
+
+    resolution = resolver.resolve_candidate(
+        candidate=candidate,
+        timeline=object(),
+        ring_buffer=object(),
+    )
+
+    assert resolution is not None
+    assert resolution.temporal is refined
+    assert resolution.split is aligned
+
+    assert len(observed) == 1
+    context = observed[0]
+
+    assert context.reference_time_seconds == candidate.time_seconds
+    assert context.evidence.as_dict() == {
+        "spectral_change": None,
+        "variability_ratio_8s": None,
+        "variability_ratio_16s": None,
+        "variability_ratio_24s": None,
+        "variability_ratio_40s": None,
+        "local_discontinuity_250ms": None,
+        "local_discontinuity_500ms": None,
+        "local_discontinuity_1s": None,
+        "local_discontinuity_2s": None,
+    }
+    assert context.fade is fade
+    assert context.hypotheses is hypotheses
+
+    assert temporal_resolver.fade_calls == [
+        {
+            "profile": profile,
+            "window": window,
+            "semantic_time_seconds": candidate.time_seconds,
+        }
+    ]
+
+    assert incoming_refiner.observe_calls == [
+        {
+            "window": window,
+            "pcm8": pcm8,
+        }
+    ]
+
+    assert len(incoming_refiner.refine_calls) == 1
+    refine_call = incoming_refiner.refine_calls[0]
+    assert refine_call["hypotheses"] is hypotheses
+    assert refine_call["decision"] is original
