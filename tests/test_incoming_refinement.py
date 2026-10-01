@@ -527,3 +527,52 @@ def test_incoming_pipeline_reports_observation_without_changing_decision() -> No
     assert observation.analyses == (analysis,)
     assert observation.selected_time_seconds == 102.0
     assert observation.decision == result
+
+
+def test_incoming_pipeline_exposes_hypotheses_without_refining() -> None:
+    from types import SimpleNamespace
+
+    from brynse.incoming_refinement import (
+        IncomingBoundaryDiscovery,
+        IncomingBoundaryPipeline,
+        IncomingBoundaryRefiner,
+    )
+
+    hypothesis = SimpleNamespace(time_seconds=102.0)
+
+    class Builder:
+        def __init__(self):
+            self.calls = []
+
+        def build(self, **kwargs):
+            self.calls.append(kwargs)
+            return (hypothesis,)
+
+    class Analyzer:
+        def analyze(self, **kwargs):
+            raise AssertionError("observe_hypotheses must not analyze")
+
+    builder = Builder()
+
+    pipeline = IncomingBoundaryPipeline(
+        hypothesis_builder=builder,
+        incoming_analyzer=Analyzer(),
+        discovery=IncomingBoundaryDiscovery(),
+        refiner=IncomingBoundaryRefiner(),
+    )
+
+    window = SimpleNamespace(start_time_seconds=90.0)
+    pcm8 = object()
+
+    hypotheses = pipeline.observe_hypotheses(
+        window=window,
+        pcm8=pcm8,
+    )
+
+    assert hypotheses == (hypothesis,)
+    assert builder.calls == [
+        {
+            "pcm": pcm8,
+            "absolute_start_time_seconds": 90.0,
+        }
+    ]

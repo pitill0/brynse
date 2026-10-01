@@ -172,6 +172,18 @@ class IncomingBoundaryPipeline:
         self._refiner = refiner
         self._on_observation = on_observation
 
+    def observe_hypotheses(
+        self,
+        *,
+        window,
+        pcm8,
+    ) -> tuple:
+        """Return reconciled acoustic hypotheses without refining a boundary."""
+        return self._hypothesis_builder.build(
+            pcm=pcm8,
+            absolute_start_time_seconds=window.start_time_seconds,
+        )
+
     def refine(
         self,
         *,
@@ -183,9 +195,9 @@ class IncomingBoundaryPipeline:
         absolute_start = window.start_time_seconds
         outgoing_end = decision.outgoing_end_seconds
 
-        hypotheses = self._hypothesis_builder.build(
-            pcm=pcm8,
-            absolute_start_time_seconds=absolute_start,
+        hypotheses = self.observe_hypotheses(
+            window=window,
+            pcm8=pcm8,
         )
 
         analyses = self._incoming_analyzer.analyze(
