@@ -588,3 +588,77 @@ def test_fade_routing_evidence_exposes_incoming_fades_descriptively() -> None:
     assert not hasattr(evidence, "incoming_start_seconds")
     assert not hasattr(evidence, "outgoing_end_seconds")
     assert not hasattr(evidence, "kind")
+
+
+def test_fade_geometry_reconciles_incoming_nearest_outgoing_rise() -> None:
+    from brynse.transition_evidence import (
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+
+    outgoing = OutgoingFadeEvidence(
+        start_time_seconds=100.0,
+        floor_time_seconds=104.0,
+        rise_time_seconds=106.0,
+        start_rms=1200.0,
+        floor_rms=100.0,
+        descent_ratio=12.0,
+        descent_consistency=0.95,
+    )
+
+    distant = IncomingFadeEvidence(
+        start_time_seconds=101.0,
+        established_time_seconds=102.0,
+        start_rms=100.0,
+        established_rms=800.0,
+        ascent_ratio=8.0,
+        ascent_consistency=0.9,
+        persistence_ratio=7.0,
+    )
+
+    nearest = IncomingFadeEvidence(
+        start_time_seconds=104.5,
+        established_time_seconds=105.9,
+        start_rms=100.0,
+        established_rms=1200.0,
+        ascent_ratio=12.0,
+        ascent_consistency=0.95,
+        persistence_ratio=10.0,
+    )
+
+    geometries = HybridAcousticSplitResolver.reconcile_fade_geometries(
+        outgoing_fades=(outgoing,),
+        incoming_fades=(distant, nearest),
+    )
+
+    assert len(geometries) == 1
+    assert geometries[0].outgoing is outgoing
+    assert geometries[0].incoming is nearest
+
+
+def test_fade_routing_evidence_exposes_reconciled_geometry() -> None:
+    values = [1000.0] * 200
+    values[40:100] = [
+        1200.0 - index * (1020.0 / 59)
+        for index in range(60)
+    ]
+    values[100:117] = [3600.0] * 17
+
+    evidence = HybridAcousticSplitResolver().observe_fade_routing_evidence(
+        profile=_profile(values),
+        window=_window(
+            len(values),
+            start_time_seconds=100.0,
+        ),
+        semantic_time_seconds=106.0,
+    )
+
+    assert evidence.outgoing_fades
+    assert evidence.incoming_fades
+    assert evidence.geometries
+
+    geometry = evidence.geometries[0]
+    assert geometry.outgoing in evidence.outgoing_fades
+    assert geometry.incoming in evidence.incoming_fades
+    assert not hasattr(geometry, "kind")
+    assert not hasattr(geometry, "outgoing_end_seconds")

@@ -80,6 +80,34 @@ class IncomingFadeEvidence:
 
 
 @dataclass(frozen=True)
+class FadeGeometryEvidence:
+    """Descriptive relation between outgoing and incoming fade geometry."""
+
+    outgoing: OutgoingFadeEvidence
+    incoming: IncomingFadeEvidence
+
+    @property
+    def outgoing_floor_seconds(self) -> float:
+        return self.outgoing.floor_time_seconds
+
+    @property
+    def incoming_start_seconds(self) -> float:
+        return self.incoming.start_time_seconds
+
+    @property
+    def separation_seconds(self) -> float:
+        return self.incoming_start_seconds - self.outgoing_floor_seconds
+
+    @property
+    def overlap_seconds(self) -> float:
+        return max(0.0, -self.separation_seconds)
+
+    @property
+    def gap_seconds(self) -> float:
+        return max(0.0, self.separation_seconds)
+
+
+@dataclass(frozen=True)
 class CrossfadeBasinEvidence:
     """Descriptive evidence for one crossfade-compatible quiet basin."""
 
@@ -110,6 +138,7 @@ class FadeRoutingEvidence:
     basins: tuple[CrossfadeBasinEvidence, ...] = ()
     outgoing_fades: tuple[OutgoingFadeEvidence, ...] = ()
     incoming_fades: tuple[IncomingFadeEvidence, ...] = ()
+    geometries: tuple[FadeGeometryEvidence, ...] = ()
 
 
 @dataclass(frozen=True)

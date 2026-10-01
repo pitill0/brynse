@@ -13,6 +13,7 @@ from brynse.models import (
 from brynse.transition_evidence import (
     CrossfadeBasinEvidence,
     CrossfadeRiseEvidence,
+    FadeGeometryEvidence,
     FadeRoutingEvidence,
     IncomingFadeEvidence,
     OutgoingFadeEvidence,
@@ -329,6 +330,15 @@ class HybridAcousticSplitResolver:
         semantic_time_seconds: float,
     ) -> FadeRoutingEvidence:
         """Compose descriptive fade evidence without resolving temporal boundaries."""
+        outgoing_fades = self.observe_outgoing_fades(
+            profile=profile,
+            window=window,
+        )
+        incoming_fades = self.observe_incoming_fades(
+            profile=profile,
+            window=window,
+        )
+
         return FadeRoutingEvidence(
             rise=self.observe_crossfade_rise(
                 profile=profile,
@@ -340,13 +350,11 @@ class HybridAcousticSplitResolver:
                 window=window,
                 semantic_time_seconds=semantic_time_seconds,
             ),
-            outgoing_fades=self.observe_outgoing_fades(
-                profile=profile,
-                window=window,
-            ),
-            incoming_fades=self.observe_incoming_fades(
-                profile=profile,
-                window=window,
+            outgoing_fades=outgoing_fades,
+            incoming_fades=incoming_fades,
+            geometries=self.reconcile_fade_geometries(
+                outgoing_fades=outgoing_fades,
+                incoming_fades=incoming_fades,
             ),
         )
 
@@ -584,6 +592,49 @@ class HybridAcousticSplitResolver:
             )
 
         return tuple(observed)
+
+    @staticmethod
+    def reconcile_fade_geometries(
+        *,
+        outgoing_fades: tuple[OutgoingFadeEvidence, ...],
+        incoming_fades: tuple[IncomingFadeEvidence, ...],
+    ) -> tuple[FadeGeometryEvidence, ...]:
+        """Pair each outgoing fade with the incoming fade nearest its rise."""
+        if not outgoing_fades or not incoming_fades:
+            return ()
+
+        geometries: list[FadeGeometryEvidence] = []
+
+        for outgoing in outgoing_fades:
+            eligible = [
+                incoming
+                for incoming in incoming_fades
+                if incoming.start_time_seconds <= outgoing.rise_time_seconds
+            ]
+            if not eligible:
+                continue
+
+            incoming = min(
+                eligible,
+                key=lambda item: (
+                    abs(
+                        item.established_time_seconds
+                        - outgoing.rise_time_seconds
+                    ),
+                    -item.ascent_consistency,
+                    -item.ascent_ratio,
+                    item.start_time_seconds,
+                ),
+            )
+
+            geometries.append(
+                FadeGeometryEvidence(
+                    outgoing=outgoing,
+                    incoming=incoming,
+                )
+            )
+
+        return tuple(geometries)
 
     @staticmethod
     def _ascent_consistency(

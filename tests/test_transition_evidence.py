@@ -236,3 +236,79 @@ def test_incoming_fade_evidence_preserves_descriptive_geometry() -> None:
     assert evidence.ascent_ratio > 1.0
     assert evidence.ascent_consistency == 1.0
     assert evidence.persistence_ratio > 1.0
+
+
+def test_fade_geometry_evidence_describes_gap_without_deciding_boundary() -> None:
+    from brynse.transition_evidence import (
+        FadeGeometryEvidence,
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+
+    outgoing = OutgoingFadeEvidence(
+        start_time_seconds=100.0,
+        floor_time_seconds=104.0,
+        rise_time_seconds=106.0,
+        start_rms=1200.0,
+        floor_rms=100.0,
+        descent_ratio=12.0,
+        descent_consistency=0.95,
+    )
+    incoming = IncomingFadeEvidence(
+        start_time_seconds=105.0,
+        established_time_seconds=106.0,
+        start_rms=100.0,
+        established_rms=1200.0,
+        ascent_ratio=12.0,
+        ascent_consistency=0.95,
+        persistence_ratio=10.0,
+    )
+
+    geometry = FadeGeometryEvidence(
+        outgoing=outgoing,
+        incoming=incoming,
+    )
+
+    assert geometry.outgoing_floor_seconds == 104.0
+    assert geometry.incoming_start_seconds == 105.0
+    assert geometry.separation_seconds == 1.0
+    assert geometry.gap_seconds == 1.0
+    assert geometry.overlap_seconds == 0.0
+    assert not hasattr(geometry, "kind")
+    assert not hasattr(geometry, "outgoing_end_seconds")
+
+
+def test_fade_geometry_evidence_describes_overlap_without_deciding_boundary() -> None:
+    from brynse.transition_evidence import (
+        FadeGeometryEvidence,
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+
+    outgoing = OutgoingFadeEvidence(
+        start_time_seconds=100.0,
+        floor_time_seconds=105.0,
+        rise_time_seconds=106.0,
+        start_rms=1200.0,
+        floor_rms=100.0,
+        descent_ratio=12.0,
+        descent_consistency=0.95,
+    )
+    incoming = IncomingFadeEvidence(
+        start_time_seconds=103.5,
+        established_time_seconds=106.0,
+        start_rms=100.0,
+        established_rms=1200.0,
+        ascent_ratio=12.0,
+        ascent_consistency=0.95,
+        persistence_ratio=10.0,
+    )
+
+    geometry = FadeGeometryEvidence(
+        outgoing=outgoing,
+        incoming=incoming,
+    )
+
+    assert geometry.separation_seconds == -1.5
+    assert geometry.overlap_seconds == 1.5
+    assert geometry.gap_seconds == 0.0
