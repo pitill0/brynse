@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
+from brynse.boundaries import BoundaryHypothesis
 from brynse.transition_evidence import TransitionEvidenceState
 
 
@@ -17,13 +19,26 @@ class TransitionKind(StrEnum):
     AMBIGUOUS = "ambiguous"
 
 
+@dataclass(frozen=True)
+class TransitionRoutingContext:
+    """Descriptive context available while choosing a transition specialist."""
+
+    reference_time_seconds: float
+    evidence: TransitionEvidenceState
+    hypotheses: tuple[BoundaryHypothesis, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.reference_time_seconds < 0:
+            raise ValueError("reference_time_seconds must be non-negative")
+
+
 class TransitionRouter(Protocol):
     """Classify transition context without choosing temporal boundaries."""
 
     def classify(
         self,
         *,
-        evidence: TransitionEvidenceState,
+        context: TransitionRoutingContext,
     ) -> TransitionKind:
         """Return which specialist owns the transition."""
         ...
