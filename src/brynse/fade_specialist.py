@@ -45,7 +45,7 @@ class FadeSpecialist:
         incoming_fades: tuple[IncomingFadeEvidence, ...],
         hypotheses: tuple[BoundaryHypothesis, ...],
     ) -> IncomingFadeSelection | None:
-        """Select the strongest incoming fade with boundary support."""
+        """Select incoming geometry with coherent boundary support."""
 
         if reference_time_seconds < 0:
             raise ValueError("reference_time_seconds must be non-negative")
@@ -53,61 +53,80 @@ class FadeSpecialist:
         if not incoming_fades or not hypotheses:
             return None
 
-        eligible_fades = [
-            fade
-            for fade in incoming_fades
-            if fade.start_time_seconds >= reference_time_seconds
-        ]
-        if not eligible_fades:
-            return None
-
         candidates = []
 
-        for fade in eligible_fades:
+        for fade in incoming_fades:
+            # A region already fully established before the transition cannot
+            # describe the incoming side of this transition.
+            if fade.established_time_seconds < reference_time_seconds:
+                continue
+
+            # If the transition precedes the region, its onset is the natural
+            # incoming anchor. If the transition falls inside the region,
+            # establishment is the meaningful later edge.
+            if fade.start_time_seconds >= reference_time_seconds:
+                anchor_time = fade.start_time_seconds
+            else:
+                anchor_time = fade.established_time_seconds
+
+            supported_hypotheses = [
+                hypothesis
+                for hypothesis in hypotheses
+                if hypothesis.time_seconds >= fade.start_time_seconds
+            ]
+            if not supported_hypotheses:
+                continue
+
             hypothesis = min(
-                hypotheses,
+                supported_hypotheses,
                 key=lambda item: (
-                    abs(
-                        fade.start_time_seconds
-                        - item.time_seconds
-                    ),
+                    abs(anchor_time - item.time_seconds),
+                    abs(anchor_time - reference_time_seconds),
                     cls._confidence_rank[item.confidence],
                     item.time_seconds,
                 ),
             )
-            distance = abs(
-                fade.start_time_seconds
-                - hypothesis.time_seconds
+
+            support_distance = abs(
+                anchor_time - hypothesis.time_seconds
+            )
+            transition_distance = abs(
+                anchor_time - reference_time_seconds
             )
 
             candidates.append(
                 (
+                    support_distance,
+                    transition_distance,
                     -fade.ascent_consistency,
                     -fade.ascent_ratio,
                     -fade.persistence_ratio,
-                    distance,
                     cls._confidence_rank[hypothesis.confidence],
-                    -fade.start_time_seconds,
+                    anchor_time,
                     fade,
                     hypothesis,
                 )
             )
 
+        if not candidates:
+            return None
+
         (
+            support_distance,
+            _transition_distance,
             _consistency,
             _ratio,
             _persistence,
-            distance,
             _confidence,
-            _start,
+            _anchor,
             fade,
             hypothesis,
-        ) = min(candidates, key=lambda item: item[:6])
+        ) = min(candidates, key=lambda item: item[:7])
 
         return IncomingFadeSelection(
             fade=fade,
             hypothesis=hypothesis,
-            support_distance_seconds=distance,
+            support_distance_seconds=support_distance,
         )
 
     @classmethod
