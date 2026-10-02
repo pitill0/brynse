@@ -39,10 +39,7 @@ from brynse.multisignal import (
     MultiSignalCandidateResolver,
     MultiSignalTemporalResolver,
 )
-from brynse.transition_evidence import (
-    FadeRoutingEvidence,
-    TransitionEvidenceExtractor,
-)
+from brynse.transition_evidence import TransitionEvidenceExtractor
 from brynse.transition_router import (
     DefaultTransitionRouter,
     TransitionKind,
@@ -76,49 +73,6 @@ class AcousticCandidateResolution(CandidateResolution):
 
     acoustic: AcousticBoundaryCandidate
     relation: BoundaryRelationResult
-
-
-def _apply_outgoing_fade_clamp(
-    *,
-    decision: TemporalSplitDecision,
-    selection: OutgoingFadeSelection | None,
-) -> TemporalSplitDecision:
-    """Clamp only the outgoing edge when the fade specialist ends earlier."""
-
-    if selection is None:
-        return decision
-
-    outgoing_end = selection.fade.floor_time_seconds
-    if outgoing_end >= decision.outgoing_end_seconds:
-        return decision
-
-    incoming_start = decision.incoming_start_seconds
-
-    if decision.kind is TemporalSplitKind.HARD_CUT:
-        return TemporalSplitDecision(
-            kind=TemporalSplitKind.EXCLUSION,
-            incoming_start_seconds=incoming_start,
-            outgoing_end_seconds=outgoing_end,
-        )
-
-    if decision.kind is TemporalSplitKind.EXCLUSION:
-        return TemporalSplitDecision(
-            kind=TemporalSplitKind.EXCLUSION,
-            incoming_start_seconds=incoming_start,
-            outgoing_end_seconds=outgoing_end,
-        )
-
-    if decision.kind is TemporalSplitKind.CROSSFADE:
-        if outgoing_end <= incoming_start:
-            return decision
-
-        return TemporalSplitDecision(
-            kind=TemporalSplitKind.CROSSFADE,
-            incoming_start_seconds=incoming_start,
-            outgoing_end_seconds=outgoing_end,
-        )
-
-    raise RuntimeError(f"unsupported temporal split kind: {decision.kind}")
 
 
 class CandidateResolver(Protocol):
@@ -329,39 +283,7 @@ class MultiSignalAcousticCandidateResolver:
         if selected is None:
             return None
 
-        observe_fade = getattr(
-            self._temporal_resolver,
-            "observe_fade_routing_evidence",
-            None,
-        )
-        fade = (
-            observe_fade(
-                profile=profile,
-                window=window,
-                semantic_time_seconds=candidate.time_seconds,
-            )
-            if callable(observe_fade)
-            else FadeRoutingEvidence()
-        )
-
-        observe_hypotheses = (
-            getattr(
-                self._incoming_refiner,
-                "observe_hypotheses",
-                None,
-            )
-            if self._incoming_refiner is not None
-            else None
-        )
-        routing_hypotheses = (
-            observe_hypotheses(
-                window=window,
-                pcm8=pcm8,
-            )
-            if callable(observe_hypotheses)
-            else None
-        )
-
+        routing_hypotheses = None
         routing_context = None
         routing_kind = None
 
@@ -369,17 +291,26 @@ class MultiSignalAcousticCandidateResolver:
             self._on_routing_context is not None
             or self._on_routing_observation is not None
         ):
+            fade = self._temporal_resolver.observe_fade_routing_evidence(
+                profile=profile,
+                window=window,
+                semantic_time_seconds=candidate.time_seconds,
+            )
+            routing_hypotheses = (
+                self._incoming_refiner.observe_hypotheses(
+                    window=window,
+                    pcm8=pcm8,
+                )
+                if self._incoming_refiner is not None
+                else ()
+            )
             routing_context = TransitionRoutingContext(
                 reference_time_seconds=candidate.time_seconds,
                 evidence=TransitionEvidenceExtractor().extract(
                     spectral=None,
                     local_discontinuity=selected.local_discontinuity,
                 ),
-                hypotheses=(
-                    ()
-                    if routing_hypotheses is None
-                    else routing_hypotheses
-                ),
+                hypotheses=routing_hypotheses,
                 fade=fade,
             )
 
@@ -418,23 +349,15 @@ class MultiSignalAcousticCandidateResolver:
                     hypotheses=routing_hypotheses,
                 )
 
-        outgoing_fade_selection = FadeSpecialist.select_outgoing(
-            reference_time_seconds=candidate.time_seconds,
-            outgoing_fades=fade.outgoing_fades,
-            hypotheses=(
-                ()
-                if routing_hypotheses is None
-                else routing_hypotheses
-            ),
-        )
-        temporal = _apply_outgoing_fade_clamp(
-            decision=temporal,
-            selection=outgoing_fade_selection,
-        )
-
         if self._on_routing_observation is not None:
-            if routing_kind is None:
+            if routing_context is None or routing_kind is None:
                 raise RuntimeError("routing observation requires classified context")
+
+            outgoing_fade_selection = FadeSpecialist.select_outgoing(
+                reference_time_seconds=routing_context.reference_time_seconds,
+                outgoing_fades=routing_context.fade.outgoing_fades,
+                hypotheses=routing_context.hypotheses,
+            )
 
             self._on_routing_observation(
                 TransitionRoutingObservation(
