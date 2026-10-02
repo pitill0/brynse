@@ -137,6 +137,11 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
         "fade_outgoing_selected_floor_seconds": 100.0,
         "fade_outgoing_selected_support_seconds": 101.1,
         "fade_outgoing_selected_distance_seconds": 1.1,
+        "fade_incoming_selected": False,
+        "fade_incoming_selected_start_seconds": None,
+        "fade_incoming_selected_established_seconds": None,
+        "fade_incoming_selected_support_seconds": None,
+        "fade_incoming_selected_distance_seconds": None,
         "fade_outgoing_detail": [
             {
                 "start_time_seconds": 99.0,

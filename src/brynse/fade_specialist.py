@@ -3,7 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from brynse.boundaries import BoundaryConfidence, BoundaryHypothesis
-from brynse.transition_evidence import OutgoingFadeEvidence
+from brynse.transition_evidence import (
+    IncomingFadeEvidence,
+    OutgoingFadeEvidence,
+)
 
 
 @dataclass(frozen=True)
@@ -11,6 +14,15 @@ class OutgoingFadeSelection:
     """Descriptive association between an outgoing fade and boundary evidence."""
 
     fade: OutgoingFadeEvidence
+    hypothesis: BoundaryHypothesis
+    support_distance_seconds: float
+
+
+@dataclass(frozen=True)
+class IncomingFadeSelection:
+    """Descriptive association between an incoming fade and boundary evidence."""
+
+    fade: IncomingFadeEvidence
     hypothesis: BoundaryHypothesis
     support_distance_seconds: float
 
@@ -24,6 +36,79 @@ class FadeSpecialist:
         BoundaryConfidence.LOW: 2,
         BoundaryConfidence.UNRESOLVED: 3,
     }
+
+    @classmethod
+    def select_incoming(
+        cls,
+        *,
+        reference_time_seconds: float,
+        incoming_fades: tuple[IncomingFadeEvidence, ...],
+        hypotheses: tuple[BoundaryHypothesis, ...],
+    ) -> IncomingFadeSelection | None:
+        """Select the strongest incoming fade with boundary support."""
+
+        if reference_time_seconds < 0:
+            raise ValueError("reference_time_seconds must be non-negative")
+
+        if not incoming_fades or not hypotheses:
+            return None
+
+        eligible_fades = [
+            fade
+            for fade in incoming_fades
+            if fade.start_time_seconds >= reference_time_seconds
+        ]
+        if not eligible_fades:
+            return None
+
+        candidates = []
+
+        for fade in eligible_fades:
+            hypothesis = min(
+                hypotheses,
+                key=lambda item: (
+                    abs(
+                        fade.start_time_seconds
+                        - item.time_seconds
+                    ),
+                    cls._confidence_rank[item.confidence],
+                    item.time_seconds,
+                ),
+            )
+            distance = abs(
+                fade.start_time_seconds
+                - hypothesis.time_seconds
+            )
+
+            candidates.append(
+                (
+                    -fade.ascent_consistency,
+                    -fade.ascent_ratio,
+                    -fade.persistence_ratio,
+                    distance,
+                    cls._confidence_rank[hypothesis.confidence],
+                    -fade.start_time_seconds,
+                    fade,
+                    hypothesis,
+                )
+            )
+
+        (
+            _consistency,
+            _ratio,
+            _persistence,
+            distance,
+            _confidence,
+            _start,
+            fade,
+            hypothesis,
+        ) = min(candidates, key=lambda item: item[:6])
+
+        return IncomingFadeSelection(
+            fade=fade,
+            hypothesis=hypothesis,
+            support_distance_seconds=distance,
+        )
 
     @classmethod
     def select_outgoing(

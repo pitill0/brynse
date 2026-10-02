@@ -113,6 +113,7 @@ def _routing_trace_record(observation) -> dict[str, object]:
     evidence = context.evidence
     temporal = observation.temporal
     outgoing_selection = observation.outgoing_fade_selection
+    incoming_selection = observation.incoming_fade_selection
 
     local_values = (
         evidence.local_discontinuity_250ms,
@@ -212,6 +213,27 @@ def _routing_trace_record(observation) -> dict[str, object]:
             None
             if outgoing_selection is None
             else round(outgoing_selection.support_distance_seconds, 6)
+        ),
+        "fade_incoming_selected": incoming_selection is not None,
+        "fade_incoming_selected_start_seconds": (
+            None
+            if incoming_selection is None
+            else incoming_selection.fade.start_time_seconds
+        ),
+        "fade_incoming_selected_established_seconds": (
+            None
+            if incoming_selection is None
+            else incoming_selection.fade.established_time_seconds
+        ),
+        "fade_incoming_selected_support_seconds": (
+            None
+            if incoming_selection is None
+            else incoming_selection.hypothesis.time_seconds
+        ),
+        "fade_incoming_selected_distance_seconds": (
+            None
+            if incoming_selection is None
+            else round(incoming_selection.support_distance_seconds, 6)
         ),
         "fade_outgoing_detail": outgoing_fades_detail,
         "fade_incoming_detail": incoming_fades_detail,

@@ -15,6 +15,7 @@ from brynse.acoustic import (
 from brynse.buffer import EncodedAudioRingBuffer
 from brynse.fade_specialist import (
     FadeSpecialist,
+    IncomingFadeSelection,
     OutgoingFadeSelection,
 )
 from brynse.frames import IncrementalFrameTimeline
@@ -65,6 +66,7 @@ class TransitionRoutingObservation:
     kind: TransitionKind
     temporal: TemporalSplitDecision
     outgoing_fade_selection: OutgoingFadeSelection | None = None
+    incoming_fade_selection: IncomingFadeSelection | None = None
 
 
 @dataclass(frozen=True)

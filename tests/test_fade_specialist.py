@@ -7,7 +7,10 @@ from brynse.boundaries import (
     BoundaryProposalSource,
 )
 from brynse.fade_specialist import FadeSpecialist
-from brynse.transition_evidence import OutgoingFadeEvidence
+from brynse.transition_evidence import (
+    IncomingFadeEvidence,
+    OutgoingFadeEvidence,
+)
 
 
 def _fade(
@@ -211,4 +214,227 @@ def test_outgoing_selection_uses_confidence_only_after_equal_distance() -> None:
 
     assert selection is not None
     assert selection.fade is fade
+    assert selection.hypothesis is high
+
+
+def _incoming_fade(
+    *,
+    start: float,
+    established: float,
+    ratio: float = 5.0,
+    consistency: float = 0.9,
+    persistence: float = 4.0,
+) -> IncomingFadeEvidence:
+    return IncomingFadeEvidence(
+        start_time_seconds=start,
+        established_time_seconds=established,
+        start_rms=200.0,
+        established_rms=200.0 * ratio,
+        ascent_ratio=ratio,
+        ascent_consistency=consistency,
+        persistence_ratio=persistence,
+    )
+
+
+def test_incoming_selection_requires_fade_and_boundary_evidence() -> None:
+    fade = _incoming_fade(start=105.0, established=106.0)
+    hypothesis = _hypothesis(time=105.1)
+
+    assert (
+        FadeSpecialist.select_incoming(
+            reference_time_seconds=103.0,
+            incoming_fades=(),
+            hypotheses=(hypothesis,),
+        )
+        is None
+    )
+
+    assert (
+        FadeSpecialist.select_incoming(
+            reference_time_seconds=103.0,
+            incoming_fades=(fade,),
+            hypotheses=(),
+        )
+        is None
+    )
+
+
+def test_incoming_selection_rejects_negative_reference_time() -> None:
+    with pytest.raises(ValueError, match="reference_time_seconds"):
+        FadeSpecialist.select_incoming(
+            reference_time_seconds=-0.01,
+            incoming_fades=(),
+            hypotheses=(),
+        )
+
+
+def test_incoming_selection_ignores_fade_before_reference() -> None:
+    before = _incoming_fade(
+        start=101.0,
+        established=102.0,
+        ratio=20.0,
+    )
+    after = _incoming_fade(
+        start=106.0,
+        established=107.0,
+        ratio=5.0,
+    )
+
+    selection = FadeSpecialist.select_incoming(
+        reference_time_seconds=105.0,
+        incoming_fades=(before, after),
+        hypotheses=(
+            _hypothesis(time=101.0),
+            _hypothesis(time=106.1),
+        ),
+    )
+
+    assert selection is not None
+    assert selection.fade is after
+
+
+def test_incoming_selection_prefers_consistent_region_over_nearer_support() -> None:
+    inconsistent_near = _incoming_fade(
+        start=105.0,
+        established=106.0,
+        ratio=10.0,
+        consistency=0.55,
+        persistence=8.0,
+    )
+    consistent_supported = _incoming_fade(
+        start=108.0,
+        established=109.0,
+        ratio=5.0,
+        consistency=0.95,
+        persistence=4.0,
+    )
+
+    selection = FadeSpecialist.select_incoming(
+        reference_time_seconds=103.0,
+        incoming_fades=(inconsistent_near, consistent_supported),
+        hypotheses=(
+            _hypothesis(time=105.01),
+            _hypothesis(time=108.3),
+        ),
+    )
+
+    assert selection is not None
+    assert selection.fade is consistent_supported
+    assert selection.hypothesis.time_seconds == pytest.approx(108.3)
+    assert selection.support_distance_seconds == pytest.approx(0.3)
+
+
+def test_incoming_selection_uses_ratio_after_consistency() -> None:
+    weaker = _incoming_fade(
+        start=105.0,
+        established=106.0,
+        ratio=4.0,
+        consistency=0.9,
+        persistence=6.0,
+    )
+    stronger = _incoming_fade(
+        start=108.0,
+        established=109.0,
+        ratio=9.0,
+        consistency=0.9,
+        persistence=3.0,
+    )
+
+    selection = FadeSpecialist.select_incoming(
+        reference_time_seconds=103.0,
+        incoming_fades=(weaker, stronger),
+        hypotheses=(
+            _hypothesis(time=105.0),
+            _hypothesis(time=108.2),
+        ),
+    )
+
+    assert selection is not None
+    assert selection.fade is stronger
+
+
+def test_incoming_selection_uses_persistence_after_equal_shape() -> None:
+    weaker_persistence = _incoming_fade(
+        start=105.0,
+        established=106.0,
+        ratio=8.0,
+        consistency=0.9,
+        persistence=3.0,
+    )
+    stronger_persistence = _incoming_fade(
+        start=108.0,
+        established=109.0,
+        ratio=8.0,
+        consistency=0.9,
+        persistence=7.0,
+    )
+
+    selection = FadeSpecialist.select_incoming(
+        reference_time_seconds=103.0,
+        incoming_fades=(weaker_persistence, stronger_persistence),
+        hypotheses=(
+            _hypothesis(time=105.0),
+            _hypothesis(time=108.2),
+        ),
+    )
+
+    assert selection is not None
+    assert selection.fade is stronger_persistence
+
+
+def test_incoming_selection_uses_boundary_distance_after_fade_strength() -> None:
+    first = _incoming_fade(
+        start=105.0,
+        established=106.0,
+        ratio=8.0,
+        consistency=0.9,
+        persistence=5.0,
+    )
+    second = _incoming_fade(
+        start=108.0,
+        established=109.0,
+        ratio=8.0,
+        consistency=0.9,
+        persistence=5.0,
+    )
+
+    selection = FadeSpecialist.select_incoming(
+        reference_time_seconds=103.0,
+        incoming_fades=(first, second),
+        hypotheses=(
+            _hypothesis(time=105.4),
+            _hypothesis(time=108.1),
+        ),
+    )
+
+    assert selection is not None
+    assert selection.fade is second
+    assert selection.support_distance_seconds == pytest.approx(0.1)
+
+
+def test_incoming_selection_uses_confidence_only_after_equal_distance() -> None:
+    fade = _incoming_fade(
+        start=105.0,
+        established=106.0,
+        ratio=8.0,
+        consistency=0.9,
+        persistence=5.0,
+    )
+
+    unresolved = _hypothesis(
+        time=104.8,
+        confidence=BoundaryConfidence.UNRESOLVED,
+    )
+    high = _hypothesis(
+        time=105.2,
+        confidence=BoundaryConfidence.HIGH,
+    )
+
+    selection = FadeSpecialist.select_incoming(
+        reference_time_seconds=103.0,
+        incoming_fades=(fade,),
+        hypotheses=(unresolved, high),
+    )
+
+    assert selection is not None
     assert selection.hypothesis is high
