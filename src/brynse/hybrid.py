@@ -719,30 +719,20 @@ class HybridAcousticSplitResolver:
     def _ascent_consistency(
         rms_values: list[float],
     ) -> float:
-        """Return how consistently a local RMS envelope ascends."""
+        """Return how consistently the observed RMS region ascends."""
         if len(rms_values) < 2:
             return 0.0
-
-        smoothed = [
-            statistics.median(
-                rms_values[
-                    max(0, index - 1) :
-                    min(len(rms_values), index + 2)
-                ]
-            )
-            for index in range(len(rms_values))
-        ]
 
         ascending = sum(
             right >= left
             for left, right in zip(
-                smoothed,
-                smoothed[1:],
+                rms_values,
+                rms_values[1:],
                 strict=False,
             )
         )
 
-        return ascending / (len(smoothed) - 1)
+        return ascending / (len(rms_values) - 1)
 
     def observe_incoming_fades(
         self,
@@ -750,9 +740,9 @@ class HybridAcousticSplitResolver:
         profile: AcousticProfile,
         window: AcousticWindow,
     ) -> tuple[IncomingFadeEvidence, ...]:
-        """Describe gradual RMS ascent geometry across the analysis window."""
+        """Describe sustained ascending RMS-envelope segments."""
         levels = profile.levels
-        if len(levels) < self._persistence_span_levels + 2:
+        if len(levels) < 2:
             return ()
 
         durations = [
@@ -767,27 +757,109 @@ class HybridAcousticSplitResolver:
             2,
             round(self._fade_observation_seconds / level_seconds),
         )
+
         absolute_times = [
             window.start_time_seconds + level.start_time_seconds
             for level in levels
         ]
+        rms_values = [level.rms for level in levels]
+        smoothed = [
+            statistics.median(
+                rms_values[
+                    max(0, index - 1) :
+                    min(len(rms_values), index + 2)
+                ]
+            )
+            for index in range(len(rms_values))
+        ]
+
+        segments: list[tuple[int, int, int]] = []
+
+        segment_start: int | None = None
+        peak_index: int | None = None
+        segment_end: int | None = None
+
+        def close_segment() -> None:
+            nonlocal segment_start, peak_index, segment_end
+
+            if (
+                segment_start is not None
+                and peak_index is not None
+                and segment_end is not None
+                and segment_end - segment_start
+                >= self._edge_span_levels
+            ):
+                segments.append(
+                    (
+                        segment_start,
+                        peak_index,
+                        segment_end,
+                    )
+                )
+
+            segment_start = None
+            peak_index = None
+            segment_end = None
+
+        for index in range(1, len(smoothed)):
+            previous = smoothed[index - 1]
+            current = smoothed[index]
+
+            if segment_start is None:
+                if current > previous:
+                    segment_start = index - 1
+                    peak_index = index
+                    segment_end = index
+                continue
+
+            assert peak_index is not None
+
+            start_level = smoothed[segment_start]
+
+            if current <= start_level:
+                close_segment()
+                continue
+
+            segment_end = index
+
+            if current > smoothed[peak_index]:
+                peak_index = index
+
+        close_segment()
 
         observed: list[IncomingFadeEvidence] = []
 
-        for start_index in range(
-            0,
-            len(levels) - self._persistence_span_levels,
-        ):
-            end_index = min(
-                len(levels) - self._persistence_span_levels,
-                start_index + lookahead_levels,
+        for raw_start_index, raw_peak_index, raw_end_index in segments:
+            start_search_start = max(
+                0,
+                raw_start_index - 1,
             )
-            if end_index <= start_index:
+            start_search_end = min(
+                len(levels),
+                raw_start_index + 2,
+            )
+            start_index = min(
+                range(start_search_start, start_search_end),
+                key=lambda index: (
+                    levels[index].rms,
+                    -index,
+                ),
+            )
+
+            established_search_end = min(
+                len(levels),
+                raw_peak_index + 2,
+                start_index + lookahead_levels + 1,
+            )
+            if established_search_end <= start_index + 1:
                 continue
 
             established_index = max(
-                range(start_index + 1, end_index + 1),
-                key=lambda index: levels[index].rms,
+                range(start_index + 1, established_search_end),
+                key=lambda index: (
+                    levels[index].rms,
+                    -index,
+                ),
             )
 
             start_rms = levels[start_index].rms
@@ -796,13 +868,20 @@ class HybridAcousticSplitResolver:
             if established_rms <= start_rms:
                 continue
 
-            persistence = statistics.mean(
+            persistence_end = min(
+                len(levels),
+                established_index + self._persistence_span_levels,
+            )
+            persistence_values = [
                 level.rms
                 for level in levels[
-                    established_index :
-                    established_index + self._persistence_span_levels
+                    established_index:persistence_end
                 ]
-            )
+            ]
+            if not persistence_values:
+                continue
+
+            persistence = statistics.mean(persistence_values)
 
             observed.append(
                 IncomingFadeEvidence(
@@ -814,16 +893,13 @@ class HybridAcousticSplitResolver:
                         established_rms / max(start_rms, 1e-9)
                     ),
                     ascent_consistency=self._ascent_consistency(
-                        [
-                            level.rms
-                            for level in levels[
-                                start_index :
-                                min(
-                                    len(levels),
-                                    established_index
-                                    + self._persistence_span_levels,
-                                )
-                            ]
+                        rms_values[
+                            start_index :
+                            min(
+                                raw_end_index,
+                                start_index + lookahead_levels,
+                            )
+                            + 1
                         ]
                     ),
                     persistence_ratio=(

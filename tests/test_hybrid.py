@@ -522,12 +522,9 @@ def test_hybrid_observes_gradual_incoming_fade() -> None:
         ),
     )
 
-    assert evidence
+    assert len(evidence) == 1
 
-    fade = min(
-        evidence,
-        key=lambda item: abs(item.start_time_seconds - 102.0),
-    )
+    fade = evidence[0]
 
     assert fade.start_time_seconds == pytest.approx(102.0)
     assert fade.established_time_seconds >= fade.start_time_seconds
@@ -553,15 +550,41 @@ def test_incoming_fade_consistency_distinguishes_fluctuating_energy() -> None:
         ),
     )
 
-    assert evidence
+    assert len(evidence) == 1
 
-    fade = min(
-        evidence,
-        key=lambda item: abs(item.start_time_seconds - 102.0),
-    )
+    fade = evidence[0]
 
     assert fade.ascent_ratio > 1.0
     assert fade.ascent_consistency < 0.75
+
+
+def test_incoming_fade_observer_emits_distinct_ascending_regions() -> None:
+    values = [180.0] * 200
+
+    values[40:60] = [
+        180.0 + index * (620.0 / 19)
+        for index in range(20)
+    ]
+    values[60:80] = [800.0] * 20
+    values[80:100] = [180.0] * 20
+
+    values[120:140] = [
+        180.0 + index * (1020.0 / 19)
+        for index in range(20)
+    ]
+    values[140:160] = [1200.0] * 20
+
+    evidence = HybridAcousticSplitResolver().observe_incoming_fades(
+        profile=_profile(values),
+        window=_window(
+            len(values),
+            start_time_seconds=100.0,
+        ),
+    )
+
+    assert len(evidence) == 2
+    assert evidence[0].start_time_seconds == pytest.approx(102.0)
+    assert evidence[1].start_time_seconds == pytest.approx(106.0)
 
 
 def test_fade_routing_evidence_exposes_incoming_fades_descriptively() -> None:
