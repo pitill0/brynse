@@ -354,6 +354,7 @@ class MultiSignalAcousticCandidateResolver:
                 raise RuntimeError("routing observation requires classified context")
 
             outgoing_fade_selection = FadeSpecialist.select_outgoing(
+                reference_time_seconds=routing_context.reference_time_seconds,
                 outgoing_fades=routing_context.fade.outgoing_fades,
                 hypotheses=routing_context.hypotheses,
             )

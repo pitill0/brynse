@@ -29,40 +29,66 @@ class FadeSpecialist:
     def select_outgoing(
         cls,
         *,
+        reference_time_seconds: float,
         outgoing_fades: tuple[OutgoingFadeEvidence, ...],
         hypotheses: tuple[BoundaryHypothesis, ...],
     ) -> OutgoingFadeSelection | None:
-        """Associate an outgoing fade floor with its nearest boundary hypothesis."""
+        """Select the strongest outgoing fade with boundary support."""
+
+        if reference_time_seconds < 0:
+            raise ValueError("reference_time_seconds must be non-negative")
 
         if not outgoing_fades or not hypotheses:
             return None
 
-        pairs = [
-            (
-                abs(
-                    fade.floor_time_seconds
-                    - hypothesis.time_seconds
-                ),
-                cls._confidence_rank[hypothesis.confidence],
-                -fade.descent_consistency,
-                -fade.descent_ratio,
-                -fade.floor_time_seconds,
-                fade,
-                hypothesis,
-            )
+        eligible_fades = [
+            fade
             for fade in outgoing_fades
-            for hypothesis in hypotheses
+            if fade.start_time_seconds <= reference_time_seconds
         ]
+        if not eligible_fades:
+            return None
+
+        candidates = []
+
+        for fade in eligible_fades:
+            hypothesis = min(
+                hypotheses,
+                key=lambda item: (
+                    abs(
+                        fade.floor_time_seconds
+                        - item.time_seconds
+                    ),
+                    cls._confidence_rank[item.confidence],
+                    item.time_seconds,
+                ),
+            )
+            distance = abs(
+                fade.floor_time_seconds
+                - hypothesis.time_seconds
+            )
+
+            candidates.append(
+                (
+                    -fade.descent_ratio,
+                    -fade.descent_consistency,
+                    distance,
+                    cls._confidence_rank[hypothesis.confidence],
+                    -fade.floor_time_seconds,
+                    fade,
+                    hypothesis,
+                )
+            )
 
         (
+            _ratio,
+            _consistency,
             distance,
             _confidence,
-            _consistency,
-            _ratio,
             _floor,
             fade,
             hypothesis,
-        ) = min(pairs, key=lambda item: item[:5])
+        ) = min(candidates, key=lambda item: item[:5])
 
         return OutgoingFadeSelection(
             fade=fade,
