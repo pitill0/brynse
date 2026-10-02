@@ -360,6 +360,11 @@ class MultiSignalAcousticCandidateResolver:
                 outgoing_fades=routing_context.fade.outgoing_fades,
                 hypotheses=routing_context.hypotheses,
             )
+            incoming_fade_selection = FadeSpecialist.select_incoming(
+                reference_time_seconds=routing_context.reference_time_seconds,
+                incoming_fades=routing_context.fade.incoming_fades,
+                hypotheses=routing_context.hypotheses,
+            )
 
             self._on_routing_observation(
                 TransitionRoutingObservation(
@@ -367,6 +372,7 @@ class MultiSignalAcousticCandidateResolver:
                     kind=routing_kind,
                     temporal=temporal,
                     outgoing_fade_selection=outgoing_fade_selection,
+                    incoming_fade_selection=incoming_fade_selection,
                 )
             )
 
