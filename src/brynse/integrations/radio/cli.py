@@ -112,6 +112,7 @@ def _routing_trace_record(observation) -> dict[str, object]:
     context = observation.context
     evidence = context.evidence
     temporal = observation.temporal
+    outgoing_selection = observation.outgoing_fade_selection
 
     local_values = (
         evidence.local_discontinuity_250ms,
@@ -196,6 +197,22 @@ def _routing_trace_record(observation) -> dict[str, object]:
         "fade_outgoing_count": len(context.fade.outgoing_fades),
         "fade_incoming_count": len(context.fade.incoming_fades),
         "fade_geometry_count": len(context.fade.geometries),
+        "fade_outgoing_selected": outgoing_selection is not None,
+        "fade_outgoing_selected_floor_seconds": (
+            None
+            if outgoing_selection is None
+            else outgoing_selection.fade.floor_time_seconds
+        ),
+        "fade_outgoing_selected_support_seconds": (
+            None
+            if outgoing_selection is None
+            else outgoing_selection.hypothesis.time_seconds
+        ),
+        "fade_outgoing_selected_distance_seconds": (
+            None
+            if outgoing_selection is None
+            else round(outgoing_selection.support_distance_seconds, 6)
+        ),
         "fade_outgoing_detail": outgoing_fades_detail,
         "fade_incoming_detail": incoming_fades_detail,
         "fade_geometry_detail": fade_geometries_detail,

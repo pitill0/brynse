@@ -10,6 +10,7 @@ from brynse.boundaries import (
     BoundaryProposal,
     BoundaryProposalSource,
 )
+from brynse.fade_specialist import OutgoingFadeSelection
 from brynse.integrations.radio import cli
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
 from brynse.orchestrator import TransitionRoutingObservation
@@ -37,7 +38,7 @@ def _observation() -> TransitionRoutingObservation:
                 local_discontinuity_2s=0.87,
             ),
             hypotheses=(
-                BoundaryHypothesis(
+                hypothesis := BoundaryHypothesis(
                     time_seconds=101.1,
                     proposals=(
                         basin := BoundaryProposal(
@@ -96,6 +97,11 @@ def _observation() -> TransitionRoutingObservation:
             incoming_start_seconds=102.0,
             outgoing_end_seconds=100.0,
         ),
+        outgoing_fade_selection=OutgoingFadeSelection(
+            fade=outgoing,
+            hypothesis=hypothesis,
+            support_distance_seconds=1.1,
+        ),
     )
 
 
@@ -127,6 +133,10 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
         "fade_outgoing_count": 1,
         "fade_incoming_count": 1,
         "fade_geometry_count": 1,
+        "fade_outgoing_selected": True,
+        "fade_outgoing_selected_floor_seconds": 100.0,
+        "fade_outgoing_selected_support_seconds": 101.1,
+        "fade_outgoing_selected_distance_seconds": 1.1,
         "fade_outgoing_detail": [
             {
                 "start_time_seconds": 99.0,

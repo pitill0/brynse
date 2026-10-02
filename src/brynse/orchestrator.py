@@ -13,6 +13,10 @@ from brynse.acoustic import (
     RmsAcousticAnalyzer,
 )
 from brynse.buffer import EncodedAudioRingBuffer
+from brynse.fade_specialist import (
+    FadeSpecialist,
+    OutgoingFadeSelection,
+)
 from brynse.frames import IncrementalFrameTimeline
 from brynse.hybrid import HybridAcousticSplitResolver
 from brynse.matching import (
@@ -60,6 +64,7 @@ class TransitionRoutingObservation:
     context: TransitionRoutingContext
     kind: TransitionKind
     temporal: TemporalSplitDecision
+    outgoing_fade_selection: OutgoingFadeSelection | None = None
 
 
 @dataclass(frozen=True)
@@ -348,11 +353,17 @@ class MultiSignalAcousticCandidateResolver:
             if routing_context is None or routing_kind is None:
                 raise RuntimeError("routing observation requires classified context")
 
+            outgoing_fade_selection = FadeSpecialist.select_outgoing(
+                outgoing_fades=routing_context.fade.outgoing_fades,
+                hypotheses=routing_context.hypotheses,
+            )
+
             self._on_routing_observation(
                 TransitionRoutingObservation(
                     context=routing_context,
                     kind=routing_kind,
                     temporal=temporal,
+                    outgoing_fade_selection=outgoing_fade_selection,
                 )
             )
 
