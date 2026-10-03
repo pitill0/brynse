@@ -106,60 +106,65 @@ def test_outgoing_selection_ignores_fade_starting_after_reference() -> None:
     assert selection.fade is outgoing
 
 
-def test_outgoing_selection_prefers_stronger_drawdown_over_nearer_support() -> None:
+def test_outgoing_selection_prefers_nearer_support_over_stronger_drawdown() -> None:
     weak_nearby = _fade(
         start=100.0,
         floor=104.0,
         ratio=2.0,
         consistency=0.95,
     )
-    strong_supported = _fade(
+    strong_distant = _fade(
         start=101.0,
         floor=107.0,
         ratio=12.0,
         consistency=0.9,
     )
 
+    nearby = _hypothesis(time=104.01)
+    distant = _hypothesis(time=107.4)
+
     selection = FadeSpecialist.select_outgoing(
         reference_time_seconds=103.0,
-        outgoing_fades=(weak_nearby, strong_supported),
-        hypotheses=(
-            _hypothesis(time=104.01),
-            _hypothesis(time=107.4),
-        ),
+        outgoing_fades=(weak_nearby, strong_distant),
+        hypotheses=(nearby, distant),
     )
 
     assert selection is not None
-    assert selection.fade is strong_supported
-    assert selection.hypothesis.time_seconds == pytest.approx(107.4)
-    assert selection.support_distance_seconds == pytest.approx(0.4)
+    assert selection.fade is weak_nearby
+    assert selection.hypothesis is nearby
+    assert selection.support_distance_seconds == pytest.approx(0.01)
 
 
-def test_outgoing_selection_uses_consistency_to_break_equal_drawdown() -> None:
-    inconsistent = _fade(
+def test_outgoing_selection_prefers_exact_support_before_consistency() -> None:
+    exact_but_inconsistent = _fade(
         start=100.0,
         floor=104.0,
         ratio=10.0,
         consistency=0.7,
     )
-    consistent = _fade(
+    consistent_but_distant = _fade(
         start=100.5,
         floor=106.0,
         ratio=10.0,
         consistency=0.95,
     )
 
+    exact = _hypothesis(time=104.0)
+    distant = _hypothesis(time=106.2)
+
     selection = FadeSpecialist.select_outgoing(
         reference_time_seconds=103.0,
-        outgoing_fades=(inconsistent, consistent),
-        hypotheses=(
-            _hypothesis(time=104.0),
-            _hypothesis(time=106.2),
+        outgoing_fades=(
+            exact_but_inconsistent,
+            consistent_but_distant,
         ),
+        hypotheses=(exact, distant),
     )
 
     assert selection is not None
-    assert selection.fade is consistent
+    assert selection.fade is exact_but_inconsistent
+    assert selection.hypothesis is exact
+    assert selection.support_distance_seconds == pytest.approx(0.0)
 
 
 def test_outgoing_selection_uses_boundary_distance_after_fade_strength() -> None:

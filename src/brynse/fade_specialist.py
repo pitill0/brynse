@@ -3,10 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from brynse.boundaries import BoundaryConfidence, BoundaryHypothesis
+from brynse.models import TemporalSplitDecision, TemporalSplitKind
 from brynse.transition_evidence import (
     IncomingFadeEvidence,
     OutgoingFadeEvidence,
 )
+from brynse.transition_specialists import TransitionSpecialistResult
 
 
 @dataclass(frozen=True)
@@ -27,8 +29,16 @@ class IncomingFadeSelection:
     support_distance_seconds: float
 
 
+@dataclass(frozen=True)
+class FadeSpecialistDiagnostics:
+    """Fade-specific evidence selected while resolving one transition."""
+
+    outgoing_selection: OutgoingFadeSelection | None
+    incoming_selection: IncomingFadeSelection | None
+
+
 class FadeSpecialist:
-    """Understand fade transition geometry without applying split decisions."""
+    """Understand fade transition geometry and resolve fade boundaries."""
 
     _confidence_rank = {
         BoundaryConfidence.HIGH: 0,
@@ -36,6 +46,77 @@ class FadeSpecialist:
         BoundaryConfidence.LOW: 2,
         BoundaryConfidence.UNRESOLVED: 3,
     }
+
+    @classmethod
+    def resolve(
+        cls,
+        *,
+        observation,
+    ) -> TransitionSpecialistResult:
+        """Resolve one fade transition from already observed fade evidence."""
+
+        boundary = observation.selected.time_seconds
+        reference = observation.routing.reference_time_seconds
+        fade_evidence = observation.routing.fade
+
+        outgoing_selection = cls.select_outgoing(
+            reference_time_seconds=reference,
+            outgoing_fades=fade_evidence.outgoing_fades,
+            hypotheses=observation.routing.hypotheses,
+        )
+        incoming_selection = cls.select_incoming(
+            reference_time_seconds=reference,
+            incoming_fades=fade_evidence.incoming_fades,
+            hypotheses=observation.routing.hypotheses,
+        )
+
+        diagnostics = FadeSpecialistDiagnostics(
+            outgoing_selection=outgoing_selection,
+            incoming_selection=incoming_selection,
+        )
+
+        outgoing = fade_evidence.rise
+
+        if outgoing is None:
+            return TransitionSpecialistResult(
+                temporal=TemporalSplitDecision(
+                    kind=TemporalSplitKind.HARD_CUT,
+                    incoming_start_seconds=boundary,
+                    outgoing_end_seconds=boundary,
+                ),
+                diagnostics=diagnostics,
+            )
+
+        if boundary >= outgoing.time_seconds:
+            return TransitionSpecialistResult(
+                temporal=None,
+                diagnostics=diagnostics,
+            )
+
+        incoming_lead = reference - boundary
+        outgoing_delay = outgoing.time_seconds - reference
+
+        if (
+            incoming_lead >= 0.0
+            and outgoing_delay > incoming_lead
+        ):
+            return TransitionSpecialistResult(
+                temporal=TemporalSplitDecision(
+                    kind=TemporalSplitKind.HARD_CUT,
+                    incoming_start_seconds=boundary,
+                    outgoing_end_seconds=boundary,
+                ),
+                diagnostics=diagnostics,
+            )
+
+        return TransitionSpecialistResult(
+            temporal=TemporalSplitDecision(
+                kind=TemporalSplitKind.CROSSFADE,
+                incoming_start_seconds=boundary,
+                outgoing_end_seconds=outgoing.time_seconds,
+            ),
+            diagnostics=diagnostics,
+        )
 
     @classmethod
     def select_incoming(
@@ -153,46 +234,32 @@ class FadeSpecialist:
         if not eligible_fades:
             return None
 
-        candidates = []
-
-        for fade in eligible_fades:
-            hypothesis = min(
-                hypotheses,
-                key=lambda item: (
-                    abs(
-                        fade.floor_time_seconds
-                        - item.time_seconds
-                    ),
-                    cls._confidence_rank[item.confidence],
-                    item.time_seconds,
+        pairs = [
+            (
+                abs(
+                    fade.floor_time_seconds
+                    - hypothesis.time_seconds
                 ),
+                cls._confidence_rank[hypothesis.confidence],
+                -fade.descent_consistency,
+                -fade.descent_ratio,
+                -fade.floor_time_seconds,
+                fade,
+                hypothesis,
             )
-            distance = abs(
-                fade.floor_time_seconds
-                - hypothesis.time_seconds
-            )
-
-            candidates.append(
-                (
-                    -fade.descent_ratio,
-                    -fade.descent_consistency,
-                    distance,
-                    cls._confidence_rank[hypothesis.confidence],
-                    -fade.floor_time_seconds,
-                    fade,
-                    hypothesis,
-                )
-            )
+            for fade in eligible_fades
+            for hypothesis in hypotheses
+        ]
 
         (
-            _ratio,
-            _consistency,
             distance,
             _confidence,
+            _consistency,
+            _ratio,
             _floor,
             fade,
             hypothesis,
-        ) = min(candidates, key=lambda item: item[:5])
+        ) = min(pairs, key=lambda item: item[:5])
 
         return OutgoingFadeSelection(
             fade=fade,

@@ -200,8 +200,11 @@ def test_orchestrator_composes_full_boundary_resolution() -> None:
     assert resolution.split == split
 
 
-def test_multisignal_resolver_applies_incoming_refinement_before_alignment() -> None:
+def test_multisignal_resolver_routes_interstitial_refinement_before_alignment() -> None:
+    from types import SimpleNamespace
+
     from brynse.orchestrator import MultiSignalAcousticCandidateResolver
+    from brynse.transition_router import TransitionKind
 
     original = TemporalSplitDecision(
         kind=TemporalSplitKind.HARD_CUT,
@@ -239,7 +242,10 @@ def test_multisignal_resolver_applies_incoming_refinement_before_alignment() -> 
         def analyze(self, pcm):
             return AcousticProfile(levels=())
 
-    selected = object()
+    selected = SimpleNamespace(
+        time_seconds=100.0,
+        local_discontinuity=None,
+    )
 
     class CandidateResolver:
         def resolve_acoustic_boundary(self, **kwargs):
@@ -266,6 +272,11 @@ def test_multisignal_resolver_applies_incoming_refinement_before_alignment() -> 
             self.calls.append(kwargs)
             return aligned
 
+    class Router:
+        def classify(self, *, context):
+            _ = context
+            return TransitionKind.INTERSTITIAL
+
     incoming_refiner = IncomingRefiner()
     aligner = Aligner()
 
@@ -278,6 +289,7 @@ def test_multisignal_resolver_applies_incoming_refinement_before_alignment() -> 
         temporal_resolver=TemporalResolver(),
         split_aligner=aligner,
         incoming_refiner=incoming_refiner,
+        transition_router=Router(),
     )
 
     candidate = _track().as_boundary_candidate()
@@ -304,7 +316,10 @@ def test_multisignal_resolver_applies_incoming_refinement_before_alignment() -> 
 
 
 def test_multisignal_resolver_preserves_hard_cut_without_incoming_refiner() -> None:
+    from types import SimpleNamespace
+
     from brynse.orchestrator import MultiSignalAcousticCandidateResolver
+    from brynse.transition_router import TransitionKind
 
     original = TemporalSplitDecision(
         kind=TemporalSplitKind.HARD_CUT,
@@ -337,9 +352,14 @@ def test_multisignal_resolver_preserves_hard_cut_without_incoming_refiner() -> N
         def analyze(self, pcm):
             return AcousticProfile(levels=())
 
+    selected = SimpleNamespace(
+        time_seconds=100.0,
+        local_discontinuity=None,
+    )
+
     class CandidateResolver:
         def resolve_acoustic_boundary(self, **kwargs):
-            return object()
+            return selected
 
     class TemporalResolver:
         def resolve(self, **kwargs):
@@ -353,6 +373,11 @@ def test_multisignal_resolver_preserves_hard_cut_without_incoming_refiner() -> N
             self.decisions.append(kwargs["decision"])
             return aligned
 
+    class Router:
+        def classify(self, *, context):
+            _ = context
+            return TransitionKind.HARD_CUT
+
     aligner = Aligner()
 
     resolver = MultiSignalAcousticCandidateResolver(
@@ -363,6 +388,7 @@ def test_multisignal_resolver_preserves_hard_cut_without_incoming_refiner() -> N
         candidate_resolver=CandidateResolver(),
         temporal_resolver=TemporalResolver(),
         split_aligner=aligner,
+        transition_router=Router(),
     )
 
     resolution = resolver.resolve_candidate(
@@ -500,7 +526,7 @@ def test_multisignal_resolver_observes_routing_context_without_changing_decision
 
         def classify(self, *, context):
             self.contexts.append(context)
-            return TransitionKind.HARD_CUT
+            return TransitionKind.INTERSTITIAL
 
     temporal_resolver = TemporalResolver()
     incoming_refiner = IncomingRefiner()
@@ -536,7 +562,7 @@ def test_multisignal_resolver_observes_routing_context_without_changing_decision
 
     assert len(routing_observations) == 1
     routing_observation = routing_observations[0]
-    assert routing_observation.kind is TransitionKind.HARD_CUT
+    assert routing_observation.kind is TransitionKind.INTERSTITIAL
     assert routing_observation.temporal is refined
     assert routing_observation.context is observed[0]
 
@@ -578,4 +604,4 @@ def test_multisignal_resolver_observes_routing_context_without_changing_decision
     assert len(incoming_refiner.refine_calls) == 1
     refine_call = incoming_refiner.refine_calls[0]
     assert refine_call["hypotheses"] is hypotheses
-    assert refine_call["decision"] is original
+    assert refine_call["decision"] == original
