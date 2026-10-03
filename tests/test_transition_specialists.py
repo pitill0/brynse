@@ -202,6 +202,166 @@ def test_fade_specialist_returns_its_selections_with_resolution() -> None:
     assert result.diagnostics.incoming_selection is None
 
 
+def test_fade_specialist_uses_coherent_two_sided_boundary_support() -> None:
+    from brynse.boundaries import (
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.fade_specialist import FadeSpecialist
+    from brynse.transition_evidence import (
+        CrossfadeRiseEvidence,
+        FadeRoutingEvidence,
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+
+    incoming_boundary = BoundaryHypothesis(
+        time_seconds=101.1,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=101.1,
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+    )
+    outgoing_boundary = BoundaryHypothesis(
+        time_seconds=101.3,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=101.3,
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+    )
+
+    original = _observation(boundary=100.0)
+
+    observation = TransitionSpecialistInput(
+        routing=TransitionRoutingContext(
+            reference_time_seconds=101.0,
+            evidence=TransitionEvidenceState(),
+            hypotheses=(
+                incoming_boundary,
+                outgoing_boundary,
+            ),
+            fade=FadeRoutingEvidence(
+                rise=CrossfadeRiseEvidence(
+                    time_seconds=101.5,
+                    jump_ratio=3.0,
+                    persistence_ratio=4.0,
+                    after_global_ratio=3.0,
+                ),
+                outgoing_fades=(
+                    OutgoingFadeEvidence(
+                        start_time_seconds=99.0,
+                        floor_time_seconds=101.25,
+                        rise_time_seconds=101.5,
+                        start_rms=1000.0,
+                        floor_rms=100.0,
+                        descent_ratio=10.0,
+                        descent_consistency=0.95,
+                    ),
+                ),
+                incoming_fades=(
+                    IncomingFadeEvidence(
+                        start_time_seconds=101.05,
+                        established_time_seconds=101.2,
+                        start_rms=100.0,
+                        established_rms=600.0,
+                        ascent_ratio=6.0,
+                        ascent_consistency=0.95,
+                        persistence_ratio=5.0,
+                    ),
+                ),
+            ),
+        ),
+        selected=original.selected,
+        profile=original.profile,
+        window=original.window,
+        pcm8=original.pcm8,
+        pcm16=original.pcm16,
+    )
+
+    result = FadeSpecialist.resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.CROSSFADE,
+        incoming_start_seconds=101.1,
+        outgoing_end_seconds=101.3,
+    )
+
+
+def test_fade_specialist_keeps_conservative_pair_without_two_sided_support() -> None:
+    from brynse.boundaries import (
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.fade_specialist import FadeSpecialist
+    from brynse.transition_evidence import (
+        CrossfadeRiseEvidence,
+        FadeRoutingEvidence,
+        OutgoingFadeEvidence,
+    )
+
+    outgoing_boundary = BoundaryHypothesis(
+        time_seconds=101.3,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=101.3,
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+    )
+
+    original = _observation(boundary=100.0)
+
+    observation = TransitionSpecialistInput(
+        routing=TransitionRoutingContext(
+            reference_time_seconds=101.0,
+            evidence=TransitionEvidenceState(),
+            hypotheses=(outgoing_boundary,),
+            fade=FadeRoutingEvidence(
+                rise=CrossfadeRiseEvidence(
+                    time_seconds=101.5,
+                    jump_ratio=3.0,
+                    persistence_ratio=4.0,
+                    after_global_ratio=3.0,
+                ),
+                outgoing_fades=(
+                    OutgoingFadeEvidence(
+                        start_time_seconds=99.0,
+                        floor_time_seconds=101.25,
+                        rise_time_seconds=101.5,
+                        start_rms=1000.0,
+                        floor_rms=100.0,
+                        descent_ratio=10.0,
+                        descent_consistency=0.95,
+                    ),
+                ),
+            ),
+        ),
+        selected=original.selected,
+        profile=original.profile,
+        window=original.window,
+        pcm8=original.pcm8,
+        pcm16=original.pcm16,
+    )
+
+    result = FadeSpecialist.resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.CROSSFADE,
+        incoming_start_seconds=100.0,
+        outgoing_end_seconds=101.5,
+    )
+
+
 def test_fade_specialist_preserves_crossfade_coherence_rule() -> None:
     from brynse.fade_specialist import FadeSpecialist
     from brynse.transition_evidence import (

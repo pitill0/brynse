@@ -109,6 +109,32 @@ class FadeSpecialist:
                 diagnostics=diagnostics,
             )
 
+        # When both sides of the fade have independently selected boundary
+        # support, the specialist owns their temporal geometry.  Do not
+        # reproduce the old unilateral outgoing clamp: only replace the
+        # conservative temporal pair when the two specialist-supported
+        # boundaries form a valid overlap.
+        if (
+            outgoing_selection is not None
+            and incoming_selection is not None
+        ):
+            specialist_incoming = (
+                incoming_selection.hypothesis.time_seconds
+            )
+            specialist_outgoing = (
+                outgoing_selection.hypothesis.time_seconds
+            )
+
+            if specialist_incoming < specialist_outgoing:
+                return TransitionSpecialistResult(
+                    temporal=TemporalSplitDecision(
+                        kind=TemporalSplitKind.CROSSFADE,
+                        incoming_start_seconds=specialist_incoming,
+                        outgoing_end_seconds=specialist_outgoing,
+                    ),
+                    diagnostics=diagnostics,
+                )
+
         return TransitionSpecialistResult(
             temporal=TemporalSplitDecision(
                 kind=TemporalSplitKind.CROSSFADE,
@@ -218,7 +244,7 @@ class FadeSpecialist:
         outgoing_fades: tuple[OutgoingFadeEvidence, ...],
         hypotheses: tuple[BoundaryHypothesis, ...],
     ) -> OutgoingFadeSelection | None:
-        """Select the strongest outgoing fade with boundary support."""
+        """Select outgoing fade geometry with the best boundary support."""
 
         if reference_time_seconds < 0:
             raise ValueError("reference_time_seconds must be non-negative")
