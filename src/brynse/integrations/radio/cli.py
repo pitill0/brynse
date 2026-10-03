@@ -131,6 +131,29 @@ def _routing_trace_record(observation) -> dict[str, object]:
                 "sources": sorted(
                     proposal.source.value for proposal in hypothesis.proposals
                 ),
+                "proposals_detail": [
+                    {
+                        "time_seconds": proposal.time_seconds,
+                        "source": proposal.source.value,
+                        "strength": proposal.strength,
+                    }
+                    for proposal in hypothesis.proposals
+                ],
+                "evidence_detail": [
+                    {
+                        "proposal_time_seconds": item.proposal.time_seconds,
+                        "proposal_source": item.proposal.source.value,
+                        "proposal_strength": item.proposal.strength,
+                        "basin_depth": item.basin_depth,
+                        "basin_start_seconds": item.basin_start_seconds,
+                        "basin_recovery_seconds": item.basin_recovery_seconds,
+                        "local_change": item.local_change,
+                        "persistent_change": item.persistent_change,
+                        "structural_novelty": item.structural_novelty,
+                        "metadata_support": item.metadata_support,
+                    }
+                    for item in hypothesis.evidence
+                ],
                 "confidence": hypothesis.confidence.value,
                 "basin_start_seconds": (
                     None if geometry is None else geometry.start_seconds

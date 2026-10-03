@@ -44,17 +44,24 @@ def _observation() -> TransitionRoutingObservation:
                         basin := BoundaryProposal(
                             time_seconds=101.0,
                             source=BoundaryProposalSource.BASIN,
+                            strength=0.82,
                         ),
                         BoundaryProposal(
                             time_seconds=101.2,
                             source=BoundaryProposalSource.STRUCTURAL,
+                            strength=0.91,
                         ),
                     ),
                     evidence=(
                         BoundaryEvidence(
                             proposal=basin,
+                            basin_depth=0.24,
                             basin_start_seconds=100.7,
                             basin_recovery_seconds=101.6,
+                            local_change=0.51,
+                            persistent_change=0.63,
+                            structural_novelty=0.74,
+                            metadata_support=False,
                         ),
                     ),
                     confidence=BoundaryConfidence.HIGH,
@@ -180,6 +187,32 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
             {
                 "time_seconds": 101.1,
                 "sources": ["basin", "structural"],
+                "proposals_detail": [
+                    {
+                        "time_seconds": 101.0,
+                        "source": "basin",
+                        "strength": 0.82,
+                    },
+                    {
+                        "time_seconds": 101.2,
+                        "source": "structural",
+                        "strength": 0.91,
+                    },
+                ],
+                "evidence_detail": [
+                    {
+                        "proposal_time_seconds": 101.0,
+                        "proposal_source": "basin",
+                        "proposal_strength": 0.82,
+                        "basin_depth": 0.24,
+                        "basin_start_seconds": 100.7,
+                        "basin_recovery_seconds": 101.6,
+                        "local_change": 0.51,
+                        "persistent_change": 0.63,
+                        "structural_novelty": 0.74,
+                        "metadata_support": False,
+                    }
+                ],
                 "confidence": "high",
                 "basin_start_seconds": 100.7,
                 "basin_minimum_seconds": 101.0,
