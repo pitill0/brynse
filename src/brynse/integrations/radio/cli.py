@@ -263,6 +263,117 @@ def _routing_trace_record(observation) -> dict[str, object]:
         "fade_geometry_detail": fade_geometries_detail,
         "hypotheses": len(context.hypotheses),
         "hypotheses_detail": hypotheses_detail,
+        "bounded_insert_count": len(context.bounded_insert_regions),
+        "bounded_insert_detail": [
+            {
+                "reference_time_seconds": region.reference_time_seconds,
+                "left_support_seconds": region.left.time_seconds,
+                "right_support_seconds": region.right.time_seconds,
+                "support_span_seconds": region.support_span_seconds,
+                "acoustic_gap_seconds": region.acoustic_gap_seconds,
+                "reference_inside_left_basin": (
+                    region.reference_inside_left_basin
+                ),
+                "reference_inside_right_basin": (
+                    region.reference_inside_right_basin
+                ),
+                "reference_offset_from_left_support_seconds": (
+                    region.reference_offset_from_left_support_seconds
+                ),
+                "reference_offset_to_right_support_seconds": (
+                    region.reference_offset_to_right_support_seconds
+                ),
+                "interior_hypotheses": len(region.interior_hypotheses),
+                "structural_only_interior_count": (
+                    region.structural_only_interior_count
+                ),
+                "interior_hypotheses_detail": [
+                    {
+                        "time_seconds": hypothesis.time_seconds,
+                        "sources": sorted(
+                            proposal.source.value
+                            for proposal in hypothesis.proposals
+                        ),
+                    }
+                    for hypothesis in region.interior_hypotheses
+                ],
+                "left_edge": {
+                    "confidence": region.left_edge.confidence.value,
+                    "proposals": [
+                        {
+                            "time_seconds": proposal.time_seconds,
+                            "source": proposal.source.value,
+                            "strength": proposal.strength,
+                        }
+                        for proposal in region.left_edge.proposals
+                    ],
+                    "evidence": [
+                        {
+                            "proposal_time_seconds": item.proposal.time_seconds,
+                            "proposal_source": item.proposal.source.value,
+                            "proposal_strength": item.proposal.strength,
+                            "basin_depth": item.basin_depth,
+                            "basin_start_seconds": item.basin_start_seconds,
+                            "basin_recovery_seconds": (
+                                item.basin_recovery_seconds
+                            ),
+                            "local_change": item.local_change,
+                            "persistent_change": item.persistent_change,
+                            "structural_novelty": item.structural_novelty,
+                            "metadata_support": item.metadata_support,
+                        }
+                        for item in region.left_edge.evidence
+                    ],
+                },
+                "right_edge": {
+                    "confidence": region.right_edge.confidence.value,
+                    "proposals": [
+                        {
+                            "time_seconds": proposal.time_seconds,
+                            "source": proposal.source.value,
+                            "strength": proposal.strength,
+                        }
+                        for proposal in region.right_edge.proposals
+                    ],
+                    "evidence": [
+                        {
+                            "proposal_time_seconds": item.proposal.time_seconds,
+                            "proposal_source": item.proposal.source.value,
+                            "proposal_strength": item.proposal.strength,
+                            "basin_depth": item.basin_depth,
+                            "basin_start_seconds": item.basin_start_seconds,
+                            "basin_recovery_seconds": (
+                                item.basin_recovery_seconds
+                            ),
+                            "local_change": item.local_change,
+                            "persistent_change": item.persistent_change,
+                            "structural_novelty": item.structural_novelty,
+                            "metadata_support": item.metadata_support,
+                        }
+                        for item in region.right_edge.evidence
+                    ],
+                },
+                "left_basin_start_seconds": (
+                    region.left_geometry.start_seconds
+                ),
+                "left_basin_minimum_seconds": (
+                    region.left_geometry.minimum_seconds
+                ),
+                "left_basin_recovery_seconds": (
+                    region.left_geometry.recovery_seconds
+                ),
+                "right_basin_start_seconds": (
+                    region.right_geometry.start_seconds
+                ),
+                "right_basin_minimum_seconds": (
+                    region.right_geometry.minimum_seconds
+                ),
+                "right_basin_recovery_seconds": (
+                    region.right_geometry.recovery_seconds
+                ),
+            }
+            for region in context.bounded_insert_regions
+        ],
         "local_complete": all(value is not None for value in local_values),
         "local_discontinuity_250ms": evidence.local_discontinuity_250ms,
         "local_discontinuity_500ms": evidence.local_discontinuity_500ms,

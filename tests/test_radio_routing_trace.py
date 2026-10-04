@@ -219,6 +219,8 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
                 "basin_recovery_seconds": 101.6,
             }
         ],
+        "bounded_insert_count": 0,
+        "bounded_insert_detail": [],
         "local_complete": True,
         "local_discontinuity_250ms": 0.21,
         "local_discontinuity_500ms": 0.43,

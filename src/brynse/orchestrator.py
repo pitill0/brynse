@@ -12,6 +12,7 @@ from brynse.acoustic import (
     FfmpegAcousticDecoder,
     RmsAcousticAnalyzer,
 )
+from brynse.bounded_insert import BoundedInsertRegionDiscovery
 from brynse.buffer import EncodedAudioRingBuffer
 from brynse.fade_specialist import (
     FadeSpecialist,
@@ -341,6 +342,11 @@ class MultiSignalAcousticCandidateResolver:
             else ()
         )
 
+        bounded_insert_regions = BoundedInsertRegionDiscovery().discover(
+            reference_time_seconds=candidate.time_seconds,
+            hypotheses=routing_hypotheses,
+        )
+
         routing_context = TransitionRoutingContext(
             reference_time_seconds=candidate.time_seconds,
             evidence=TransitionEvidenceExtractor().extract(
@@ -349,6 +355,7 @@ class MultiSignalAcousticCandidateResolver:
             ),
             hypotheses=routing_hypotheses,
             fade=fade,
+            bounded_insert_regions=bounded_insert_regions,
         )
 
         if self._on_routing_context is not None:

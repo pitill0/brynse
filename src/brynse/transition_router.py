@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import Protocol
 
 from brynse.boundaries import BoundaryHypothesis, BoundaryProposalSource
+from brynse.bounded_insert import BoundedInsertRegionEvidence
 from brynse.transition_evidence import (
     FadeRoutingEvidence,
     TransitionEvidenceState,
@@ -30,6 +31,7 @@ class TransitionRoutingContext:
     evidence: TransitionEvidenceState
     hypotheses: tuple[BoundaryHypothesis, ...] = ()
     fade: FadeRoutingEvidence = field(default_factory=FadeRoutingEvidence)
+    bounded_insert_regions: tuple[BoundedInsertRegionEvidence, ...] = ()
 
     def __post_init__(self) -> None:
         if self.reference_time_seconds < 0:
