@@ -773,3 +773,208 @@ def test_bounded_insert_specialist_abstains_with_multiple_regions() -> None:
     )
 
     assert result.temporal is None
+
+
+def _asymmetric_specialist_observation(region):
+    from types import SimpleNamespace
+
+    from brynse.transition_evidence import TransitionEvidenceState
+    from brynse.transition_router import TransitionRoutingContext
+
+    return TransitionSpecialistInput(
+        routing=TransitionRoutingContext(
+            reference_time_seconds=region.reference_time_seconds,
+            evidence=TransitionEvidenceState(),
+            hypotheses=(
+                region.primary,
+                *region.interior_hypotheses,
+                region.complementary,
+            ),
+            bounded_insert_asymmetric_regions=(region,),
+        ),
+        selected=SimpleNamespace(
+            time_seconds=region.reference_time_seconds,
+        ),
+        profile=object(),
+        window=object(),
+        pcm8=object(),
+        pcm16=object(),
+    )
+
+
+def _asymmetric_specialist_primary(
+    *,
+    time_seconds,
+    basin_start_seconds,
+    basin_recovery_seconds,
+):
+    from brynse.boundaries import (
+        BoundaryEvidence,
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+
+    basin = BoundaryProposal(
+        time_seconds=time_seconds,
+        source=BoundaryProposalSource.BASIN,
+    )
+    structural = BoundaryProposal(
+        time_seconds=time_seconds,
+        source=BoundaryProposalSource.STRUCTURAL,
+        strength=0.8,
+    )
+
+    return BoundaryHypothesis(
+        time_seconds=time_seconds,
+        proposals=(basin, structural),
+        evidence=(
+            BoundaryEvidence(
+                proposal=basin,
+                basin_start_seconds=basin_start_seconds,
+                basin_recovery_seconds=basin_recovery_seconds,
+            ),
+        ),
+    )
+
+
+def _asymmetric_structural_complement(
+    *,
+    time_seconds,
+):
+    from brynse.boundaries import (
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+
+    proposal = BoundaryProposal(
+        time_seconds=time_seconds,
+        source=BoundaryProposalSource.STRUCTURAL,
+        strength=0.3,
+    )
+
+    return BoundaryHypothesis(
+        time_seconds=time_seconds,
+        proposals=(proposal,),
+    )
+
+
+def _asymmetric_basin_complement(
+    *,
+    time_seconds,
+    basin_start_seconds,
+    basin_recovery_seconds,
+):
+    from brynse.boundaries import (
+        BoundaryEvidence,
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+
+    proposal = BoundaryProposal(
+        time_seconds=time_seconds,
+        source=BoundaryProposalSource.BASIN,
+    )
+
+    return BoundaryHypothesis(
+        time_seconds=time_seconds,
+        proposals=(proposal,),
+        evidence=(
+            BoundaryEvidence(
+                proposal=proposal,
+                basin_start_seconds=basin_start_seconds,
+                basin_recovery_seconds=basin_recovery_seconds,
+            ),
+        ),
+    )
+
+
+def test_bounded_insert_specialist_resolves_ernie_h_geometry() -> None:
+    from brynse.bounded_insert import (
+        BoundedInsertAsymmetricRegionEvidence,
+    )
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    primary = _asymmetric_specialist_primary(
+        time_seconds=1344.876,
+        basin_start_seconds=1344.251,
+        basin_recovery_seconds=1348.051,
+    )
+    complementary = _asymmetric_structural_complement(
+        time_seconds=1364.451,
+    )
+
+    region = BoundedInsertAsymmetricRegionEvidence(
+        reference_time_seconds=1363.958,
+        primary=primary,
+        complementary=complementary,
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=_asymmetric_specialist_observation(region),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=1348.051,
+        incoming_start_seconds=1364.451,
+    )
+
+
+def test_bounded_insert_specialist_resolves_banda_kenny_geometry() -> None:
+    from brynse.bounded_insert import (
+        BoundedInsertAsymmetricRegionEvidence,
+    )
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    primary = _asymmetric_specialist_primary(
+        time_seconds=1778.519,
+        basin_start_seconds=1773.069,
+        basin_recovery_seconds=1778.769,
+    )
+    complementary = _asymmetric_basin_complement(
+        time_seconds=1781.919,
+        basin_start_seconds=1781.169,
+        basin_recovery_seconds=1782.069,
+    )
+
+    region = BoundedInsertAsymmetricRegionEvidence(
+        reference_time_seconds=1780.376,
+        primary=primary,
+        complementary=complementary,
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=_asymmetric_specialist_observation(region),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=1778.769,
+        incoming_start_seconds=1782.069,
+    )
+
+
+def test_bounded_insert_specialist_preserves_symmetric_support_times() -> None:
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    observation = _bounded_insert_specialist_observation(
+        regions=(
+            _bounded_insert_test_region(
+                left_time=100.25,
+                right_time=108.75,
+            ),
+        ),
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.25,
+        incoming_start_seconds=108.75,
+    )

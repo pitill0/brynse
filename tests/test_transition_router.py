@@ -787,7 +787,7 @@ def test_asymmetric_bounded_insert_abstains_with_multiple_regions() -> None:
     assert result.unique_region is False
 
 
-def test_asymmetric_ownership_does_not_change_classify_yet() -> None:
+def test_asymmetric_ownership_routes_to_bounded_insert() -> None:
     primary = _bounded_insert_edge(
         100.0,
         basin_start_seconds=99.5,
@@ -820,7 +820,7 @@ def test_asymmetric_ownership_does_not_change_classify_yet() -> None:
     routed = router.classify(context=context)
 
     assert assessment.candidate is True
-    assert routed is not TransitionKind.BOUNDED_INSERT
+    assert routed is TransitionKind.BOUNDED_INSERT
 
 
 @pytest.mark.parametrize(
@@ -919,5 +919,7 @@ def test_live_asymmetric_failures_receive_router_ownership(
     assert assessment.unique_region is True
     assert assessment.primary_is_context_structural_peak is True
 
-    # Step 3/4 remain shadow-only until specialist temporal geometry exists.
-    assert router.classify(context=context) is not TransitionKind.BOUNDED_INSERT
+    assert (
+        router.classify(context=context)
+        is TransitionKind.BOUNDED_INSERT
+    )

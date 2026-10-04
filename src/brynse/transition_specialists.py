@@ -177,21 +177,59 @@ class InterstitialSpecialist:
 
 
 class BoundedInsertSpecialist:
-    """Exclude one acoustically bounded inserted region."""
+    """Resolve temporal geometry for acoustically bounded inserted material."""
 
     def resolve(
         self,
         *,
         observation: TransitionSpecialistInput,
     ) -> TransitionSpecialistResult:
-        regions = observation.routing.bounded_insert_regions
+        symmetric = observation.routing.bounded_insert_regions
 
-        if len(regions) != 1:
+        if len(symmetric) == 1:
+            region = symmetric[0]
+            outgoing = region.left.time_seconds
+            incoming = region.right.time_seconds
+
+            if outgoing >= incoming:
+                return TransitionSpecialistResult(temporal=None)
+
+            return TransitionSpecialistResult(
+                temporal=TemporalSplitDecision(
+                    kind=TemporalSplitKind.EXCLUSION,
+                    outgoing_end_seconds=outgoing,
+                    incoming_start_seconds=incoming,
+                )
+            )
+
+        if symmetric:
             return TransitionSpecialistResult(temporal=None)
 
-        region = regions[0]
-        outgoing = region.left.time_seconds
-        incoming = region.right.time_seconds
+        asymmetric = (
+            observation.routing.bounded_insert_asymmetric_regions
+        )
+
+        if len(asymmetric) != 1:
+            return TransitionSpecialistResult(temporal=None)
+
+        region = asymmetric[0]
+
+        primary_geometry = region.primary_edge.basin_geometry
+
+        if primary_geometry is None:
+            return TransitionSpecialistResult(temporal=None)
+
+        outgoing = primary_geometry.recovery_seconds
+
+        complementary_geometry = (
+            region.complementary_edge.basin_geometry
+        )
+
+        incoming = (
+            region.complementary.time_seconds
+            if complementary_geometry is None
+            else complementary_geometry.recovery_seconds
+        )
 
         if outgoing >= incoming:
             return TransitionSpecialistResult(temporal=None)

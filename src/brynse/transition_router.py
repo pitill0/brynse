@@ -245,6 +245,13 @@ class DefaultTransitionRouter:
         if bounded_insert.candidate:
             return TransitionKind.BOUNDED_INSERT
 
+        asymmetric_bounded_insert = self.assess_asymmetric_bounded_insert(
+            context=context,
+        )
+
+        if asymmetric_bounded_insert.candidate:
+            return TransitionKind.BOUNDED_INSERT
+
         fade_like = context.fade.rise is not None and bool(context.fade.basins)
         interstitial_like = self._has_interstitial_pattern(context.hypotheses)
 
