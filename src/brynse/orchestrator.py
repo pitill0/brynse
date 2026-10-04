@@ -346,9 +346,17 @@ class MultiSignalAcousticCandidateResolver:
             else ()
         )
 
-        bounded_insert_regions = BoundedInsertRegionDiscovery().discover(
+        bounded_insert_discovery = BoundedInsertRegionDiscovery()
+
+        bounded_insert_regions = bounded_insert_discovery.discover(
             reference_time_seconds=candidate.time_seconds,
             hypotheses=routing_hypotheses,
+        )
+        bounded_insert_asymmetric_regions = (
+            bounded_insert_discovery.discover_asymmetric(
+                reference_time_seconds=candidate.time_seconds,
+                hypotheses=routing_hypotheses,
+            )
         )
 
         routing_context = TransitionRoutingContext(
@@ -360,6 +368,9 @@ class MultiSignalAcousticCandidateResolver:
             hypotheses=routing_hypotheses,
             fade=fade,
             bounded_insert_regions=bounded_insert_regions,
+            bounded_insert_asymmetric_regions=(
+                bounded_insert_asymmetric_regions
+            ),
         )
 
         if self._on_routing_context is not None:

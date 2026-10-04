@@ -7,7 +7,10 @@ from enum import StrEnum
 from typing import Protocol
 
 from brynse.boundaries import BoundaryHypothesis, BoundaryProposalSource
-from brynse.bounded_insert import BoundedInsertRegionEvidence
+from brynse.bounded_insert import (
+    BoundedInsertAsymmetricRegionEvidence,
+    BoundedInsertRegionEvidence,
+)
 from brynse.transition_evidence import (
     FadeRoutingEvidence,
     TransitionEvidenceState,
@@ -33,6 +36,9 @@ class TransitionRoutingContext:
     hypotheses: tuple[BoundaryHypothesis, ...] = ()
     fade: FadeRoutingEvidence = field(default_factory=FadeRoutingEvidence)
     bounded_insert_regions: tuple[BoundedInsertRegionEvidence, ...] = ()
+    bounded_insert_asymmetric_regions: tuple[
+        BoundedInsertAsymmetricRegionEvidence, ...
+    ] = ()
 
     def __post_init__(self) -> None:
         if self.reference_time_seconds < 0:
@@ -62,6 +68,16 @@ class BoundedInsertRoutingAssessment:
     right_is_context_structural_peak: bool = False
     reference_precedes_left_support_inside_basin: bool = False
     structural_only_interior_count: int = 0
+
+
+@dataclass(frozen=True)
+class BoundedInsertAsymmetricRoutingAssessment:
+    """Routing ownership assessment for asymmetric bounded inserted material."""
+
+    candidate: bool
+    related_region_count: int
+    unique_region: bool
+    primary_is_context_structural_peak: bool = False
 
 
 class DefaultTransitionRouter:
@@ -161,6 +177,62 @@ class DefaultTransitionRouter:
             structural_only_interior_count=(
                 region.structural_only_interior_count
             ),
+        )
+
+    def assess_asymmetric_bounded_insert(
+        self,
+        *,
+        context: TransitionRoutingContext,
+    ) -> BoundedInsertAsymmetricRoutingAssessment:
+        """Assess asymmetric bounded-insert ownership without choosing times."""
+        regions = context.bounded_insert_asymmetric_regions
+        region_count = len(regions)
+
+        if region_count != 1:
+            return BoundedInsertAsymmetricRoutingAssessment(
+                candidate=False,
+                related_region_count=region_count,
+                unique_region=False,
+            )
+
+        region = regions[0]
+
+        structural_strengths = tuple(
+            proposal.strength
+            for hypothesis in context.hypotheses
+            for proposal in hypothesis.proposals
+            if (
+                proposal.source is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength is not None
+            )
+        )
+
+        context_peak = (
+            max(structural_strengths)
+            if structural_strengths
+            else None
+        )
+
+        primary_strengths = tuple(
+            proposal.strength
+            for proposal in region.primary_edge.proposals
+            if (
+                proposal.source is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength is not None
+            )
+        )
+
+        primary_peak = (
+            context_peak is not None
+            and bool(primary_strengths)
+            and max(primary_strengths) == context_peak
+        )
+
+        return BoundedInsertAsymmetricRoutingAssessment(
+            candidate=primary_peak,
+            related_region_count=region_count,
+            unique_region=True,
+            primary_is_context_structural_peak=primary_peak,
         )
 
     def classify(

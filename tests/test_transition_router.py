@@ -625,3 +625,299 @@ def test_bounded_insert_shadow_accepts_basin_entry_with_internal_structure() -> 
     assert result.right_is_context_structural_peak is False
     assert result.reference_precedes_left_support_inside_basin is True
     assert result.structural_only_interior_count == 1
+
+
+def _asymmetric_region(
+    *,
+    reference_time_seconds,
+    primary,
+    complementary,
+    interior_hypotheses=(),
+):
+    from brynse.bounded_insert import (
+        BoundedInsertAsymmetricRegionEvidence,
+    )
+
+    return BoundedInsertAsymmetricRegionEvidence(
+        reference_time_seconds=reference_time_seconds,
+        primary=primary,
+        complementary=complementary,
+        interior_hypotheses=interior_hypotheses,
+    )
+
+
+def _structural_only_boundary(
+    time_seconds,
+    *,
+    structural_strength,
+):
+    proposal = BoundaryProposal(
+        time_seconds=time_seconds,
+        source=BoundaryProposalSource.STRUCTURAL,
+        strength=structural_strength,
+    )
+    return BoundaryHypothesis(
+        time_seconds=time_seconds,
+        proposals=(proposal,),
+    )
+
+
+def test_asymmetric_bounded_insert_accepts_structural_peak_primary() -> None:
+    primary = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.8,
+    )
+    interior = _structural_only_boundary(
+        108.0,
+        structural_strength=0.2,
+    )
+    complementary = _structural_only_boundary(
+        119.0,
+        structural_strength=0.3,
+    )
+
+    region = _asymmetric_region(
+        reference_time_seconds=118.5,
+        primary=primary,
+        complementary=complementary,
+        interior_hypotheses=(interior,),
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=118.5,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(primary, interior, complementary),
+        bounded_insert_asymmetric_regions=(region,),
+    )
+
+    result = DefaultTransitionRouter().assess_asymmetric_bounded_insert(
+        context=context,
+    )
+
+    assert result.candidate is True
+    assert result.related_region_count == 1
+    assert result.unique_region is True
+    assert result.primary_is_context_structural_peak is True
+
+
+def test_asymmetric_bounded_insert_rejects_non_peak_primary() -> None:
+    primary = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.5,
+    )
+    complementary = _structural_only_boundary(
+        119.0,
+        structural_strength=0.3,
+    )
+    dominant = _structural_only_boundary(
+        125.0,
+        structural_strength=0.9,
+    )
+
+    region = _asymmetric_region(
+        reference_time_seconds=118.5,
+        primary=primary,
+        complementary=complementary,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=118.5,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(primary, complementary, dominant),
+        bounded_insert_asymmetric_regions=(region,),
+    )
+
+    result = DefaultTransitionRouter().assess_asymmetric_bounded_insert(
+        context=context,
+    )
+
+    assert result.candidate is False
+    assert result.related_region_count == 1
+    assert result.unique_region is True
+    assert result.primary_is_context_structural_peak is False
+
+
+def test_asymmetric_bounded_insert_abstains_with_multiple_regions() -> None:
+    primary = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.8,
+    )
+    first = _structural_only_boundary(
+        119.0,
+        structural_strength=0.3,
+    )
+    second = _structural_only_boundary(
+        121.0,
+        structural_strength=0.2,
+    )
+
+    first_region = _asymmetric_region(
+        reference_time_seconds=118.5,
+        primary=primary,
+        complementary=first,
+    )
+    second_region = _asymmetric_region(
+        reference_time_seconds=118.5,
+        primary=primary,
+        complementary=second,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=118.5,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(primary, first, second),
+        bounded_insert_asymmetric_regions=(
+            first_region,
+            second_region,
+        ),
+    )
+
+    result = DefaultTransitionRouter().assess_asymmetric_bounded_insert(
+        context=context,
+    )
+
+    assert result.candidate is False
+    assert result.related_region_count == 2
+    assert result.unique_region is False
+
+
+def test_asymmetric_ownership_does_not_change_classify_yet() -> None:
+    primary = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.8,
+    )
+    complementary = _structural_only_boundary(
+        119.0,
+        structural_strength=0.3,
+    )
+
+    region = _asymmetric_region(
+        reference_time_seconds=118.5,
+        primary=primary,
+        complementary=complementary,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=118.5,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(primary, complementary),
+        bounded_insert_asymmetric_regions=(region,),
+    )
+
+    router = DefaultTransitionRouter()
+
+    assessment = router.assess_asymmetric_bounded_insert(
+        context=context,
+    )
+    routed = router.classify(context=context)
+
+    assert assessment.candidate is True
+    assert routed is not TransitionKind.BOUNDED_INSERT
+
+
+@pytest.mark.parametrize(
+    (
+        "reference_time_seconds",
+        "primary_time_seconds",
+        "primary_start_seconds",
+        "primary_recovery_seconds",
+        "complementary_kind",
+        "complementary_time_seconds",
+    ),
+    (
+        (
+            1363.958,
+            1344.876,
+            1344.251,
+            1348.051,
+            "structural",
+            1364.451,
+        ),
+        (
+            1780.376,
+            1778.519,
+            1773.069,
+            1778.769,
+            "basin",
+            1781.919,
+        ),
+    ),
+)
+def test_live_asymmetric_failures_receive_router_ownership(
+    reference_time_seconds,
+    primary_time_seconds,
+    primary_start_seconds,
+    primary_recovery_seconds,
+    complementary_kind,
+    complementary_time_seconds,
+) -> None:
+    from brynse.bounded_insert import BoundedInsertRegionDiscovery
+
+    primary = _bounded_insert_edge(
+        primary_time_seconds,
+        basin_start_seconds=primary_start_seconds,
+        basin_recovery_seconds=primary_recovery_seconds,
+        structural_strength=0.8,
+    )
+
+    if complementary_kind == "structural":
+        complementary = _structural_only_boundary(
+            complementary_time_seconds,
+            structural_strength=0.3,
+        )
+    else:
+        proposal = BoundaryProposal(
+            time_seconds=complementary_time_seconds,
+            source=BoundaryProposalSource.BASIN,
+        )
+        complementary = BoundaryHypothesis(
+            time_seconds=complementary_time_seconds,
+            proposals=(proposal,),
+            evidence=(
+                BoundaryEvidence(
+                    proposal=proposal,
+                    basin_start_seconds=1781.169,
+                    basin_recovery_seconds=1782.069,
+                ),
+            ),
+        )
+
+    hypotheses = (
+        primary,
+        complementary,
+    )
+
+    regions = BoundedInsertRegionDiscovery().discover_asymmetric(
+        reference_time_seconds=reference_time_seconds,
+        hypotheses=hypotheses,
+    )
+
+    assert len(regions) == 1
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=reference_time_seconds,
+        evidence=TransitionEvidenceState(),
+        hypotheses=hypotheses,
+        bounded_insert_asymmetric_regions=regions,
+    )
+
+    router = DefaultTransitionRouter()
+
+    assessment = router.assess_asymmetric_bounded_insert(
+        context=context,
+    )
+
+    assert assessment.candidate is True
+    assert assessment.unique_region is True
+    assert assessment.primary_is_context_structural_peak is True
+
+    # Step 3/4 remain shadow-only until specialist temporal geometry exists.
+    assert router.classify(context=context) is not TransitionKind.BOUNDED_INSERT

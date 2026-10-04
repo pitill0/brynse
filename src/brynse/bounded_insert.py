@@ -42,6 +42,47 @@ class BoundedInsertEdgeEvidence:
 
 
 @dataclass(frozen=True)
+class BoundedInsertAsymmetricRegionEvidence:
+    """Descriptive asymmetric bounded-region geometry.
+
+    The left edge has reconciled basin and structural support. The right edge
+    preserves complementary acoustic evidence without implying ownership or
+    choosing temporal boundaries.
+    """
+
+    reference_time_seconds: float
+    primary: BoundaryHypothesis
+    complementary: BoundaryHypothesis
+    interior_hypotheses: tuple[BoundaryHypothesis, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.reference_time_seconds < 0:
+            raise ValueError("reference_time_seconds must be non-negative")
+        if self.primary.time_seconds > self.complementary.time_seconds:
+            raise ValueError("primary edge must not follow complementary edge")
+
+    @property
+    def primary_edge(self) -> BoundedInsertEdgeEvidence:
+        """Return complete neutral evidence for the primary edge."""
+        return BoundedInsertEdgeEvidence(self.primary)
+
+    @property
+    def complementary_edge(self) -> BoundedInsertEdgeEvidence:
+        """Return complete neutral evidence for the complementary edge."""
+        return BoundedInsertEdgeEvidence(self.complementary)
+
+    @property
+    def primary_distance_from_reference_seconds(self) -> float:
+        """Return distance from primary support to reference."""
+        return self.reference_time_seconds - self.primary.time_seconds
+
+    @property
+    def complementary_distance_from_reference_seconds(self) -> float:
+        """Return distance from reference to complementary support."""
+        return self.complementary.time_seconds - self.reference_time_seconds
+
+
+@dataclass(frozen=True)
 class BoundedInsertRegionEvidence:
     """Descriptive geometry between two independently supported boundaries."""
 
@@ -55,8 +96,6 @@ class BoundedInsertRegionEvidence:
             raise ValueError("reference_time_seconds must be non-negative")
         if self.left.time_seconds > self.right.time_seconds:
             raise ValueError("left boundary must not follow right boundary")
-        if self.left_geometry is None or self.right_geometry is None:
-            raise ValueError("bounded region edges require basin geometry")
 
     @property
     def left_edge(self) -> BoundedInsertEdgeEvidence:
@@ -84,40 +123,49 @@ class BoundedInsertRegionEvidence:
         return self.right.time_seconds - self.left.time_seconds
 
     @property
-    def acoustic_gap_seconds(self) -> float:
-        """Return gap between left recovery and right basin start.
+    def acoustic_gap_seconds(self) -> float | None:
+        """Return basin-envelope gap when both edges preserve basin geometry.
 
         Positive values describe acoustic separation. Negative values describe
-        overlapping basin envelopes.
+        overlapping basin envelopes. Missing basin geometry remains unknown.
         """
-        assert self.left_geometry is not None
-        assert self.right_geometry is not None
+        left_geometry = self.left_geometry
+        right_geometry = self.right_geometry
+
+        if left_geometry is None or right_geometry is None:
+            return None
 
         return (
-            self.right_geometry.start_seconds
-            - self.left_geometry.recovery_seconds
+            right_geometry.start_seconds
+            - left_geometry.recovery_seconds
         )
 
     @property
     def reference_inside_left_basin(self) -> bool:
         """Return whether the reference lies inside the left basin envelope."""
-        assert self.left_geometry is not None
+        geometry = self.left_geometry
+
+        if geometry is None:
+            return False
 
         return (
-            self.left_geometry.start_seconds
+            geometry.start_seconds
             <= self.reference_time_seconds
-            <= self.left_geometry.recovery_seconds
+            <= geometry.recovery_seconds
         )
 
     @property
     def reference_inside_right_basin(self) -> bool:
         """Return whether the reference lies inside the right basin envelope."""
-        assert self.right_geometry is not None
+        geometry = self.right_geometry
+
+        if geometry is None:
+            return False
 
         return (
-            self.right_geometry.start_seconds
+            geometry.start_seconds
             <= self.reference_time_seconds
-            <= self.right_geometry.recovery_seconds
+            <= geometry.recovery_seconds
         )
 
     @property
@@ -200,6 +248,117 @@ class BoundedInsertRegionDiscovery:
         )
 
         return between_supports or inside_left_basin or inside_right_basin
+
+    @staticmethod
+    def _proposal_sources(
+        hypothesis: BoundaryHypothesis,
+    ) -> set[BoundaryProposalSource]:
+        return {
+            proposal.source
+            for proposal in getattr(hypothesis, "proposals", ())
+            if hasattr(proposal, "source")
+        }
+
+    @classmethod
+    def _is_complementary_edge(
+        cls,
+        hypothesis: BoundaryHypothesis,
+    ) -> bool:
+        sources = cls._proposal_sources(hypothesis)
+        geometry = getattr(hypothesis, "basin_geometry", None)
+
+        if sources == {BoundaryProposalSource.STRUCTURAL}:
+            return True
+
+        return (
+            sources == {BoundaryProposalSource.BASIN}
+            and geometry is not None
+        )
+
+    def discover_asymmetric(
+        self,
+        *,
+        reference_time_seconds: float,
+        hypotheses: tuple[BoundaryHypothesis, ...],
+    ) -> tuple[BoundedInsertAsymmetricRegionEvidence, ...]:
+        """Describe asymmetric primary/complementary regions near reference."""
+        if reference_time_seconds < 0:
+            raise ValueError("reference_time_seconds must be non-negative")
+
+        ordered = tuple(
+            sorted(
+                hypotheses,
+                key=lambda hypothesis: hypothesis.time_seconds,
+            )
+        )
+
+        left_primaries = tuple(
+            hypothesis
+            for hypothesis in ordered
+            if (
+                hypothesis.time_seconds < reference_time_seconds
+                and self._is_supported_edge(hypothesis)
+            )
+        )
+
+        right_complementaries = tuple(
+            hypothesis
+            for hypothesis in ordered
+            if (
+                hypothesis.time_seconds > reference_time_seconds
+                and self._is_complementary_edge(hypothesis)
+            )
+        )
+
+        if not left_primaries or not right_complementaries:
+            return ()
+
+        complementary = min(
+            right_complementaries,
+            key=lambda hypothesis: hypothesis.time_seconds,
+        )
+
+        regions = []
+
+        for primary in left_primaries:
+            interior = tuple(
+                hypothesis
+                for hypothesis in ordered
+                if (
+                    primary.time_seconds
+                    < hypothesis.time_seconds
+                    < complementary.time_seconds
+                )
+            )
+
+            if any(
+                self._is_supported_edge(hypothesis)
+                for hypothesis in interior
+            ):
+                continue
+
+            primary_distance = (
+                reference_time_seconds
+                - primary.time_seconds
+            )
+            complementary_distance = (
+                complementary.time_seconds
+                - reference_time_seconds
+            )
+
+            if complementary_distance >= primary_distance:
+                continue
+
+            regions.append(
+                BoundedInsertAsymmetricRegionEvidence(
+                    reference_time_seconds=reference_time_seconds,
+                    primary=primary,
+                    complementary=complementary,
+                    interior_hypotheses=interior,
+                )
+            )
+
+        return tuple(regions)
 
     def discover(
         self,
