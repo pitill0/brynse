@@ -20,6 +20,7 @@ class TransitionKind(StrEnum):
     HARD_CUT = "hard_cut"
     FADE = "fade"
     INTERSTITIAL = "interstitial"
+    BOUNDED_INSERT = "bounded_insert"
     AMBIGUOUS = "ambiguous"
 
 
@@ -167,6 +168,11 @@ class DefaultTransitionRouter:
         *,
         context: TransitionRoutingContext,
     ) -> TransitionKind:
+        bounded_insert = self.assess_bounded_insert(context=context)
+
+        if bounded_insert.candidate:
+            return TransitionKind.BOUNDED_INSERT
+
         fade_like = context.fade.rise is not None and bool(context.fade.basins)
         interstitial_like = self._has_interstitial_pattern(context.hypotheses)
 

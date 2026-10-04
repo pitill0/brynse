@@ -555,6 +555,7 @@ def test_routed_transition_resolver_dispatches_to_exactly_one_specialist() -> No
     hard_cut = Specialist()
     fade = Specialist(result=expected)
     interstitial = Specialist()
+    bounded_insert = Specialist()
     ambiguous = Specialist()
 
     resolver = RoutedTransitionResolver(
@@ -562,6 +563,7 @@ def test_routed_transition_resolver_dispatches_to_exactly_one_specialist() -> No
         hard_cut=hard_cut,
         fade=fade,
         interstitial=interstitial,
+        bounded_insert=bounded_insert,
         ambiguous=ambiguous,
     )
 
@@ -579,6 +581,7 @@ def test_routed_transition_resolver_dispatches_to_exactly_one_specialist() -> No
     assert hard_cut.calls == []
     assert fade.calls == [observation]
     assert interstitial.calls == []
+    assert bounded_insert.calls == []
     assert ambiguous.calls == []
 
 
@@ -612,12 +615,14 @@ def test_routed_transition_resolver_dispatches_every_router_kind() -> None:
         (TransitionKind.HARD_CUT, "hard-cut"),
         (TransitionKind.FADE, "fade"),
         (TransitionKind.INTERSTITIAL, "interstitial"),
+        (TransitionKind.BOUNDED_INSERT, "bounded-insert"),
         (TransitionKind.AMBIGUOUS, "ambiguous"),
     ):
         specialists = {
             "hard-cut": Specialist("hard-cut"),
             "fade": Specialist("fade"),
             "interstitial": Specialist("interstitial"),
+            "bounded-insert": Specialist("bounded-insert"),
             "ambiguous": Specialist("ambiguous"),
         }
 
@@ -626,6 +631,7 @@ def test_routed_transition_resolver_dispatches_every_router_kind() -> None:
             hard_cut=specialists["hard-cut"],
             fade=specialists["fade"],
             interstitial=specialists["interstitial"],
+            bounded_insert=specialists["bounded-insert"],
             ambiguous=specialists["ambiguous"],
         )
 
@@ -641,3 +647,129 @@ def test_routed_transition_resolver_dispatches_every_router_kind() -> None:
                 assert specialist.calls == [observation]
             else:
                 assert specialist.calls == []
+
+
+def _bounded_insert_specialist_observation(
+    *,
+    regions,
+):
+    from types import SimpleNamespace
+
+    from brynse.transition_evidence import TransitionEvidenceState
+    from brynse.transition_router import TransitionRoutingContext
+
+    return TransitionSpecialistInput(
+        routing=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=TransitionEvidenceState(),
+            bounded_insert_regions=tuple(regions),
+        ),
+        selected=SimpleNamespace(time_seconds=100.0),
+        profile=None,
+        window=None,
+        pcm8=None,
+        pcm16=None,
+    )
+
+
+def _bounded_insert_test_region(
+    *,
+    left_time: float,
+    right_time: float,
+):
+    from brynse.boundaries import (
+        BoundaryEvidence,
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+
+    def edge(time_seconds: float) -> BoundaryHypothesis:
+        basin = BoundaryProposal(
+            time_seconds=time_seconds,
+            source=BoundaryProposalSource.BASIN,
+        )
+        structural = BoundaryProposal(
+            time_seconds=time_seconds,
+            source=BoundaryProposalSource.STRUCTURAL,
+            strength=0.2,
+        )
+
+        return BoundaryHypothesis(
+            time_seconds=time_seconds,
+            proposals=(basin, structural),
+            evidence=(
+                BoundaryEvidence(
+                    proposal=basin,
+                    basin_start_seconds=time_seconds - 0.5,
+                    basin_recovery_seconds=time_seconds + 0.5,
+                ),
+            ),
+        )
+
+    return BoundedInsertRegionEvidence(
+        reference_time_seconds=100.0,
+        left=edge(left_time),
+        right=edge(right_time),
+    )
+
+
+def test_bounded_insert_specialist_excludes_unique_region() -> None:
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    observation = _bounded_insert_specialist_observation(
+        regions=(
+            _bounded_insert_test_region(
+                left_time=100.25,
+                right_time=108.75,
+            ),
+        ),
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.25,
+        incoming_start_seconds=108.75,
+    )
+
+
+def test_bounded_insert_specialist_abstains_without_region() -> None:
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    observation = _bounded_insert_specialist_observation(
+        regions=(),
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal is None
+
+
+def test_bounded_insert_specialist_abstains_with_multiple_regions() -> None:
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    observation = _bounded_insert_specialist_observation(
+        regions=(
+            _bounded_insert_test_region(
+                left_time=100.25,
+                right_time=108.75,
+            ),
+            _bounded_insert_test_region(
+                left_time=108.75,
+                right_time=116.0,
+            ),
+        ),
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal is None

@@ -54,6 +54,7 @@ from brynse.transition_router import (
     TransitionRoutingContext,
 )
 from brynse.transition_specialists import (
+    BoundedInsertSpecialist,
     HardCutSpecialist,
     InterstitialSpecialist,
     LegacyAmbiguousSpecialist,
@@ -272,6 +273,7 @@ class MultiSignalAcousticCandidateResolver:
             interstitial=InterstitialSpecialist(
                 incoming_pipeline=self._incoming_refiner,
             ),
+            bounded_insert=BoundedInsertSpecialist(),
             ambiguous=LegacyAmbiguousSpecialist(
                 temporal_resolver=self._temporal_resolver,
                 incoming_pipeline=self._incoming_refiner,

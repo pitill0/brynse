@@ -176,6 +176,35 @@ class InterstitialSpecialist:
         )
 
 
+class BoundedInsertSpecialist:
+    """Exclude one acoustically bounded inserted region."""
+
+    def resolve(
+        self,
+        *,
+        observation: TransitionSpecialistInput,
+    ) -> TransitionSpecialistResult:
+        regions = observation.routing.bounded_insert_regions
+
+        if len(regions) != 1:
+            return TransitionSpecialistResult(temporal=None)
+
+        region = regions[0]
+        outgoing = region.left.time_seconds
+        incoming = region.right.time_seconds
+
+        if outgoing >= incoming:
+            return TransitionSpecialistResult(temporal=None)
+
+        return TransitionSpecialistResult(
+            temporal=TemporalSplitDecision(
+                kind=TemporalSplitKind.EXCLUSION,
+                outgoing_end_seconds=outgoing,
+                incoming_start_seconds=incoming,
+            )
+        )
+
+
 class LegacyAmbiguousSpecialist:
     """Preserve the current safe resolver while ownership is ambiguous.
 
@@ -237,6 +266,7 @@ class RoutedTransitionResolver:
         hard_cut,
         fade,
         interstitial,
+        bounded_insert,
         ambiguous,
     ) -> None:
         self._router = router
@@ -244,6 +274,7 @@ class RoutedTransitionResolver:
             TransitionKind.HARD_CUT: hard_cut,
             TransitionKind.FADE: fade,
             TransitionKind.INTERSTITIAL: interstitial,
+            TransitionKind.BOUNDED_INSERT: bounded_insert,
             TransitionKind.AMBIGUOUS: ambiguous,
         }
 

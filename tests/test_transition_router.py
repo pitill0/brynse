@@ -39,6 +39,7 @@ def test_transition_kind_exposes_only_specialist_routing_classes() -> None:
         TransitionKind.HARD_CUT,
         TransitionKind.FADE,
         TransitionKind.INTERSTITIAL,
+        TransitionKind.BOUNDED_INSERT,
         TransitionKind.AMBIGUOUS,
     )
 
