@@ -50,8 +50,117 @@ class TransitionRouter(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class BoundedInsertRoutingAssessment:
+    """Shadow routing assessment for bounded inserted material."""
+
+    candidate: bool
+    related_region_count: int
+    unique_region: bool
+    left_is_context_structural_peak: bool = False
+    right_is_context_structural_peak: bool = False
+    reference_precedes_left_support_inside_basin: bool = False
+    structural_only_interior_count: int = 0
+
+
 class DefaultTransitionRouter:
     """Conservatively route transitions from descriptive acoustic evidence."""
+
+    def assess_bounded_insert(
+        self,
+        *,
+        context: TransitionRoutingContext,
+    ) -> BoundedInsertRoutingAssessment:
+        """Assess bounded-insert ownership without changing routed kind."""
+        regions = context.bounded_insert_regions
+        region_count = len(regions)
+
+        if region_count != 1:
+            return BoundedInsertRoutingAssessment(
+                candidate=False,
+                related_region_count=region_count,
+                unique_region=False,
+            )
+
+        region = regions[0]
+
+        structural_strengths = tuple(
+            proposal.strength
+            for hypothesis in context.hypotheses
+            for proposal in hypothesis.proposals
+            if (
+                proposal.source is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength is not None
+            )
+        )
+
+        context_peak = (
+            max(structural_strengths)
+            if structural_strengths
+            else None
+        )
+
+        left_strengths = tuple(
+            proposal.strength
+            for proposal in region.left_edge.proposals
+            if (
+                proposal.source is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength is not None
+            )
+        )
+        right_strengths = tuple(
+            proposal.strength
+            for proposal in region.right_edge.proposals
+            if (
+                proposal.source is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength is not None
+            )
+        )
+
+        left_peak = (
+            context_peak is not None
+            and bool(left_strengths)
+            and max(left_strengths) == context_peak
+        )
+        right_peak = (
+            context_peak is not None
+            and bool(right_strengths)
+            and max(right_strengths) == context_peak
+        )
+
+        reference_precedes_left = (
+            region.reference_time_seconds
+            < region.left.time_seconds
+            and region.reference_inside_left_basin
+        )
+
+        structurally_non_dominant_region = (
+            not left_peak
+            and not right_peak
+        )
+
+        basin_entry_with_internal_structure = (
+            reference_precedes_left
+            and region.structural_only_interior_count > 0
+            and not right_peak
+        )
+
+        return BoundedInsertRoutingAssessment(
+            candidate=(
+                structurally_non_dominant_region
+                or basin_entry_with_internal_structure
+            ),
+            related_region_count=region_count,
+            unique_region=True,
+            left_is_context_structural_peak=left_peak,
+            right_is_context_structural_peak=right_peak,
+            reference_precedes_left_support_inside_basin=(
+                reference_precedes_left
+            ),
+            structural_only_interior_count=(
+                region.structural_only_interior_count
+            ),
+        )
 
     def classify(
         self,

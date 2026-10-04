@@ -47,6 +47,7 @@ from brynse.transition_evidence import (
     TransitionEvidenceExtractor,
 )
 from brynse.transition_router import (
+    BoundedInsertRoutingAssessment,
     DefaultTransitionRouter,
     TransitionKind,
     TransitionRouter,
@@ -77,6 +78,7 @@ class TransitionRoutingObservation:
     context: TransitionRoutingContext
     kind: TransitionKind
     temporal: TemporalSplitDecision
+    bounded_insert: BoundedInsertRoutingAssessment | None = None
     outgoing_fade_selection: OutgoingFadeSelection | None = None
     incoming_fade_selection: IncomingFadeSelection | None = None
 
@@ -402,6 +404,16 @@ class MultiSignalAcousticCandidateResolver:
                     context=routing_context,
                     kind=routing_kind,
                     temporal=temporal,
+                    bounded_insert=(
+                        self._transition_router.assess_bounded_insert(
+                            context=routing_context,
+                        )
+                        if isinstance(
+                            self._transition_router,
+                            DefaultTransitionRouter,
+                        )
+                        else None
+                    ),
                     outgoing_fade_selection=outgoing_fade_selection,
                     incoming_fade_selection=incoming_fade_selection,
                 )

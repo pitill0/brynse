@@ -114,6 +114,7 @@ def _routing_trace_record(observation) -> dict[str, object]:
     temporal = observation.temporal
     outgoing_selection = observation.outgoing_fade_selection
     incoming_selection = observation.incoming_fade_selection
+    bounded_insert = observation.bounded_insert
 
     local_values = (
         evidence.local_discontinuity_250ms,
@@ -264,6 +265,44 @@ def _routing_trace_record(observation) -> dict[str, object]:
         "hypotheses": len(context.hypotheses),
         "hypotheses_detail": hypotheses_detail,
         "bounded_insert_count": len(context.bounded_insert_regions),
+        "bounded_insert_routing_candidate": (
+            None
+            if bounded_insert is None
+            else bounded_insert.candidate
+        ),
+        "bounded_insert_routing_related_region_count": (
+            None
+            if bounded_insert is None
+            else bounded_insert.related_region_count
+        ),
+        "bounded_insert_routing_unique_region": (
+            None
+            if bounded_insert is None
+            else bounded_insert.unique_region
+        ),
+        "bounded_insert_routing_left_structural_peak": (
+            None
+            if bounded_insert is None
+            else bounded_insert.left_is_context_structural_peak
+        ),
+        "bounded_insert_routing_right_structural_peak": (
+            None
+            if bounded_insert is None
+            else bounded_insert.right_is_context_structural_peak
+        ),
+        "bounded_insert_routing_reference_precedes_left": (
+            None
+            if bounded_insert is None
+            else (
+                bounded_insert
+                .reference_precedes_left_support_inside_basin
+            )
+        ),
+        "bounded_insert_routing_structural_only_interior_count": (
+            None
+            if bounded_insert is None
+            else bounded_insert.structural_only_interior_count
+        ),
         "bounded_insert_detail": [
             {
                 "reference_time_seconds": region.reference_time_seconds,

@@ -220,6 +220,13 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
             }
         ],
         "bounded_insert_count": 0,
+        "bounded_insert_routing_candidate": None,
+        "bounded_insert_routing_related_region_count": None,
+        "bounded_insert_routing_unique_region": None,
+        "bounded_insert_routing_left_structural_peak": None,
+        "bounded_insert_routing_right_structural_peak": None,
+        "bounded_insert_routing_reference_precedes_left": None,
+        "bounded_insert_routing_structural_only_interior_count": None,
         "bounded_insert_detail": [],
         "local_complete": True,
         "local_discontinuity_250ms": 0.21,

@@ -1,5 +1,12 @@
 import pytest
 
+from brynse.boundaries import (
+    BoundaryEvidence,
+    BoundaryHypothesis,
+    BoundaryProposal,
+    BoundaryProposalSource,
+)
+from brynse.bounded_insert import BoundedInsertRegionEvidence
 from brynse.transition_evidence import (
     CrossfadeBasinEvidence,
     CrossfadeRiseEvidence,
@@ -7,6 +14,7 @@ from brynse.transition_evidence import (
     TransitionEvidenceState,
 )
 from brynse.transition_router import (
+    DefaultTransitionRouter,
     TransitionKind,
     TransitionRouter,
     TransitionRoutingContext,
@@ -396,3 +404,223 @@ def test_default_transition_router_prefers_clear_interstitial_over_hard_cut_fall
     )
 
     assert result is TransitionKind.INTERSTITIAL
+
+
+def _bounded_insert_edge(
+    time_seconds: float,
+    *,
+    basin_start_seconds: float,
+    basin_recovery_seconds: float,
+    structural_strength: float,
+) -> BoundaryHypothesis:
+    basin = BoundaryProposal(
+        time_seconds=time_seconds,
+        source=BoundaryProposalSource.BASIN,
+    )
+    structural = BoundaryProposal(
+        time_seconds=time_seconds,
+        source=BoundaryProposalSource.STRUCTURAL,
+        strength=structural_strength,
+    )
+
+    return BoundaryHypothesis(
+        time_seconds=time_seconds,
+        proposals=(basin, structural),
+        evidence=(
+            BoundaryEvidence(
+                proposal=basin,
+                basin_start_seconds=basin_start_seconds,
+                basin_recovery_seconds=basin_recovery_seconds,
+            ),
+        ),
+    )
+
+
+def _bounded_insert_region(
+    *,
+    reference_time_seconds: float,
+    left: BoundaryHypothesis,
+    right: BoundaryHypothesis,
+    interior_hypotheses: tuple[BoundaryHypothesis, ...] = (),
+) -> BoundedInsertRegionEvidence:
+    return BoundedInsertRegionEvidence(
+        reference_time_seconds=reference_time_seconds,
+        left=left,
+        right=right,
+        interior_hypotheses=interior_hypotheses,
+    )
+
+
+def test_bounded_insert_shadow_accepts_unique_non_dominant_region() -> None:
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.2,
+    )
+    right = _bounded_insert_edge(
+        108.0,
+        basin_start_seconds=107.5,
+        basin_recovery_seconds=108.5,
+        structural_strength=0.3,
+    )
+    dominant = _bounded_insert_edge(
+        120.0,
+        basin_start_seconds=119.5,
+        basin_recovery_seconds=120.5,
+        structural_strength=0.9,
+    )
+
+    region = _bounded_insert_region(
+        reference_time_seconds=101.0,
+        left=left,
+        right=right,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=101.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(left, right, dominant),
+        bounded_insert_regions=(region,),
+    )
+
+    result = DefaultTransitionRouter().assess_bounded_insert(
+        context=context,
+    )
+
+    assert result.candidate is True
+    assert result.unique_region is True
+    assert result.related_region_count == 1
+    assert result.left_is_context_structural_peak is False
+    assert result.right_is_context_structural_peak is False
+
+
+def test_bounded_insert_shadow_abstains_with_multiple_regions() -> None:
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.2,
+    )
+    middle = _bounded_insert_edge(
+        105.0,
+        basin_start_seconds=104.5,
+        basin_recovery_seconds=105.5,
+        structural_strength=0.3,
+    )
+    right = _bounded_insert_edge(
+        110.0,
+        basin_start_seconds=109.5,
+        basin_recovery_seconds=110.5,
+        structural_strength=0.4,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=105.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(left, middle, right),
+        bounded_insert_regions=(
+            _bounded_insert_region(
+                reference_time_seconds=105.0,
+                left=left,
+                right=middle,
+            ),
+            _bounded_insert_region(
+                reference_time_seconds=105.0,
+                left=middle,
+                right=right,
+            ),
+        ),
+    )
+
+    result = DefaultTransitionRouter().assess_bounded_insert(
+        context=context,
+    )
+
+    assert result.candidate is False
+    assert result.unique_region is False
+    assert result.related_region_count == 2
+
+
+def test_bounded_insert_shadow_rejects_structurally_dominant_edge() -> None:
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=1.0,
+    )
+    right = _bounded_insert_edge(
+        108.0,
+        basin_start_seconds=107.5,
+        basin_recovery_seconds=108.5,
+        structural_strength=0.3,
+    )
+
+    region = _bounded_insert_region(
+        reference_time_seconds=101.0,
+        left=left,
+        right=right,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=101.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(left, right),
+        bounded_insert_regions=(region,),
+    )
+
+    result = DefaultTransitionRouter().assess_bounded_insert(
+        context=context,
+    )
+
+    assert result.candidate is False
+    assert result.left_is_context_structural_peak is True
+    assert result.right_is_context_structural_peak is False
+
+
+def test_bounded_insert_shadow_accepts_basin_entry_with_internal_structure() -> None:
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=98.0,
+        basin_recovery_seconds=104.0,
+        structural_strength=1.0,
+    )
+    right = _bounded_insert_edge(
+        118.0,
+        basin_start_seconds=117.5,
+        basin_recovery_seconds=118.5,
+        structural_strength=0.2,
+    )
+    interior_proposal = BoundaryProposal(
+        time_seconds=108.0,
+        source=BoundaryProposalSource.STRUCTURAL,
+        strength=0.4,
+    )
+    interior = BoundaryHypothesis(
+        time_seconds=108.0,
+        proposals=(interior_proposal,),
+    )
+
+    region = _bounded_insert_region(
+        reference_time_seconds=99.5,
+        left=left,
+        right=right,
+        interior_hypotheses=(interior,),
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=99.5,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(left, interior, right),
+        bounded_insert_regions=(region,),
+    )
+
+    result = DefaultTransitionRouter().assess_bounded_insert(
+        context=context,
+    )
+
+    assert result.candidate is True
+    assert result.left_is_context_structural_peak is True
+    assert result.right_is_context_structural_peak is False
+    assert result.reference_precedes_left_support_inside_basin is True
+    assert result.structural_only_interior_count == 1
