@@ -923,3 +923,75 @@ def test_live_asymmetric_failures_receive_router_ownership(
         router.classify(context=context)
         is TransitionKind.BOUNDED_INSERT
     )
+
+
+def test_bounded_insert_ownership_reports_symmetric_precedence() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_router import (
+        BoundedInsertOwnership,
+        DefaultTransitionRouter,
+    )
+
+    class Router(DefaultTransitionRouter):
+        def assess_bounded_insert(self, *, context):
+            _ = context
+            return SimpleNamespace(candidate=True)
+
+        def assess_asymmetric_bounded_insert(self, *, context):
+            _ = context
+            return SimpleNamespace(candidate=True)
+
+    assert (
+        Router().bounded_insert_ownership(
+            context=object(),
+        )
+        is BoundedInsertOwnership.SYMMETRIC
+    )
+
+
+def test_bounded_insert_ownership_reports_asymmetric_branch() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_router import (
+        BoundedInsertOwnership,
+        DefaultTransitionRouter,
+    )
+
+    class Router(DefaultTransitionRouter):
+        def assess_bounded_insert(self, *, context):
+            _ = context
+            return SimpleNamespace(candidate=False)
+
+        def assess_asymmetric_bounded_insert(self, *, context):
+            _ = context
+            return SimpleNamespace(candidate=True)
+
+    assert (
+        Router().bounded_insert_ownership(
+            context=object(),
+        )
+        is BoundedInsertOwnership.ASYMMETRIC
+    )
+
+
+def test_bounded_insert_ownership_reports_none_without_candidate() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_router import DefaultTransitionRouter
+
+    class Router(DefaultTransitionRouter):
+        def assess_bounded_insert(self, *, context):
+            _ = context
+            return SimpleNamespace(candidate=False)
+
+        def assess_asymmetric_bounded_insert(self, *, context):
+            _ = context
+            return SimpleNamespace(candidate=False)
+
+    assert (
+        Router().bounded_insert_ownership(
+            context=object(),
+        )
+        is None
+    )

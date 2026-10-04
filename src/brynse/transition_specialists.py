@@ -6,12 +6,13 @@ A specialist decides WHERE its temporal boundaries are.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
 from brynse.boundaries import BoundaryConfidence
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
 from brynse.transition_router import (
+    BoundedInsertOwnership,
     TransitionKind,
     TransitionRouter,
     TransitionRoutingContext,
@@ -28,6 +29,7 @@ class TransitionSpecialistInput:
     window: Any
     pcm8: Any
     pcm16: Any
+    bounded_insert_ownership: BoundedInsertOwnership | None = None
 
 
 @dataclass(frozen=True)
@@ -179,45 +181,242 @@ class InterstitialSpecialist:
 class BoundedInsertSpecialist:
     """Resolve temporal geometry for acoustically bounded inserted material."""
 
+    @staticmethod
+    def _proposal_sources(hypothesis):
+        return {
+            proposal.source
+            for proposal in hypothesis.proposals
+        }
+
+    @classmethod
+    def _is_supported_edge(cls, hypothesis) -> bool:
+        from brynse.boundaries import BoundaryProposalSource
+
+        sources = cls._proposal_sources(hypothesis)
+
+        return (
+            BoundaryProposalSource.BASIN in sources
+            and BoundaryProposalSource.STRUCTURAL in sources
+            and hypothesis.basin_geometry is not None
+        )
+
+    @classmethod
+    def _is_structural_only(cls, hypothesis) -> bool:
+        from brynse.boundaries import BoundaryProposalSource
+
+        return cls._proposal_sources(hypothesis) == {
+            BoundaryProposalSource.STRUCTURAL
+        }
+
+    @staticmethod
+    def propose_symmetric_phase_aware(region):
+        """Propose a phase-aware symmetric exclusion without applying it."""
+        outgoing = region.left.time_seconds
+
+        geometry = region.left_edge.basin_geometry
+
+        if geometry is not None:
+            outgoing = min(
+                outgoing,
+                geometry.recovery_seconds,
+            )
+
+        incoming = region.right.time_seconds
+
+        if outgoing >= incoming:
+            return None
+
+        return TemporalSplitDecision(
+            kind=TemporalSplitKind.EXCLUSION,
+            outgoing_end_seconds=outgoing,
+            incoming_start_seconds=incoming,
+        )
+
+    @classmethod
+    def propose_asymmetric_outer_extent(
+        cls,
+        *,
+        asymmetric_region,
+        symmetric_regions,
+        hypotheses,
+    ):
+        """Propose the exterior extent around one asymmetric anchor.
+
+        The asymmetric primary remains the ownership anchor.  A preceding
+        supported edge may extend the left side only when all intervening
+        hypotheses are structural-only.  A symmetric region beginning at the
+        anchor may provide the exterior right edge.
+        """
+        anchor = asymmetric_region.primary
+
+        ordered = tuple(
+            sorted(
+                hypotheses,
+                key=lambda hypothesis: hypothesis.time_seconds,
+            )
+        )
+
+        previous_supported = tuple(
+            hypothesis
+            for hypothesis in ordered
+            if (
+                hypothesis.time_seconds < anchor.time_seconds
+                and cls._is_supported_edge(hypothesis)
+            )
+        )
+
+        if not previous_supported:
+            return None
+
+        predecessor = max(
+            previous_supported,
+            key=lambda hypothesis: hypothesis.time_seconds,
+        )
+
+        interior = tuple(
+            hypothesis
+            for hypothesis in ordered
+            if (
+                predecessor.time_seconds
+                < hypothesis.time_seconds
+                < anchor.time_seconds
+            )
+        )
+
+        if not all(
+            cls._is_structural_only(hypothesis)
+            for hypothesis in interior
+        ):
+            return None
+
+        matching_symmetric = tuple(
+            region
+            for region in symmetric_regions
+            if region.left.time_seconds == anchor.time_seconds
+        )
+
+        if len(matching_symmetric) != 1:
+            return None
+
+        outer = matching_symmetric[0]
+
+        outgoing = predecessor.time_seconds
+        incoming = outer.right.time_seconds
+
+        if outgoing >= incoming:
+            return None
+
+        return TemporalSplitDecision(
+            kind=TemporalSplitKind.EXCLUSION,
+            outgoing_end_seconds=outgoing,
+            incoming_start_seconds=incoming,
+        )
+
     def resolve(
         self,
         *,
         observation: TransitionSpecialistInput,
     ) -> TransitionSpecialistResult:
+        """Resolve the complete bounded-insert temporal geometry."""
         symmetric = observation.routing.bounded_insert_regions
-
-        if len(symmetric) == 1:
-            region = symmetric[0]
-            outgoing = region.left.time_seconds
-            incoming = region.right.time_seconds
-
-            if outgoing >= incoming:
-                return TransitionSpecialistResult(temporal=None)
-
-            return TransitionSpecialistResult(
-                temporal=TemporalSplitDecision(
-                    kind=TemporalSplitKind.EXCLUSION,
-                    outgoing_end_seconds=outgoing,
-                    incoming_start_seconds=incoming,
-                )
-            )
-
-        if symmetric:
-            return TransitionSpecialistResult(temporal=None)
-
         asymmetric = (
             observation.routing.bounded_insert_asymmetric_regions
         )
+        ownership = observation.bounded_insert_ownership
+
+        if ownership is BoundedInsertOwnership.SYMMETRIC:
+            if len(symmetric) != 1:
+                return TransitionSpecialistResult(
+                    temporal=None,
+                )
+
+            region = symmetric[0]
+
+            proposal = self.propose_symmetric_phase_aware(
+                region
+            )
+
+            if proposal is not None:
+                return TransitionSpecialistResult(
+                    temporal=proposal,
+                )
+
+            return self._resolve_symmetric_fallback(
+                region
+            )
+
+        if ownership is BoundedInsertOwnership.ASYMMETRIC:
+            if len(asymmetric) != 1:
+                return TransitionSpecialistResult(
+                    temporal=None,
+                )
+
+            proposal = self.propose_asymmetric_outer_extent(
+                asymmetric_region=asymmetric[0],
+                symmetric_regions=symmetric,
+                hypotheses=observation.routing.hypotheses,
+            )
+
+            if proposal is not None:
+                return TransitionSpecialistResult(
+                    temporal=proposal,
+                )
+
+            return self._resolve_asymmetric_fallback(
+                asymmetric[0]
+            )
+
+        # Compatibility path for direct specialist use without
+        # Router provenance.  Preserve the pre-Phase-2 behavior.
+        if len(symmetric) == 1:
+            return self._resolve_symmetric_fallback(
+                symmetric[0]
+            )
+
+        if symmetric:
+            return TransitionSpecialistResult(
+                temporal=None,
+            )
 
         if len(asymmetric) != 1:
-            return TransitionSpecialistResult(temporal=None)
+            return TransitionSpecialistResult(
+                temporal=None,
+            )
 
-        region = asymmetric[0]
+        return self._resolve_asymmetric_fallback(
+            asymmetric[0]
+        )
 
+    @staticmethod
+    def _resolve_symmetric_fallback(
+        region,
+    ) -> TransitionSpecialistResult:
+        outgoing = region.left.time_seconds
+        incoming = region.right.time_seconds
+
+        if outgoing >= incoming:
+            return TransitionSpecialistResult(
+                temporal=None,
+            )
+
+        return TransitionSpecialistResult(
+            temporal=TemporalSplitDecision(
+                kind=TemporalSplitKind.EXCLUSION,
+                outgoing_end_seconds=outgoing,
+                incoming_start_seconds=incoming,
+            )
+        )
+
+    @staticmethod
+    def _resolve_asymmetric_fallback(
+        region,
+    ) -> TransitionSpecialistResult:
         primary_geometry = region.primary_edge.basin_geometry
 
         if primary_geometry is None:
-            return TransitionSpecialistResult(temporal=None)
+            return TransitionSpecialistResult(
+                temporal=None,
+            )
 
         outgoing = primary_geometry.recovery_seconds
 
@@ -232,7 +431,9 @@ class BoundedInsertSpecialist:
         )
 
         if outgoing >= incoming:
-            return TransitionSpecialistResult(temporal=None)
+            return TransitionSpecialistResult(
+                temporal=None,
+            )
 
         return TransitionSpecialistResult(
             temporal=TemporalSplitDecision(
@@ -327,10 +528,29 @@ class RoutedTransitionResolver:
             context=observation.routing,
         )
 
+        routed_observation = observation
+
+        if kind is TransitionKind.BOUNDED_INSERT:
+            ownership_resolver = getattr(
+                self._router,
+                "bounded_insert_ownership",
+                None,
+            )
+
+            if ownership_resolver is not None:
+                ownership = ownership_resolver(
+                    context=observation.routing,
+                )
+
+                routed_observation = replace(
+                    observation,
+                    bounded_insert_ownership=ownership,
+                )
+
         specialist = self._specialists[kind]
 
         result = specialist.resolve(
-            observation=observation,
+            observation=routed_observation,
         )
 
         return kind, result

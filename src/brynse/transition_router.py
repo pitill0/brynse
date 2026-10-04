@@ -27,6 +27,13 @@ class TransitionKind(StrEnum):
     AMBIGUOUS = "ambiguous"
 
 
+class BoundedInsertOwnership(StrEnum):
+    """Evidence family that gave bounded-insert routing ownership."""
+
+    SYMMETRIC = "symmetric"
+    ASYMMETRIC = "asymmetric"
+
+
 @dataclass(frozen=True)
 class TransitionRoutingContext:
     """Descriptive context available while choosing a transition specialist."""
@@ -235,21 +242,38 @@ class DefaultTransitionRouter:
             primary_is_context_structural_peak=primary_peak,
         )
 
+    def bounded_insert_ownership(
+        self,
+        *,
+        context: TransitionRoutingContext,
+    ) -> BoundedInsertOwnership | None:
+        """Return which bounded-insert evidence family owns the transition."""
+        symmetric = self.assess_bounded_insert(
+            context=context,
+        )
+
+        if symmetric.candidate:
+            return BoundedInsertOwnership.SYMMETRIC
+
+        asymmetric = self.assess_asymmetric_bounded_insert(
+            context=context,
+        )
+
+        if asymmetric.candidate:
+            return BoundedInsertOwnership.ASYMMETRIC
+
+        return None
+
     def classify(
         self,
         *,
         context: TransitionRoutingContext,
     ) -> TransitionKind:
-        bounded_insert = self.assess_bounded_insert(context=context)
-
-        if bounded_insert.candidate:
-            return TransitionKind.BOUNDED_INSERT
-
-        asymmetric_bounded_insert = self.assess_asymmetric_bounded_insert(
+        bounded_insert_ownership = self.bounded_insert_ownership(
             context=context,
         )
 
-        if asymmetric_bounded_insert.candidate:
+        if bounded_insert_ownership is not None:
             return TransitionKind.BOUNDED_INSERT
 
         fade_like = context.fade.rise is not None and bool(context.fade.basins)
