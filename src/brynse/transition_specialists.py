@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from brynse.boundaries import BoundaryConfidence
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
 from brynse.transition_router import (
     TransitionKind,
@@ -71,9 +72,9 @@ class HardCutSpecialist:
 class InterstitialSpecialist:
     """Resolve track -> interstitial -> incoming-track geometry.
 
-    The existing IncomingBoundaryPipeline already contains the acoustic
-    understanding needed for the incoming side.  This specialist owns that
-    behaviour instead of leaving it as a global post-resolution refinement.
+    Incoming refinement establishes the right edge of an interstitial region.
+    Once that region exists, this specialist independently analyzes acoustic
+    hypotheses to refine its left edge.
     """
 
     def __init__(self, *, incoming_pipeline) -> None:
@@ -97,14 +98,81 @@ class InterstitialSpecialist:
                 temporal=initial,
             )
 
-        return TransitionSpecialistResult(
-            temporal=self._incoming_pipeline.refine(
-                decision=initial,
-                window=observation.window,
-                pcm8=observation.pcm8,
-                pcm16=observation.pcm16,
-                hypotheses=observation.routing.hypotheses,
+        refined = self._incoming_pipeline.refine(
+            decision=initial,
+            window=observation.window,
+            pcm8=observation.pcm8,
+            pcm16=observation.pcm16,
+            hypotheses=observation.routing.hypotheses,
+        )
+
+        if refined.kind is not TemporalSplitKind.EXCLUSION:
+            return TransitionSpecialistResult(
+                temporal=refined,
             )
+
+        analyze_hypotheses = getattr(
+            self._incoming_pipeline,
+            "analyze_hypotheses",
+            None,
+        )
+        if analyze_hypotheses is None:
+            return TransitionSpecialistResult(
+                temporal=refined,
+            )
+
+        analyses = analyze_hypotheses(
+            hypotheses=observation.routing.hypotheses,
+            window=observation.window,
+            pcm16=observation.pcm16,
+        )
+
+        outgoing = self._discover_outgoing(
+            selected_time_seconds=boundary,
+            incoming_start_seconds=refined.incoming_start_seconds,
+            analyses=analyses,
+        )
+
+        if outgoing is None:
+            return TransitionSpecialistResult(
+                temporal=refined,
+            )
+
+        return TransitionSpecialistResult(
+            temporal=TemporalSplitDecision(
+                kind=TemporalSplitKind.EXCLUSION,
+                outgoing_end_seconds=outgoing,
+                incoming_start_seconds=refined.incoming_start_seconds,
+            )
+        )
+
+    @staticmethod
+    def _discover_outgoing(
+        *,
+        selected_time_seconds: float,
+        incoming_start_seconds: float,
+        analyses,
+    ) -> float | None:
+        supported = tuple(
+            analysis.hypothesis.time_seconds
+            for analysis in analyses
+            if (
+                analysis.assessment.candidate_confidence
+                is BoundaryConfidence.HIGH
+                and analysis.hypothesis.time_seconds
+                < incoming_start_seconds
+            )
+        )
+
+        if not supported:
+            return None
+
+        return min(
+            supported,
+            key=lambda time_seconds: (
+                abs(time_seconds - selected_time_seconds),
+                time_seconds,
+            ),
         )
 
 

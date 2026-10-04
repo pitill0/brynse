@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from brynse.boundaries import BoundaryConfidence
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
 from brynse.transition_evidence import TransitionEvidenceState
 from brynse.transition_router import TransitionRoutingContext
@@ -77,6 +78,112 @@ def test_interstitial_specialist_reuses_incoming_pipeline() -> None:
     assert call["pcm8"] is observation.pcm8
     assert call["pcm16"] is observation.pcm16
     assert call["hypotheses"] is observation.routing.hypotheses
+
+
+def test_interstitial_specialist_refines_outgoing_from_supported_analysis() -> None:
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=108.0,
+    )
+
+    high = SimpleNamespace(
+        hypothesis=SimpleNamespace(time_seconds=104.0),
+        assessment=SimpleNamespace(
+            candidate_confidence=BoundaryConfidence.HIGH,
+        ),
+    )
+    farther_high = SimpleNamespace(
+        hypothesis=SimpleNamespace(time_seconds=94.0),
+        assessment=SimpleNamespace(
+            candidate_confidence=BoundaryConfidence.HIGH,
+        ),
+    )
+    unresolved = SimpleNamespace(
+        hypothesis=SimpleNamespace(time_seconds=101.0),
+        assessment=SimpleNamespace(
+            candidate_confidence=BoundaryConfidence.UNRESOLVED,
+        ),
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return (farther_high, unresolved, high)
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=_observation(boundary=100.0),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=104.0,
+        incoming_start_seconds=108.0,
+    )
+
+
+def test_interstitial_specialist_keeps_outgoing_without_supported_analysis() -> None:
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=108.0,
+    )
+
+    unresolved = SimpleNamespace(
+        hypothesis=SimpleNamespace(time_seconds=104.0),
+        assessment=SimpleNamespace(
+            candidate_confidence=BoundaryConfidence.UNRESOLVED,
+        ),
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return (unresolved,)
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=_observation(boundary=100.0),
+    )
+
+    assert result.temporal is refined
+
+
+def test_interstitial_specialist_does_not_move_outgoing_past_incoming() -> None:
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=108.0,
+    )
+
+    too_late = SimpleNamespace(
+        hypothesis=SimpleNamespace(time_seconds=109.0),
+        assessment=SimpleNamespace(
+            candidate_confidence=BoundaryConfidence.HIGH,
+        ),
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return (too_late,)
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=_observation(boundary=100.0),
+    )
+
+    assert result.temporal is refined
 
 
 def test_ambiguous_fallback_preserves_existing_temporal_path() -> None:

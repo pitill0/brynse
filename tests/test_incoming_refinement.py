@@ -83,9 +83,24 @@ from brynse.incoming_refinement import IncomingBoundaryDiscovery
 def _analysis(
     time_seconds: float,
     confidence: BoundaryConfidence,
+    *,
+    minimum_seconds: float | None = None,
+    recovery_seconds: float | None = None,
 ):
+    geometry = (
+        None
+        if minimum_seconds is None or recovery_seconds is None
+        else SimpleNamespace(
+            minimum_seconds=minimum_seconds,
+            recovery_seconds=recovery_seconds,
+        )
+    )
+
     return SimpleNamespace(
-        hypothesis=SimpleNamespace(time_seconds=time_seconds),
+        hypothesis=SimpleNamespace(
+            time_seconds=time_seconds,
+            basin_geometry=geometry,
+        ),
         assessment=SimpleNamespace(candidate_confidence=confidence),
     )
 
@@ -109,6 +124,76 @@ def test_incoming_discovery_selects_first_later_high_boundary() -> None:
         _analysis(104.0, BoundaryConfidence.HIGH),
         _analysis(101.5, BoundaryConfidence.HIGH),
         _analysis(102.0, BoundaryConfidence.UNRESOLVED),
+    )
+
+    discovered = IncomingBoundaryDiscovery().discover(
+        outgoing_end_seconds=100.0,
+        analyses=analyses,
+    )
+
+    assert discovered == 101.5
+
+
+def test_incoming_discovery_uses_recovery_when_high_is_before_basin_minimum() -> None:
+    analyses = (
+        _analysis(
+            101.5,
+            BoundaryConfidence.HIGH,
+            minimum_seconds=102.5,
+            recovery_seconds=103.25,
+        ),
+    )
+
+    discovered = IncomingBoundaryDiscovery().discover(
+        outgoing_end_seconds=100.0,
+        analyses=analyses,
+    )
+
+    assert discovered == 103.25
+
+
+def test_incoming_discovery_keeps_high_at_basin_minimum() -> None:
+    analyses = (
+        _analysis(
+            102.5,
+            BoundaryConfidence.HIGH,
+            minimum_seconds=102.5,
+            recovery_seconds=104.0,
+        ),
+    )
+
+    discovered = IncomingBoundaryDiscovery().discover(
+        outgoing_end_seconds=100.0,
+        analyses=analyses,
+    )
+
+    assert discovered == 102.5
+
+
+def test_incoming_discovery_keeps_high_after_basin_minimum() -> None:
+    analyses = (
+        _analysis(
+            103.0,
+            BoundaryConfidence.HIGH,
+            minimum_seconds=102.5,
+            recovery_seconds=104.0,
+        ),
+    )
+
+    discovered = IncomingBoundaryDiscovery().discover(
+        outgoing_end_seconds=100.0,
+        analyses=analyses,
+    )
+
+    assert discovered == 103.0
+
+
+def test_incoming_discovery_uses_hypothesis_time_without_basin_geometry() -> None:
+    analyses = (
+        _analysis(
+            101.5,
+            BoundaryConfidence.HIGH,
+        ),
     )
 
     discovered = IncomingBoundaryDiscovery().discover(
