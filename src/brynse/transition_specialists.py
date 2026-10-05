@@ -53,14 +53,20 @@ class TransitionSpecialist(Protocol):
 
 
 class HardCutSpecialist:
-    """Resolve a genuine hard cut at the selected acoustic boundary."""
+    """Resolve the acoustic boundary of a genuine abrupt transition."""
 
     def resolve(
         self,
         *,
         observation: TransitionSpecialistInput,
     ) -> TransitionSpecialistResult:
-        boundary = observation.selected.time_seconds
+        boundary = self._resolve_boundary(
+            selected_time_seconds=observation.selected.time_seconds,
+            reference_time_seconds=(
+                observation.routing.reference_time_seconds
+            ),
+            hypotheses=observation.routing.hypotheses,
+        )
 
         return TransitionSpecialistResult(
             temporal=TemporalSplitDecision(
@@ -68,6 +74,106 @@ class HardCutSpecialist:
                 incoming_start_seconds=boundary,
                 outgoing_end_seconds=boundary,
             )
+        )
+
+    @classmethod
+    def _resolve_boundary(
+        cls,
+        *,
+        selected_time_seconds: float,
+        reference_time_seconds: float,
+        hypotheses,
+    ) -> float:
+        geometries = tuple(
+            (
+                hypothesis,
+                hypothesis.basin_geometry,
+            )
+            for hypothesis in hypotheses
+            if hypothesis.basin_geometry is not None
+        )
+
+        selected_geometry = cls._containing_geometry(
+            time_seconds=selected_time_seconds,
+            geometries=geometries,
+        )
+
+        if selected_geometry is not None:
+            if (
+                selected_time_seconds
+                >= selected_geometry.minimum_seconds
+            ):
+                return selected_geometry.recovery_seconds
+
+            if (
+                selected_geometry.start_seconds
+                <= reference_time_seconds
+                <= selected_geometry.minimum_seconds
+            ):
+                return selected_geometry.minimum_seconds
+
+            return selected_time_seconds
+
+        reference_geometry = cls._containing_geometry(
+            time_seconds=reference_time_seconds,
+            geometries=geometries,
+        )
+
+        if reference_geometry is not None:
+            if (
+                reference_time_seconds
+                <= reference_geometry.minimum_seconds
+            ):
+                return reference_geometry.minimum_seconds
+
+            return reference_geometry.recovery_seconds
+
+        if geometries:
+            return selected_time_seconds
+
+        if hypotheses:
+            hypothesis = min(
+                hypotheses,
+                key=lambda item: (
+                    abs(
+                        item.time_seconds
+                        - reference_time_seconds
+                    ),
+                    item.time_seconds,
+                ),
+            )
+            return hypothesis.time_seconds
+
+        return selected_time_seconds
+
+    @staticmethod
+    def _containing_geometry(
+        *,
+        time_seconds: float,
+        geometries,
+    ):
+        containing = tuple(
+            geometry
+            for _, geometry in geometries
+            if (
+                geometry.start_seconds
+                <= time_seconds
+                <= geometry.recovery_seconds
+            )
+        )
+
+        if not containing:
+            return None
+
+        return min(
+            containing,
+            key=lambda geometry: (
+                abs(
+                    geometry.minimum_seconds
+                    - time_seconds
+                ),
+                geometry.minimum_seconds,
+            ),
         )
 
 
@@ -109,6 +215,16 @@ class InterstitialSpecialist:
         )
 
         if refined.kind is not TemporalSplitKind.EXCLUSION:
+            recovered = self._recover_supported_exclusion(
+                selected_time_seconds=boundary,
+                hypotheses=observation.routing.hypotheses,
+            )
+
+            if recovered is not None:
+                return TransitionSpecialistResult(
+                    temporal=recovered,
+                )
+
             return TransitionSpecialistResult(
                 temporal=refined,
             )
@@ -146,6 +262,84 @@ class InterstitialSpecialist:
                 outgoing_end_seconds=outgoing,
                 incoming_start_seconds=refined.incoming_start_seconds,
             )
+        )
+
+    @staticmethod
+    def _recover_supported_exclusion(
+        *,
+        selected_time_seconds: float,
+        hypotheses,
+    ) -> TemporalSplitDecision | None:
+        from brynse.boundaries import BoundaryProposalSource
+
+        ordered = tuple(
+            sorted(
+                hypotheses,
+                key=lambda hypothesis: hypothesis.time_seconds,
+            )
+        )
+
+        before = tuple(
+            hypothesis
+            for hypothesis in ordered
+            if hypothesis.time_seconds < selected_time_seconds
+        )
+        after = tuple(
+            hypothesis
+            for hypothesis in ordered
+            if hypothesis.time_seconds > selected_time_seconds
+        )
+
+        if not before or not after:
+            return None
+
+        left = before[-1]
+        right = after[0]
+
+        def supported(hypothesis) -> bool:
+            sources = {
+                proposal.source
+                for proposal in hypothesis.proposals
+            }
+
+            return (
+                hypothesis.basin_geometry is not None
+                and BoundaryProposalSource.BASIN in sources
+                and BoundaryProposalSource.STRUCTURAL in sources
+            )
+
+        if not supported(left) or not supported(right):
+            return None
+
+        left_distance = (
+            selected_time_seconds
+            - left.time_seconds
+        )
+        right_distance = (
+            right.time_seconds
+            - selected_time_seconds
+        )
+
+        if left_distance <= right_distance:
+            outgoing = min(
+                left.time_seconds,
+                left.basin_geometry.recovery_seconds,
+            )
+        else:
+            outgoing = selected_time_seconds
+
+        incoming = max(
+            right.time_seconds,
+            right.basin_geometry.recovery_seconds,
+        )
+
+        if outgoing >= incoming:
+            return None
+
+        return TemporalSplitDecision(
+            kind=TemporalSplitKind.EXCLUSION,
+            outgoing_end_seconds=outgoing,
+            incoming_start_seconds=incoming,
         )
 
     @staticmethod

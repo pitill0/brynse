@@ -995,3 +995,59 @@ def test_bounded_insert_ownership_reports_none_without_candidate() -> None:
         )
         is None
     )
+
+
+def test_phase3_symmetric_bounded_insert_rejects_reference_after_right_support() -> None:
+    from types import SimpleNamespace
+
+    from brynse.boundaries import BoundaryProposalSource
+    from brynse.transition_evidence import TransitionEvidenceState
+    from brynse.transition_router import (
+        DefaultTransitionRouter,
+        TransitionRoutingContext,
+    )
+
+    def structural(strength):
+        return SimpleNamespace(
+            source=BoundaryProposalSource.STRUCTURAL,
+            strength=strength,
+        )
+
+    left = SimpleNamespace(
+        time_seconds=100.0,
+        proposals=(structural(0.2),),
+    )
+    right = SimpleNamespace(
+        time_seconds=110.0,
+        proposals=(structural(0.3),),
+    )
+
+    region = SimpleNamespace(
+        reference_time_seconds=111.0,
+        left=left,
+        right=right,
+        left_edge=left,
+        right_edge=right,
+        reference_inside_left_basin=False,
+        structural_only_interior_count=0,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=111.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(
+            SimpleNamespace(
+                proposals=(structural(0.9),),
+            ),
+        ),
+        bounded_insert_regions=(region,),
+    )
+
+    assessment = DefaultTransitionRouter().assess_bounded_insert(
+        context=context,
+    )
+
+    assert assessment.candidate is False
+    assert assessment.unique_region is True
+    assert assessment.left_is_context_structural_peak is False
+    assert assessment.right_is_context_structural_peak is False

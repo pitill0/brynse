@@ -1669,3 +1669,438 @@ def test_bounded_insert_phase2_asymmetric_falls_back_when_outer_extent_absent() 
         outgoing_end_seconds=100.5,
         incoming_start_seconds=119.0,
     )
+
+
+def test_phase3_hard_cut_uses_recovery_when_selected_is_inside_basin() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    base = _observation(boundary=100.75)
+
+    hypothesis = SimpleNamespace(
+        time_seconds=100.5,
+        basin_geometry=SimpleNamespace(
+            start_seconds=99.5,
+            minimum_seconds=100.5,
+            recovery_seconds=101.5,
+        ),
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=102.0,
+            hypotheses=(hypothesis,),
+        ),
+    )
+
+    result = HardCutSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=101.5,
+        incoming_start_seconds=101.5,
+    )
+
+
+def test_phase3_hard_cut_uses_recovery_when_reference_is_inside_basin() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    base = _observation(boundary=98.0)
+
+    hypothesis = SimpleNamespace(
+        time_seconds=102.5,
+        basin_geometry=SimpleNamespace(
+            start_seconds=101.0,
+            minimum_seconds=102.5,
+            recovery_seconds=103.0,
+        ),
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=102.0,
+            hypotheses=(hypothesis,),
+        ),
+    )
+
+    result = HardCutSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=102.5,
+        incoming_start_seconds=102.5,
+    )
+
+
+def test_phase3_hard_cut_uses_reference_nearest_hypothesis_without_basins() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    base = _observation(boundary=95.0)
+
+    farther = SimpleNamespace(
+        time_seconds=97.0,
+        basin_geometry=None,
+    )
+    nearest = SimpleNamespace(
+        time_seconds=101.9,
+        basin_geometry=None,
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=102.0,
+            hypotheses=(farther, nearest),
+        ),
+    )
+
+    result = HardCutSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=101.9,
+        incoming_start_seconds=101.9,
+    )
+
+
+def test_phase3_hard_cut_does_not_jump_to_structural_when_unrelated_basin_exists() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    base = _observation(boundary=100.0)
+
+    unrelated_basin = SimpleNamespace(
+        time_seconds=80.0,
+        basin_geometry=SimpleNamespace(
+            start_seconds=79.0,
+            minimum_seconds=80.0,
+            recovery_seconds=81.0,
+        ),
+    )
+    near_reference = SimpleNamespace(
+        time_seconds=101.9,
+        basin_geometry=None,
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=102.0,
+            hypotheses=(unrelated_basin, near_reference),
+        ),
+    )
+
+    result = HardCutSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=100.0,
+    )
+
+
+def test_phase3_interstitial_recovers_exclusion_when_supported_edges_enclose_selected() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import BoundaryProposalSource
+
+    def supported(
+        *,
+        time_seconds,
+        start_seconds,
+        minimum_seconds,
+        recovery_seconds,
+    ):
+        return SimpleNamespace(
+            time_seconds=time_seconds,
+            proposals=(
+                SimpleNamespace(
+                    source=BoundaryProposalSource.BASIN,
+                ),
+                SimpleNamespace(
+                    source=BoundaryProposalSource.STRUCTURAL,
+                ),
+            ),
+            basin_geometry=SimpleNamespace(
+                start_seconds=start_seconds,
+                minimum_seconds=minimum_seconds,
+                recovery_seconds=recovery_seconds,
+            ),
+        )
+
+    left = supported(
+        time_seconds=98.0,
+        start_seconds=97.5,
+        minimum_seconds=98.0,
+        recovery_seconds=98.5,
+    )
+    right = supported(
+        time_seconds=102.0,
+        start_seconds=101.5,
+        minimum_seconds=102.0,
+        recovery_seconds=102.5,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return kwargs["decision"]
+
+    base = _observation(boundary=100.0)
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            hypotheses=(left, right),
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=98.0,
+        incoming_start_seconds=102.5,
+    )
+
+
+def test_phase3_interstitial_does_not_invent_exclusion_without_enclosing_pair() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import BoundaryProposalSource
+
+    supported = SimpleNamespace(
+        time_seconds=98.0,
+        proposals=(
+            SimpleNamespace(
+                source=BoundaryProposalSource.BASIN,
+            ),
+            SimpleNamespace(
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+        basin_geometry=SimpleNamespace(
+            start_seconds=97.5,
+            minimum_seconds=98.0,
+            recovery_seconds=98.5,
+        ),
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return kwargs["decision"]
+
+    base = _observation(boundary=100.0)
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            hypotheses=(supported,),
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=100.0,
+    )
+
+
+
+def test_phase3_hard_cut_preserves_selected_when_reference_has_left_basin() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    base = _observation(boundary=100.0)
+
+    hypothesis = SimpleNamespace(
+        time_seconds=101.0,
+        basin_geometry=SimpleNamespace(
+            start_seconds=99.0,
+            minimum_seconds=101.0,
+            recovery_seconds=102.0,
+        ),
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=103.0,
+            hypotheses=(hypothesis,),
+        ),
+    )
+
+    result = HardCutSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=100.0,
+    )
+
+
+def test_phase3_interstitial_recovery_rejects_distant_supported_edge() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import BoundaryProposalSource
+
+    def supported(time_seconds):
+        return SimpleNamespace(
+            time_seconds=time_seconds,
+            proposals=(
+                SimpleNamespace(
+                    source=BoundaryProposalSource.BASIN,
+                ),
+                SimpleNamespace(
+                    source=BoundaryProposalSource.STRUCTURAL,
+                ),
+            ),
+            basin_geometry=SimpleNamespace(
+                start_seconds=time_seconds - 0.5,
+                minimum_seconds=time_seconds,
+                recovery_seconds=time_seconds + 0.5,
+            ),
+        )
+
+    left = supported(80.0)
+
+    intervening = SimpleNamespace(
+        time_seconds=99.0,
+        proposals=(
+            SimpleNamespace(
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+        basin_geometry=None,
+    )
+
+    right = supported(102.0)
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return kwargs["decision"]
+
+    base = _observation(boundary=100.0)
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            hypotheses=(
+                left,
+                intervening,
+                right,
+            ),
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=100.0,
+    )
+
+
+
+def test_phase3_interstitial_preserves_outgoing_when_right_edge_is_closer() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import BoundaryProposalSource
+
+    def supported(time_seconds, recovery_seconds):
+        return SimpleNamespace(
+            time_seconds=time_seconds,
+            proposals=(
+                SimpleNamespace(
+                    source=BoundaryProposalSource.BASIN,
+                ),
+                SimpleNamespace(
+                    source=BoundaryProposalSource.STRUCTURAL,
+                ),
+            ),
+            basin_geometry=SimpleNamespace(
+                start_seconds=time_seconds - 0.5,
+                minimum_seconds=time_seconds,
+                recovery_seconds=recovery_seconds,
+            ),
+        )
+
+    left = supported(
+        84.0,
+        84.5,
+    )
+    right = supported(
+        102.0,
+        102.5,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return kwargs["decision"]
+
+    base = _observation(
+        boundary=100.0,
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            hypotheses=(
+                left,
+                right,
+            ),
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=102.5,
+    )

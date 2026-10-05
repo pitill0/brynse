@@ -158,8 +158,15 @@ class DefaultTransitionRouter:
             and region.reference_inside_left_basin
         )
 
+        reference_between_supports = (
+            region.left.time_seconds
+            <= region.reference_time_seconds
+            <= region.right.time_seconds
+        )
+
         structurally_non_dominant_region = (
-            not left_peak
+            reference_between_supports
+            and not left_peak
             and not right_peak
         )
 
