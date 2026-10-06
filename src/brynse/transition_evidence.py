@@ -10,6 +10,143 @@ from brynse.temporal_variability import TemporalVariabilityEvidence
 
 
 @dataclass(frozen=True)
+class CrossfadeRiseEvidence:
+    """Descriptive evidence for one persistent post-reference energy rise."""
+
+    time_seconds: float
+    jump_ratio: float
+    persistence_ratio: float
+    after_global_ratio: float
+
+
+@dataclass(frozen=True)
+class OutgoingFadeEvidence:
+    """Descriptive RMS geometry for one possible outgoing fade before a rise."""
+
+    start_time_seconds: float
+    floor_time_seconds: float
+    rise_time_seconds: float | None
+    start_rms: float
+    floor_rms: float
+    descent_ratio: float
+    descent_consistency: float
+
+    def __post_init__(self) -> None:
+        if self.start_time_seconds < 0:
+            raise ValueError("start_time_seconds must be non-negative")
+        if self.floor_time_seconds < self.start_time_seconds:
+            raise ValueError("floor_time_seconds must not precede start_time_seconds")
+        if (
+            self.rise_time_seconds is not None
+            and self.rise_time_seconds < self.floor_time_seconds
+        ):
+            raise ValueError(
+                "rise_time_seconds must not precede floor_time_seconds"
+            )
+        if self.start_rms < 0:
+            raise ValueError("start_rms must be non-negative")
+        if self.floor_rms < 0:
+            raise ValueError("floor_rms must be non-negative")
+        if self.descent_ratio < 0:
+            raise ValueError("descent_ratio must be non-negative")
+        if not 0.0 <= self.descent_consistency <= 1.0:
+            raise ValueError("descent_consistency must be between zero and one")
+
+
+@dataclass(frozen=True)
+class IncomingFadeEvidence:
+    """Descriptive RMS geometry for one possible incoming fade."""
+
+    start_time_seconds: float
+    established_time_seconds: float
+    start_rms: float
+    established_rms: float
+    ascent_ratio: float
+    ascent_consistency: float
+    persistence_ratio: float
+
+    def __post_init__(self) -> None:
+        if self.start_time_seconds < 0:
+            raise ValueError("start_time_seconds must be non-negative")
+        if self.established_time_seconds < self.start_time_seconds:
+            raise ValueError(
+                "established_time_seconds must not precede start_time_seconds"
+            )
+        if self.start_rms < 0:
+            raise ValueError("start_rms must be non-negative")
+        if self.established_rms < 0:
+            raise ValueError("established_rms must be non-negative")
+        if self.ascent_ratio < 0:
+            raise ValueError("ascent_ratio must be non-negative")
+        if not 0.0 <= self.ascent_consistency <= 1.0:
+            raise ValueError("ascent_consistency must be between zero and one")
+        if self.persistence_ratio < 0:
+            raise ValueError("persistence_ratio must be non-negative")
+
+
+@dataclass(frozen=True)
+class FadeGeometryEvidence:
+    """Descriptive relation between outgoing and incoming fade geometry."""
+
+    outgoing: OutgoingFadeEvidence
+    incoming: IncomingFadeEvidence
+
+    @property
+    def outgoing_floor_seconds(self) -> float:
+        return self.outgoing.floor_time_seconds
+
+    @property
+    def incoming_start_seconds(self) -> float:
+        return self.incoming.start_time_seconds
+
+    @property
+    def separation_seconds(self) -> float:
+        return self.incoming_start_seconds - self.outgoing_floor_seconds
+
+    @property
+    def overlap_seconds(self) -> float:
+        return max(0.0, -self.separation_seconds)
+
+    @property
+    def gap_seconds(self) -> float:
+        return max(0.0, self.separation_seconds)
+
+
+@dataclass(frozen=True)
+class CrossfadeBasinEvidence:
+    """Descriptive evidence for one crossfade-compatible quiet basin."""
+
+    center_time_seconds: float
+    lead_seconds: float
+    width_seconds: float
+    prominence: float
+    quietness: float
+
+    def __post_init__(self) -> None:
+        if self.center_time_seconds < 0:
+            raise ValueError("center_time_seconds must be non-negative")
+        if self.lead_seconds < 0:
+            raise ValueError("lead_seconds must be non-negative")
+        if self.width_seconds <= 0:
+            raise ValueError("width_seconds must be greater than zero")
+        if self.prominence < 0:
+            raise ValueError("prominence must be non-negative")
+        if self.quietness < 0:
+            raise ValueError("quietness must be non-negative")
+
+
+@dataclass(frozen=True)
+class FadeRoutingEvidence:
+    """Descriptive evidence available when considering fade ownership."""
+
+    rise: CrossfadeRiseEvidence | None = None
+    basins: tuple[CrossfadeBasinEvidence, ...] = ()
+    outgoing_fades: tuple[OutgoingFadeEvidence, ...] = ()
+    incoming_fades: tuple[IncomingFadeEvidence, ...] = ()
+    geometries: tuple[FadeGeometryEvidence, ...] = ()
+
+
+@dataclass(frozen=True)
 class TransitionEvidenceState:
     """Read-only multi-signal evidence state for one candidate transition."""
 

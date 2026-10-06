@@ -150,3 +150,165 @@ def test_transition_evidence_state_exposes_missing_values_as_none() -> None:
         "local_discontinuity_1s": None,
         "local_discontinuity_2s": None,
     }
+
+
+def test_fade_routing_evidence_defaults_to_no_fade_observations() -> None:
+    from brynse.transition_evidence import FadeRoutingEvidence
+
+    evidence = FadeRoutingEvidence()
+
+    assert evidence.rise is None
+    assert evidence.basins == ()
+    assert not hasattr(evidence, "incoming_start_seconds")
+    assert not hasattr(evidence, "outgoing_end_seconds")
+    assert not hasattr(evidence, "kind")
+
+
+def test_fade_routing_evidence_preserves_descriptive_observations() -> None:
+    from brynse.transition_evidence import (
+        CrossfadeBasinEvidence,
+        CrossfadeRiseEvidence,
+        FadeRoutingEvidence,
+    )
+
+    rise = CrossfadeRiseEvidence(
+        time_seconds=431.15,
+        jump_ratio=3.5,
+        persistence_ratio=4.0,
+        after_global_ratio=3.0,
+    )
+    basin = CrossfadeBasinEvidence(
+        center_time_seconds=426.75,
+        lead_seconds=0.85,
+        width_seconds=0.7,
+        prominence=1.5,
+        quietness=1.8,
+    )
+
+    evidence = FadeRoutingEvidence(
+        rise=rise,
+        basins=(basin,),
+    )
+
+    assert evidence.rise is rise
+    assert evidence.basins == (basin,)
+
+
+def test_outgoing_fade_evidence_preserves_descriptive_geometry() -> None:
+    from brynse.transition_evidence import OutgoingFadeEvidence
+
+    evidence = OutgoingFadeEvidence(
+        start_time_seconds=102.0,
+        floor_time_seconds=104.95,
+        rise_time_seconds=105.0,
+        start_rms=1200.0,
+        floor_rms=180.0,
+        descent_ratio=1200.0 / 180.0,
+        descent_consistency=1.0,
+    )
+
+    assert evidence.start_time_seconds == 102.0
+    assert evidence.floor_time_seconds == 104.95
+    assert evidence.rise_time_seconds == 105.0
+    assert evidence.start_rms == 1200.0
+    assert evidence.floor_rms == 180.0
+    assert evidence.descent_ratio > 1.0
+    assert evidence.descent_consistency == 1.0
+
+
+def test_incoming_fade_evidence_preserves_descriptive_geometry() -> None:
+    from brynse.transition_evidence import IncomingFadeEvidence
+
+    evidence = IncomingFadeEvidence(
+        start_time_seconds=102.0,
+        established_time_seconds=104.95,
+        start_rms=180.0,
+        established_rms=1200.0,
+        ascent_ratio=1200.0 / 180.0,
+        ascent_consistency=1.0,
+        persistence_ratio=1200.0 / 180.0,
+    )
+
+    assert evidence.start_time_seconds == 102.0
+    assert evidence.established_time_seconds == 104.95
+    assert evidence.start_rms == 180.0
+    assert evidence.established_rms == 1200.0
+    assert evidence.ascent_ratio > 1.0
+    assert evidence.ascent_consistency == 1.0
+    assert evidence.persistence_ratio > 1.0
+
+
+def test_fade_geometry_evidence_describes_gap_without_deciding_boundary() -> None:
+    from brynse.transition_evidence import (
+        FadeGeometryEvidence,
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+
+    outgoing = OutgoingFadeEvidence(
+        start_time_seconds=100.0,
+        floor_time_seconds=104.0,
+        rise_time_seconds=106.0,
+        start_rms=1200.0,
+        floor_rms=100.0,
+        descent_ratio=12.0,
+        descent_consistency=0.95,
+    )
+    incoming = IncomingFadeEvidence(
+        start_time_seconds=105.0,
+        established_time_seconds=106.0,
+        start_rms=100.0,
+        established_rms=1200.0,
+        ascent_ratio=12.0,
+        ascent_consistency=0.95,
+        persistence_ratio=10.0,
+    )
+
+    geometry = FadeGeometryEvidence(
+        outgoing=outgoing,
+        incoming=incoming,
+    )
+
+    assert geometry.outgoing_floor_seconds == 104.0
+    assert geometry.incoming_start_seconds == 105.0
+    assert geometry.separation_seconds == 1.0
+    assert geometry.gap_seconds == 1.0
+    assert geometry.overlap_seconds == 0.0
+    assert not hasattr(geometry, "kind")
+    assert not hasattr(geometry, "outgoing_end_seconds")
+
+
+def test_fade_geometry_evidence_describes_overlap_without_deciding_boundary() -> None:
+    from brynse.transition_evidence import (
+        FadeGeometryEvidence,
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+
+    outgoing = OutgoingFadeEvidence(
+        start_time_seconds=100.0,
+        floor_time_seconds=105.0,
+        rise_time_seconds=106.0,
+        start_rms=1200.0,
+        floor_rms=100.0,
+        descent_ratio=12.0,
+        descent_consistency=0.95,
+    )
+    incoming = IncomingFadeEvidence(
+        start_time_seconds=103.5,
+        established_time_seconds=106.0,
+        start_rms=100.0,
+        established_rms=1200.0,
+        ascent_ratio=12.0,
+        ascent_consistency=0.95,
+        persistence_ratio=10.0,
+    )
+
+    geometry = FadeGeometryEvidence(
+        outgoing=outgoing,
+        incoming=incoming,
+    )
+
+    assert geometry.separation_seconds == -1.5
+    assert geometry.overlap_seconds == 1.5
+    assert geometry.gap_seconds == 0.0

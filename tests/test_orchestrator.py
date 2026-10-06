@@ -200,8 +200,11 @@ def test_orchestrator_composes_full_boundary_resolution() -> None:
     assert resolution.split == split
 
 
-def test_multisignal_resolver_applies_incoming_refinement_before_alignment() -> None:
+def test_multisignal_resolver_routes_interstitial_refinement_before_alignment() -> None:
+    from types import SimpleNamespace
+
     from brynse.orchestrator import MultiSignalAcousticCandidateResolver
+    from brynse.transition_router import TransitionKind
 
     original = TemporalSplitDecision(
         kind=TemporalSplitKind.HARD_CUT,
@@ -239,7 +242,10 @@ def test_multisignal_resolver_applies_incoming_refinement_before_alignment() -> 
         def analyze(self, pcm):
             return AcousticProfile(levels=())
 
-    selected = object()
+    selected = SimpleNamespace(
+        time_seconds=100.0,
+        local_discontinuity=None,
+    )
 
     class CandidateResolver:
         def resolve_acoustic_boundary(self, **kwargs):
@@ -266,6 +272,11 @@ def test_multisignal_resolver_applies_incoming_refinement_before_alignment() -> 
             self.calls.append(kwargs)
             return aligned
 
+    class Router:
+        def classify(self, *, context):
+            _ = context
+            return TransitionKind.INTERSTITIAL
+
     incoming_refiner = IncomingRefiner()
     aligner = Aligner()
 
@@ -278,6 +289,7 @@ def test_multisignal_resolver_applies_incoming_refinement_before_alignment() -> 
         temporal_resolver=TemporalResolver(),
         split_aligner=aligner,
         incoming_refiner=incoming_refiner,
+        transition_router=Router(),
     )
 
     candidate = _track().as_boundary_candidate()
@@ -304,7 +316,10 @@ def test_multisignal_resolver_applies_incoming_refinement_before_alignment() -> 
 
 
 def test_multisignal_resolver_preserves_hard_cut_without_incoming_refiner() -> None:
+    from types import SimpleNamespace
+
     from brynse.orchestrator import MultiSignalAcousticCandidateResolver
+    from brynse.transition_router import TransitionKind
 
     original = TemporalSplitDecision(
         kind=TemporalSplitKind.HARD_CUT,
@@ -337,9 +352,14 @@ def test_multisignal_resolver_preserves_hard_cut_without_incoming_refiner() -> N
         def analyze(self, pcm):
             return AcousticProfile(levels=())
 
+    selected = SimpleNamespace(
+        time_seconds=100.0,
+        local_discontinuity=None,
+    )
+
     class CandidateResolver:
         def resolve_acoustic_boundary(self, **kwargs):
-            return object()
+            return selected
 
     class TemporalResolver:
         def resolve(self, **kwargs):
@@ -353,6 +373,11 @@ def test_multisignal_resolver_preserves_hard_cut_without_incoming_refiner() -> N
             self.decisions.append(kwargs["decision"])
             return aligned
 
+    class Router:
+        def classify(self, *, context):
+            _ = context
+            return TransitionKind.HARD_CUT
+
     aligner = Aligner()
 
     resolver = MultiSignalAcousticCandidateResolver(
@@ -363,6 +388,7 @@ def test_multisignal_resolver_preserves_hard_cut_without_incoming_refiner() -> N
         candidate_resolver=CandidateResolver(),
         temporal_resolver=TemporalResolver(),
         split_aligner=aligner,
+        transition_router=Router(),
     )
 
     resolution = resolver.resolve_candidate(
@@ -375,3 +401,207 @@ def test_multisignal_resolver_preserves_hard_cut_without_incoming_refiner() -> N
     assert resolution.temporal == original
     assert resolution.split == aligned
     assert aligner.decisions == [original]
+
+
+def test_multisignal_resolver_observes_routing_context_without_changing_decision() -> None:
+    from types import SimpleNamespace
+
+    from brynse.models import (
+        AcousticProfile,
+        DecodedPcm,
+        SplitDecision,
+        SplitKind,
+        TemporalSplitDecision,
+        TemporalSplitKind,
+    )
+    from brynse.orchestrator import MultiSignalAcousticCandidateResolver
+    from brynse.transition_evidence import FadeRoutingEvidence
+    from brynse.transition_router import TransitionKind
+
+    window = _window()
+    pcm8 = DecodedPcm(
+        sample_rate=8000,
+        channels=1,
+        sample_width_bytes=2,
+        data=b"\x00\x00",
+    )
+    pcm16 = DecodedPcm(
+        sample_rate=16000,
+        channels=1,
+        sample_width_bytes=2,
+        data=b"\x00\x00",
+    )
+    profile = AcousticProfile(levels=())
+    from brynse.local_discontinuity import LocalDiscontinuityEvidence
+    from brynse.multisignal import MultiSignalCandidate
+
+    local = LocalDiscontinuityEvidence(
+        change_250ms=0.21,
+        change_500ms=0.43,
+        change_1s=0.65,
+        change_2s=0.87,
+    )
+    selected = MultiSignalCandidate(
+        time_seconds=100.0,
+        family_rrf=0.75,
+        forward_novelty=0.42,
+        local_discontinuity=local,
+    )
+
+    original = TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        incoming_start_seconds=100.0,
+        outgoing_end_seconds=100.0,
+    )
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        incoming_start_seconds=102.0,
+        outgoing_end_seconds=100.0,
+    )
+    aligned = SplitDecision(
+        kind=SplitKind.EXCLUSION,
+        incoming_start=4100,
+        outgoing_end=4000,
+    )
+
+    fade = FadeRoutingEvidence()
+    hypothesis = SimpleNamespace(time_seconds=102.0)
+    hypotheses = (hypothesis,)
+
+    class WindowExtractor:
+        def extract(self, **kwargs):
+            return window
+
+    class Decoder:
+        def __init__(self, result):
+            self.result = result
+
+        def decode(self, acoustic_window):
+            assert acoustic_window is window
+            return self.result
+
+    class Analyzer:
+        def analyze(self, pcm):
+            assert pcm is pcm8
+            return profile
+
+    class CandidateResolver:
+        def resolve_acoustic_boundary(self, **kwargs):
+            return selected
+
+    class TemporalResolver:
+        def __init__(self):
+            self.fade_calls = []
+            self.resolve_calls = []
+
+        def observe_fade_routing_evidence(self, **kwargs):
+            self.fade_calls.append(kwargs)
+            return fade
+
+        def resolve(self, **kwargs):
+            self.resolve_calls.append(kwargs)
+            return original
+
+    class IncomingRefiner:
+        def __init__(self):
+            self.observe_calls = []
+            self.refine_calls = []
+
+        def observe_hypotheses(self, **kwargs):
+            self.observe_calls.append(kwargs)
+            return hypotheses
+
+        def refine(self, **kwargs):
+            self.refine_calls.append(kwargs)
+            return refined
+
+    class Aligner:
+        def align(self, **kwargs):
+            assert kwargs["decision"] is refined
+            return aligned
+
+    class Router:
+        def __init__(self):
+            self.contexts = []
+
+        def classify(self, *, context):
+            self.contexts.append(context)
+            return TransitionKind.INTERSTITIAL
+
+    temporal_resolver = TemporalResolver()
+    incoming_refiner = IncomingRefiner()
+    router = Router()
+    observed = []
+    routing_observations = []
+
+    resolver = MultiSignalAcousticCandidateResolver(
+        window_extractor=WindowExtractor(),
+        decoder8=Decoder(pcm8),
+        decoder16=Decoder(pcm16),
+        analyzer=Analyzer(),
+        candidate_resolver=CandidateResolver(),
+        temporal_resolver=temporal_resolver,
+        split_aligner=Aligner(),
+        incoming_refiner=incoming_refiner,
+        transition_router=router,
+        on_routing_context=observed.append,
+        on_routing_observation=routing_observations.append,
+    )
+
+    candidate = _track().as_boundary_candidate()
+
+    resolution = resolver.resolve_candidate(
+        candidate=candidate,
+        timeline=object(),
+        ring_buffer=object(),
+    )
+
+    assert resolution is not None
+    assert resolution.temporal is refined
+    assert resolution.split is aligned
+
+    assert len(routing_observations) == 1
+    routing_observation = routing_observations[0]
+    assert routing_observation.kind is TransitionKind.INTERSTITIAL
+    assert routing_observation.temporal is refined
+    assert routing_observation.context is observed[0]
+
+    assert router.contexts == [observed[0]]
+
+    assert len(observed) == 1
+    context = observed[0]
+
+    assert context.reference_time_seconds == candidate.time_seconds
+    assert context.evidence.as_dict() == {
+        "spectral_change": None,
+        "variability_ratio_8s": None,
+        "variability_ratio_16s": None,
+        "variability_ratio_24s": None,
+        "variability_ratio_40s": None,
+        "local_discontinuity_250ms": 0.21,
+        "local_discontinuity_500ms": 0.43,
+        "local_discontinuity_1s": 0.65,
+        "local_discontinuity_2s": 0.87,
+    }
+    assert context.fade is fade
+    assert context.hypotheses is hypotheses
+
+    assert temporal_resolver.fade_calls == [
+        {
+            "profile": profile,
+            "window": window,
+            "semantic_time_seconds": candidate.time_seconds,
+        }
+    ]
+
+    assert incoming_refiner.observe_calls == [
+        {
+            "window": window,
+            "pcm8": pcm8,
+        }
+    ]
+
+    assert len(incoming_refiner.refine_calls) == 1
+    refine_call = incoming_refiner.refine_calls[0]
+    assert refine_call["hypotheses"] is hypotheses
+    assert refine_call["decision"] == original

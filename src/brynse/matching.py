@@ -216,7 +216,14 @@ class TemporalSplitAligner:
             )
 
         if decision.kind is TemporalSplitKind.EXCLUSION:
-            if outgoing_frame.offset >= incoming_frame.offset:
+            if outgoing_frame.offset == incoming_frame.offset:
+                return SplitDecision(
+                    kind=SplitKind.HARD_CUT,
+                    incoming_start=incoming_frame.offset,
+                    outgoing_end=incoming_frame.offset,
+                )
+
+            if outgoing_frame.offset > incoming_frame.offset:
                 raise SplitAlignmentError(
                     "aligned exclusion boundaries must preserve outgoing < incoming"
                 )

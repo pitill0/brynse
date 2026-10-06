@@ -83,9 +83,24 @@ from brynse.incoming_refinement import IncomingBoundaryDiscovery
 def _analysis(
     time_seconds: float,
     confidence: BoundaryConfidence,
+    *,
+    minimum_seconds: float | None = None,
+    recovery_seconds: float | None = None,
 ):
+    geometry = (
+        None
+        if minimum_seconds is None or recovery_seconds is None
+        else SimpleNamespace(
+            minimum_seconds=minimum_seconds,
+            recovery_seconds=recovery_seconds,
+        )
+    )
+
     return SimpleNamespace(
-        hypothesis=SimpleNamespace(time_seconds=time_seconds),
+        hypothesis=SimpleNamespace(
+            time_seconds=time_seconds,
+            basin_geometry=geometry,
+        ),
         assessment=SimpleNamespace(candidate_confidence=confidence),
     )
 
@@ -109,6 +124,76 @@ def test_incoming_discovery_selects_first_later_high_boundary() -> None:
         _analysis(104.0, BoundaryConfidence.HIGH),
         _analysis(101.5, BoundaryConfidence.HIGH),
         _analysis(102.0, BoundaryConfidence.UNRESOLVED),
+    )
+
+    discovered = IncomingBoundaryDiscovery().discover(
+        outgoing_end_seconds=100.0,
+        analyses=analyses,
+    )
+
+    assert discovered == 101.5
+
+
+def test_incoming_discovery_uses_recovery_when_high_is_before_basin_minimum() -> None:
+    analyses = (
+        _analysis(
+            101.5,
+            BoundaryConfidence.HIGH,
+            minimum_seconds=102.5,
+            recovery_seconds=103.25,
+        ),
+    )
+
+    discovered = IncomingBoundaryDiscovery().discover(
+        outgoing_end_seconds=100.0,
+        analyses=analyses,
+    )
+
+    assert discovered == 103.25
+
+
+def test_incoming_discovery_keeps_high_at_basin_minimum() -> None:
+    analyses = (
+        _analysis(
+            102.5,
+            BoundaryConfidence.HIGH,
+            minimum_seconds=102.5,
+            recovery_seconds=104.0,
+        ),
+    )
+
+    discovered = IncomingBoundaryDiscovery().discover(
+        outgoing_end_seconds=100.0,
+        analyses=analyses,
+    )
+
+    assert discovered == 102.5
+
+
+def test_incoming_discovery_keeps_high_after_basin_minimum() -> None:
+    analyses = (
+        _analysis(
+            103.0,
+            BoundaryConfidence.HIGH,
+            minimum_seconds=102.5,
+            recovery_seconds=104.0,
+        ),
+    )
+
+    discovered = IncomingBoundaryDiscovery().discover(
+        outgoing_end_seconds=100.0,
+        analyses=analyses,
+    )
+
+    assert discovered == 103.0
+
+
+def test_incoming_discovery_uses_hypothesis_time_without_basin_geometry() -> None:
+    analyses = (
+        _analysis(
+            101.5,
+            BoundaryConfidence.HIGH,
+        ),
     )
 
     discovered = IncomingBoundaryDiscovery().discover(
@@ -527,3 +612,159 @@ def test_incoming_pipeline_reports_observation_without_changing_decision() -> No
     assert observation.analyses == (analysis,)
     assert observation.selected_time_seconds == 102.0
     assert observation.decision == result
+
+
+def test_incoming_pipeline_exposes_hypotheses_without_refining() -> None:
+    from types import SimpleNamespace
+
+    from brynse.incoming_refinement import (
+        IncomingBoundaryDiscovery,
+        IncomingBoundaryPipeline,
+        IncomingBoundaryRefiner,
+    )
+
+    hypothesis = SimpleNamespace(time_seconds=102.0)
+
+    class Builder:
+        def __init__(self):
+            self.calls = []
+
+        def build(self, **kwargs):
+            self.calls.append(kwargs)
+            return (hypothesis,)
+
+    class Analyzer:
+        def analyze(self, **kwargs):
+            raise AssertionError("observe_hypotheses must not analyze")
+
+    builder = Builder()
+
+    pipeline = IncomingBoundaryPipeline(
+        hypothesis_builder=builder,
+        incoming_analyzer=Analyzer(),
+        discovery=IncomingBoundaryDiscovery(),
+        refiner=IncomingBoundaryRefiner(),
+    )
+
+    window = SimpleNamespace(start_time_seconds=90.0)
+    pcm8 = object()
+
+    hypotheses = pipeline.observe_hypotheses(
+        window=window,
+        pcm8=pcm8,
+    )
+
+    assert hypotheses == (hypothesis,)
+    assert builder.calls == [
+        {
+            "pcm": pcm8,
+            "absolute_start_time_seconds": 90.0,
+        }
+    ]
+
+
+def test_incoming_pipeline_reuses_preobserved_hypotheses() -> None:
+    from types import SimpleNamespace
+
+    from brynse.incoming_refinement import (
+        IncomingBoundaryDiscovery,
+        IncomingBoundaryPipeline,
+        IncomingBoundaryRefiner,
+    )
+    from brynse.models import TemporalSplitDecision, TemporalSplitKind
+
+    original = TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=100.0,
+    )
+
+    hypothesis = SimpleNamespace(time_seconds=102.0)
+    analysis = SimpleNamespace(
+        hypothesis=hypothesis,
+        assessment=SimpleNamespace(
+            candidate_confidence=BoundaryConfidence.HIGH,
+        ),
+    )
+
+    class Builder:
+        def build(self, **kwargs):
+            raise AssertionError("preobserved hypotheses must not be rebuilt")
+
+    class Analyzer:
+        def __init__(self):
+            self.calls = []
+
+        def analyze(self, **kwargs):
+            self.calls.append(kwargs)
+            return (analysis,)
+
+    analyzer = Analyzer()
+
+    pipeline = IncomingBoundaryPipeline(
+        hypothesis_builder=Builder(),
+        incoming_analyzer=analyzer,
+        discovery=IncomingBoundaryDiscovery(),
+        refiner=IncomingBoundaryRefiner(),
+    )
+
+    hypotheses = (hypothesis,)
+
+    result = pipeline.refine(
+        decision=original,
+        window=SimpleNamespace(start_time_seconds=90.0),
+        pcm8=object(),
+        pcm16=object(),
+        hypotheses=hypotheses,
+    )
+
+    assert result == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=102.0,
+    )
+
+    assert analyzer.calls[0]["hypotheses"] is hypotheses
+
+
+def test_incoming_pipeline_preserves_preobserved_empty_hypotheses() -> None:
+    from types import SimpleNamespace
+
+    from brynse.incoming_refinement import (
+        IncomingBoundaryDiscovery,
+        IncomingBoundaryPipeline,
+        IncomingBoundaryRefiner,
+    )
+    from brynse.models import TemporalSplitDecision, TemporalSplitKind
+
+    original = TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=100.0,
+    )
+
+    class Builder:
+        def build(self, **kwargs):
+            raise AssertionError("empty preobserved hypotheses must not be rebuilt")
+
+    class Analyzer:
+        def analyze(self, **kwargs):
+            assert kwargs["hypotheses"] == ()
+            return ()
+
+    pipeline = IncomingBoundaryPipeline(
+        hypothesis_builder=Builder(),
+        incoming_analyzer=Analyzer(),
+        discovery=IncomingBoundaryDiscovery(),
+        refiner=IncomingBoundaryRefiner(),
+    )
+
+    result = pipeline.refine(
+        decision=original,
+        window=SimpleNamespace(start_time_seconds=90.0),
+        pcm8=object(),
+        pcm16=object(),
+        hypotheses=(),
+    )
+
+    assert result is original

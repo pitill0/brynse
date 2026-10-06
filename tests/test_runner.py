@@ -260,8 +260,15 @@ def test_runner_discards_spool_before_next_retained_track_offset(
         audio = b"clean-audio"
         timed_metadata_events = ()
 
+    class FakeSplit:
+        outgoing_end = 5200
+        incoming_start = 5000
+
+    class FakeBoundary:
+        split = FakeSplit()
+
     class FakeTransition:
-        pass
+        boundary = FakeBoundary()
 
     class FakeSessionResult:
         ingest = FakeIngestResult()
@@ -278,6 +285,17 @@ def test_runner_discards_spool_before_next_retained_track_offset(
 
         def __init__(self, **kwargs) -> None:
             pass
+
+        def can_write_transition(
+            self,
+            *,
+            outgoing_end: int,
+            incoming_start: int,
+        ) -> bool:
+            return (
+                outgoing_end > self.retained_start_offset
+                and incoming_start > self.retained_start_offset
+            )
 
         def write_transition(self, transition):
             return object()
@@ -469,6 +487,114 @@ def test_runner_closes_spool_when_append_fails(
     assert spool.closed is True
 
 
+
+def test_runner_rejects_stale_semantic_transition_before_write(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import brynse.integrations.radio.runner as runner_module
+
+    class FakeStream:
+        def __init__(self) -> None:
+            self._chunks = [b"chunk", b""]
+
+        def read(self, size: int = -1) -> bytes:
+            return self._chunks.pop(0)
+
+        def close(self) -> None:
+            pass
+
+    class FakeSpool:
+        def append(self, data: bytes) -> tuple[int, int]:
+            return 0, len(data)
+
+        def discard_before(self, offset: int) -> None:
+            raise AssertionError("stale transition must not advance spool")
+
+        def close(self) -> None:
+            pass
+
+    class FakeIngestResult:
+        audio = b"clean-audio"
+        timed_metadata_events = ()
+
+    class FakeSplit:
+        outgoing_end = 4900
+        incoming_start = 6000
+
+    class FakeBoundary:
+        split = FakeSplit()
+
+    class FakeTransition:
+        boundary = FakeBoundary()
+
+    class FakeSessionResult:
+        ingest = FakeIngestResult()
+        transitions = (FakeTransition(),)
+
+    class FakeSession:
+        current_track = None
+
+        def feed(self, chunk: bytes) -> FakeSessionResult:
+            return FakeSessionResult()
+
+    class FakeOutputWriter:
+        retained_start_offset = 5000
+
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        def can_write_transition(
+            self,
+            *,
+            outgoing_end: int,
+            incoming_start: int,
+        ) -> bool:
+            return (
+                outgoing_end > self.retained_start_offset
+                and incoming_start > self.retained_start_offset
+            )
+
+        def write_transition(self, transition):
+            raise AssertionError("stale semantic transition must not be written")
+
+    spool = FakeSpool()
+
+    monkeypatch.setattr(
+        runner_module,
+        "create_safe_streaming_spool",
+        lambda *, directory: spool,
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "SessionOutputWriter",
+        FakeOutputWriter,
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "RippingSession",
+        lambda **kwargs: FakeSession(),
+    )
+
+    runner = RippingRunner(
+        RippingRunConfig(
+            url="https://example.invalid/stream",
+            output_directory=tmp_path,
+            codec="mp3",
+        ),
+        stream_opener=lambda url: _stream_source(
+            FakeStream(),
+            {
+                "Content-Type": "audio/mpeg",
+                "icy-metaint": "1",
+            },
+        ),
+    )
+
+    result = runner.run()
+
+    assert result.stopped is False
+
 def test_runner_does_not_discard_spool_when_track_write_fails(
     tmp_path: Path,
     monkeypatch,
@@ -503,8 +629,15 @@ def test_runner_does_not_discard_spool_when_track_write_fails(
         audio = b"clean-audio"
         timed_metadata_events = ()
 
+    class FakeSplit:
+        outgoing_end = 5200
+        incoming_start = 5000
+
+    class FakeBoundary:
+        split = FakeSplit()
+
     class FakeTransition:
-        pass
+        boundary = FakeBoundary()
 
     class FakeSessionResult:
         ingest = FakeIngestResult()
@@ -521,6 +654,17 @@ def test_runner_does_not_discard_spool_when_track_write_fails(
 
         def __init__(self, **kwargs) -> None:
             pass
+
+        def can_write_transition(
+            self,
+            *,
+            outgoing_end: int,
+            incoming_start: int,
+        ) -> bool:
+            return (
+                outgoing_end > self.retained_start_offset
+                and incoming_start > self.retained_start_offset
+            )
 
         def write_transition(self, transition):
             raise RuntimeError("track write failed")
@@ -598,8 +742,15 @@ def test_runner_closes_spool_when_discard_fails(
         audio = b"clean-audio"
         timed_metadata_events = ()
 
+    class FakeSplit:
+        outgoing_end = 5200
+        incoming_start = 5000
+
+    class FakeBoundary:
+        split = FakeSplit()
+
     class FakeTransition:
-        pass
+        boundary = FakeBoundary()
 
     class FakeSessionResult:
         ingest = FakeIngestResult()
@@ -616,6 +767,17 @@ def test_runner_closes_spool_when_discard_fails(
 
         def __init__(self, **kwargs) -> None:
             pass
+
+        def can_write_transition(
+            self,
+            *,
+            outgoing_end: int,
+            incoming_start: int,
+        ) -> bool:
+            return (
+                outgoing_end > self.retained_start_offset
+                and incoming_start > self.retained_start_offset
+            )
 
         def write_transition(self, transition):
             return object()
@@ -948,6 +1110,7 @@ def test_runner_materializes_promoted_autonomous_segment_and_advances_spool(
     analysis = object()
 
     class FakeSplit:
+        outgoing_end = 4000
         incoming_start = 4000
 
     class FakeResolution:
@@ -1055,6 +1218,20 @@ def test_runner_materializes_promoted_autonomous_segment_and_advances_spool(
             return (
                 self.retained_start_offset is None
                 or incoming_start > self.retained_start_offset
+            )
+
+        def can_write_transition(
+            self,
+            *,
+            outgoing_end: int,
+            incoming_start: int,
+        ) -> bool:
+            return (
+                self.retained_start_offset is None
+                or (
+                    outgoing_end > self.retained_start_offset
+                    and incoming_start > self.retained_start_offset
+                )
             )
 
         def write_segment_transition(self, value):
@@ -1244,6 +1421,17 @@ def test_runner_ignores_promoted_autonomous_boundary_that_does_not_advance_outpu
         def can_write_boundary_at(self, incoming_start: int) -> bool:
             return incoming_start > 5000
 
+        def can_write_transition(
+            self,
+            *,
+            outgoing_end: int,
+            incoming_start: int,
+        ) -> bool:
+            return (
+                outgoing_end > 5000
+                and incoming_start > 5000
+            )
+
         def write_segment_transition(self, transition):
             self.segment_writes.append(transition)
             raise AssertionError(
@@ -1316,8 +1504,13 @@ def test_runner_materializes_semantic_transition_before_autonomous_promotion(
     class FakeTemporal:
         incoming_start_seconds = 45.0
 
+    class FakeSemanticSplit:
+        outgoing_end = 5000
+        incoming_start = 4500
+
     class FakeBoundary:
         temporal = FakeTemporal()
+        split = FakeSemanticSplit()
 
     class FakeTrackTransition:
         incoming = FakeIncomingTrack()
@@ -1326,6 +1519,7 @@ def test_runner_materializes_semantic_transition_before_autonomous_promotion(
     semantic_transition = FakeTrackTransition()
 
     class FakeSplit:
+        outgoing_end = 6000
         incoming_start = 6000
 
     class FakeResolution:
@@ -1425,6 +1619,20 @@ def test_runner_materializes_semantic_transition_before_autonomous_promotion(
             return (
                 self.retained_start_offset is None
                 or incoming_start > self.retained_start_offset
+            )
+
+        def can_write_transition(
+            self,
+            *,
+            outgoing_end: int,
+            incoming_start: int,
+        ) -> bool:
+            return (
+                self.retained_start_offset is None
+                or (
+                    outgoing_end > self.retained_start_offset
+                    and incoming_start > self.retained_start_offset
+                )
             )
 
         def write_transition(self, value):
