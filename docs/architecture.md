@@ -210,37 +210,89 @@ sequenceDiagram
 The resolver operates on generic boundary contracts. Domain integrations may
 adapt their own semantic events into those contracts before resolution.
 
-### Current production radio resolver
+### Current production radio resolution
 
-The first-party radio integration uses the frozen
-`MULTISIGNAL-RESOLVER-v2-MINIMAX` acoustic resolver. It is driven by a semantic
-radio candidate but resolves that candidate against generic acoustic and timeline
-evidence.
+The first-party radio integration uses the frozen multi-signal acoustic
+candidate-selection work originating from `MULTISIGNAL-RESOLVER-v2-MINIMAX`.
 
-The current production path:
+That selector is no longer the complete temporal-resolution architecture.
 
-- waits until the required post-transition acoustic context is available rather
-  than forcing immediate resolution;
-- uses a fixed 24-second acoustic radius around the semantic transition;
-- generates the acoustic candidate set from BASIN candidates plus direct-D2 local
-  maxima;
-- combines family RRF ranking with forward-novelty ranking through the frozen
-  MINIMAX ordering;
-- uses MINIMAX for hard-cut boundaries;
-- uses MINIMAX for the incoming side of crossfades and the latest qualifying rise
-  for the outgoing side;
-- abstains when the resulting temporal ordering is invalid; and
-- uses the same multisignal resolver for MP3 and AAC.
+The production path now separates acoustic evidence selection from
+phenomenon-specific temporal reasoning.
 
-Transient/non-track exclusions remain a radio-session responsibility rather than
-being folded into the acoustic resolver. Metadata durability and acoustic
-settlement are therefore separate decisions with separate time horizons.
+Conceptually:
 
-The 24-second acoustic radius is a production invariant of the current radio
-integration, not a generic Brynse requirement. Other integrations may use different
-resolver evidence windows while preserving the same boundary contracts. The generic
-`brynse` CLI retains its source-agnostic resolver behavior; the radio production
-policy does not become a universal engine default.
+    semantic radio candidate
+            ↓
+    multi-signal acoustic candidate selection
+            ↓
+    neutral transition observations
+            ↓
+    Transition Router
+            ↓
+    transition specialist
+            ↓
+    TemporalSplitDecision
+            ↓
+    frame alignment
+
+The multi-signal layer provides acoustic evidence around the semantic
+transition. It does not universally own the final outgoing and incoming
+boundaries.
+
+The `DefaultTransitionRouter` classifies the observed transition and assigns it
+to one of the current transition families:
+
+- `HARD_CUT`
+- `FADE`
+- `INTERSTITIAL`
+- `BOUNDED_INSERT`
+- `AMBIGUOUS`
+
+Dedicated specialists then own temporal interpretation for their respective
+phenomena:
+
+- `HardCutSpecialist`
+- `FadeSpecialist`
+- `InterstitialSpecialist`
+- `BoundedInsertSpecialist`
+
+`LegacyAmbiguousSpecialist` remains a conservative compatibility fallback when
+the available evidence does not justify a more specific transition family.
+
+The architectural responsibility is intentionally split:
+
+> Observers describe evidence.
+>
+> The Router decides which transition phenomenon owns that evidence.
+>
+> The selected specialist decides where the transition should be cut.
+
+The Router therefore does not act as a temporal veto layer and does not choose
+the final boundary after specialist ownership has been assigned.
+
+The production radio path currently:
+
+1. waits until the required post-transition acoustic context is available;
+2. extracts and decodes the bounded acoustic window;
+3. builds and ranks multi-signal acoustic candidates;
+4. selects the primary acoustic boundary evidence;
+5. observes local discontinuity, fade, basin, structural, and incoming-boundary
+   evidence;
+6. discovers symmetric and asymmetric bounded-insert regions;
+7. builds a neutral `TransitionRoutingContext`;
+8. routes the transition to the appropriate specialist;
+9. obtains a `TemporalSplitDecision` from that specialist;
+10. aligns the temporal decision to the encoded frame timeline.
+
+MP3 and AAC use the same routed multi-signal production path.
+
+Metadata durability and acoustic settlement remain separate decisions with
+separate time horizons.
+
+Transient/non-track semantics remain a radio-session responsibility. Transition
+routing and specialist temporal reasoning operate on acoustic and temporal
+evidence rather than depending on radio labels such as adverts or jingles.
 
 ## Segment planning
 
@@ -311,9 +363,7 @@ The radio integration may freely depend on generic engine components.
 
 The radio implementation lives under:
 
-```text
-brynse.integrations.radio
-```
+    brynse.integrations.radio
 
 Its current responsibilities include:
 
@@ -324,41 +374,79 @@ Its current responsibilities include:
 - transient/non-track interval handling
 - adapting radio track candidates to generic boundary candidates
 - deferring candidate resolution until required acoustic context is available
-- invoking the generic multisignal acoustic resolver
+- invoking multi-signal acoustic candidate selection
+- collecting neutral transition evidence
+- routing transitions by observed phenomenon
+- applying specialist-owned temporal decisions
+- rejecting stale transitions that no longer advance the current output
 - radio-oriented orchestration
 - track-oriented output naming and persistence
 - the `brynse-radio` radio CLI
 
 Conceptually:
 
-```mermaid
-flowchart TD
-    A[Radio stream] --> B[ICY parser]
+    Radio stream
+        |
+        v
+    ICY parser
+        |
+        +----> metadata events
+        |
+        v
+    encoded audio / timeline
+        |
+        v
+    retention + acoustic context
 
-    B --> C[Encoded audio]
-    B --> D[Metadata events]
-
-    C --> E[Generic ingestion / retention]
-    D --> F[Radio semantic tracking]
-
-    F --> G[Track Candidate]
-    G --> H[Boundary Candidate Adapter]
-
-    H --> I[Semantic Boundary Candidate]
-    E --> J[Acoustic / timeline context]
-    I --> K[Multisignal Boundary Resolver]
-    J --> K
-
-    K --> L[Resolved Boundary]
-    L --> M[Generic Segment Planning]
-    M --> N[Materialization]
-    N --> O[Track-oriented radio output]
-```
+    metadata events
+        |
+        v
+    radio semantic tracking
+        |
+        v
+    TrackCandidate
+        |
+        v
+    generic BoundaryCandidate
+        |
+        v
+    multi-signal acoustic selection
+        |
+        v
+    neutral transition evidence
+        |
+        v
+    Transition Router
+        |
+        v
+    transition specialist
+        |
+        v
+    TemporalSplitDecision
+        |
+        v
+    frame alignment
+        |
+        v
+    segment planning
+        |
+        v
+    materialization
+        |
+        v
+    track-oriented radio output
 
 `TrackCandidate` and other track terminology exist only inside the radio
 integration.
 
-The generic engine sees boundaries and segments.
+The generic engine sees boundary candidates, acoustic and temporal evidence,
+transition ownership, temporal split decisions, and segments.
+
+The routing layer does not need to understand radio labels such as "jingle",
+"advert", or station ident. Those meanings remain radio-domain semantics.
+
+A bounded inserted region can therefore be recognized from its temporal and
+acoustic structure without turning that semantic label into a core concept.
 
 ## Relationship with FluxTuner
 
@@ -464,19 +552,29 @@ The following rules define the intended architecture:
 1. The engine is boundary-driven, not track-driven.
 2. Ingestion and boundary detection are separate responsibilities.
 3. Candidate generation and boundary resolution are separate responsibilities.
-4. Retention must remain bounded.
-5. Segmentation is independent from source-specific semantics.
-6. Domain integrations depend on the core; the core never depends on them.
-7. `Segment` is a core concept. `Track` is a radio-domain concept.
-8. External intelligence may provide boundary signals without becoming part of
-   the engine.
-9. Materialization operates on retained source data rather than requiring the
-   complete stream in memory.
-10. Resolver deferral is valid when future evidence is required; candidate arrival
-    does not imply immediate boundary finalization.
-11. Distinct temporal evidence types must not be treated as interchangeable
+4. Evidence observation, transition routing, and specialist temporal reasoning
+   are separate responsibilities.
+5. The Router decides which transition phenomenon owns the observation; it does
+   not decide the final cut time.
+6. A transition specialist owns the temporal geometry of its phenomenon.
+7. A specialist may be narrow in scope, but it must not delegate its core
+   temporal reasoning back to the Router.
+8. Missing evidence must not silently be treated as contradictory evidence.
+9. Retention must remain bounded.
+10. Segmentation is independent from source-specific semantics.
+11. Domain integrations depend on the core; the core never depends on them.
+12. `Segment` is a core concept. `Track` is a radio-domain concept.
+13. External intelligence may provide boundary signals without becoming part of
+    the engine.
+14. Materialization operates on retained source data rather than requiring the
+    complete stream in memory.
+15. Resolver deferral is valid when future evidence is required; candidate
+    arrival does not imply immediate boundary finalization.
+16. Distinct temporal evidence types must not be treated as interchangeable
     timestamps.
-12. FluxTuner is a consumer of the engine, not part of the engine's domain model.
+17. A stale temporal decision must not move materialization backwards across the
+    currently open segment.
+18. FluxTuner is a consumer of the engine, not part of the engine's domain model.
 
 ## Package layout
 
@@ -489,6 +587,12 @@ brynse/
     providers.py
     orchestrator.py
     multisignal.py
+    transition_evidence.py
+    transition_router.py
+    transition_specialists.py
+    fade_specialist.py
+    bounded_insert.py
+    incoming_refinement.py
     acoustic.py
     matching.py
     output.py

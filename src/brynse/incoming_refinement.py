@@ -68,7 +68,22 @@ class IncomingBoundaryDiscovery:
         analyses,
     ) -> float | None:
         high_confidence = tuple(
-            analysis.hypothesis.time_seconds
+            (
+                geometry.recovery_seconds
+                if (
+                    (
+                        geometry := getattr(
+                            analysis.hypothesis,
+                            "basin_geometry",
+                            None,
+                        )
+                    )
+                    is not None
+                    and analysis.hypothesis.time_seconds
+                    < geometry.minimum_seconds
+                )
+                else analysis.hypothesis.time_seconds
+            )
             for analysis in analyses
             if (
                 analysis.assessment.candidate_confidence
@@ -172,6 +187,33 @@ class IncomingBoundaryPipeline:
         self._refiner = refiner
         self._on_observation = on_observation
 
+    def observe_hypotheses(
+        self,
+        *,
+        window,
+        pcm8,
+    ) -> tuple:
+        """Return reconciled acoustic hypotheses without refining a boundary."""
+        return self._hypothesis_builder.build(
+            pcm=pcm8,
+            absolute_start_time_seconds=window.start_time_seconds,
+        )
+
+    def analyze_hypotheses(
+        self,
+        *,
+        hypotheses,
+        window,
+        pcm16,
+    ) -> tuple:
+        """Analyze supplied hypotheses without selecting an incoming edge."""
+        return self._incoming_analyzer.analyze(
+            hypotheses=hypotheses,
+            pcm=pcm16,
+            absolute_start_time_seconds=window.start_time_seconds,
+            outgoing_end_seconds=None,
+        )
+
     def refine(
         self,
         *,
@@ -179,14 +221,16 @@ class IncomingBoundaryPipeline:
         window,
         pcm8,
         pcm16,
+        hypotheses=None,
     ) -> TemporalSplitDecision:
         absolute_start = window.start_time_seconds
         outgoing_end = decision.outgoing_end_seconds
 
-        hypotheses = self._hypothesis_builder.build(
-            pcm=pcm8,
-            absolute_start_time_seconds=absolute_start,
-        )
+        if hypotheses is None:
+            hypotheses = self.observe_hypotheses(
+                window=window,
+                pcm8=pcm8,
+            )
 
         analyses = self._incoming_analyzer.analyze(
             hypotheses=hypotheses,

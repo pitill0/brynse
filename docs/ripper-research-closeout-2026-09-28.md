@@ -330,3 +330,49 @@ Status:
     production transfer: COMPLETE
     prospective validation: PASSED
     post-E tuning: NONE
+
+## Post-closeout production evolution
+
+The conclusions above describe the research and production state at the time of
+this closeout.
+
+Production evolved further after this record was written.
+
+The frozen `MULTISIGNAL-RESOLVER-v2-MINIMAX` work remains relevant as the basis
+for multi-signal acoustic candidate selection, but it is no longer the complete
+temporal-resolution architecture.
+
+Subsequent production work separated transition interpretation into three
+responsibilities:
+
+    neutral transition observation
+            ↓
+    Transition Router
+            ↓
+    transition specialist
+
+The Router assigns ownership of the observed transition phenomenon.
+
+Dedicated specialists then own temporal geometry for:
+
+- hard cuts
+- fades
+- interstitial transitions
+- bounded inserted regions
+
+An ambiguous compatibility specialist remains available when stronger ownership
+cannot be justified.
+
+Specialists return a `TemporalSplitDecision`, allowing outgoing and incoming
+boundaries to represent different temporal meanings where required.
+
+This later architecture preserves the evidence and findings recorded in this
+closeout while moving phenomenon-specific temporal reasoning out of the original
+single-resolver model.
+
+The resulting routed production path has since been exercised end to end against
+real external ICY streams through `brynse-radio`, including finalized track
+materialization and manual listening of generated output.
+
+This post-closeout evolution does not alter the historical Corpus E results or
+the frozen research conclusions recorded above.

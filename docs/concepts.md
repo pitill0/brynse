@@ -169,6 +169,95 @@ post-transition context has not arrived yet.
 A deferred candidate is neither accepted nor rejected. It remains pending until
 the resolver has enough evidence to make an operational decision.
 
+## Transition observation
+
+A **Transition Observation** is a neutral description of evidence available
+around one candidate transition.
+
+It may include information such as:
+
+- local discontinuity
+- fade evidence
+- basin geometry
+- structural proposals
+- incoming-boundary hypotheses
+- bounded-insert regions
+
+A transition observation answers:
+
+    What evidence is present around this transition?
+
+It does not decide:
+
+    Which transition family owns this evidence?
+
+or:
+
+    Where should the final cut be placed?
+
+## Transition Router
+
+A **Transition Router** classifies an observed transition and assigns it to the
+specialist responsible for that transition phenomenon.
+
+The Router answers:
+
+    What kind of transition is this?
+
+The current transition families are:
+
+- `HARD_CUT`
+- `FADE`
+- `INTERSTITIAL`
+- `BOUNDED_INSERT`
+- `AMBIGUOUS`
+
+The Router does not own final temporal placement.
+
+Its responsibility is transition ownership.
+
+## Transition specialist
+
+A **Transition Specialist** owns temporal reasoning for one transition
+phenomenon.
+
+A specialist answers:
+
+    Given the evidence for this phenomenon, where are the best justified
+    outgoing and incoming boundaries?
+
+Current production specialists include:
+
+- `HardCutSpecialist`
+- `FadeSpecialist`
+- `InterstitialSpecialist`
+- `BoundedInsertSpecialist`
+
+`LegacyAmbiguousSpecialist` provides conservative compatibility behavior when
+the Router cannot justify a more specific transition family.
+
+A specialist should not classify unrelated transition families or delegate its
+core temporal reasoning back to the Router.
+
+A specialist may be narrow, but it must not be superficial.
+
+## Temporal split decision
+
+A **Temporal Split Decision** describes the temporal geometry selected for a
+transition before encoded-frame alignment.
+
+The outgoing and incoming positions may be equal or different.
+
+This allows the engine to represent:
+
+- direct hard cuts
+- overlaps and crossfades
+- excluded intervals
+- bounded inserted regions
+
+The temporal split is produced before conversion to encoded-frame-aligned
+segment boundaries.
+
 ## Resolved boundary
 
 A **Resolved Boundary** is a segmentation point accepted by the engine after
@@ -325,31 +414,44 @@ The core must not import or depend on domain-specific concepts.
 
 The main conceptual flow is:
 
-```text
-SOURCE
-  ↓
-INGESTION
-  ↓
-RETENTION
-  ↓
-BOUNDARY SIGNALS
-  ↓
-BOUNDARY PROVIDERS
-  ↓
-BOUNDARY CANDIDATES
-  ↓
-BOUNDARY RESOLVER
-  ↓
-RESOLVED BOUNDARIES
-  ↓
-SEGMENT PLANS
-  ↓
-MATERIALIZATION
-  ↓
-MATERIALIZED SEGMENTS
-  ↓
-SINK
-```
+    SOURCE
+      ↓
+    INGESTION
+      ↓
+    RETENTION
+      ↓
+    BOUNDARY SIGNALS
+      ↓
+    BOUNDARY PROVIDERS
+      ↓
+    BOUNDARY CANDIDATES
+      ↓
+    BOUNDARY / ACOUSTIC EVIDENCE
+      ↓
+    TRANSITION OBSERVATION
+      ↓
+    TRANSITION ROUTER
+      ↓
+    TRANSITION SPECIALIST
+      ↓
+    TEMPORAL SPLIT DECISION
+      ↓
+    RESOLVED / ALIGNED BOUNDARIES
+      ↓
+    SEGMENT PLANS
+      ↓
+    MATERIALIZATION
+      ↓
+    MATERIALIZED SEGMENTS
+      ↓
+    SINK
+
+Not every integration requires the routed transition layer.
+
+Simple providers may resolve candidates directly through simpler resolver paths.
+
+The routed layer is useful when one candidate may represent different transition
+phenomena whose temporal geometry must be interpreted differently.
 
 A domain integration may feed boundary candidates into this flow, but it does
 not replace the generic engine model.

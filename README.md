@@ -34,50 +34,113 @@ FluxTuner remains a first-party integration and reference consumer.
 - Incremental ICY metadata parsing
 - Metadata semantic tracking
 - Radio-specific track state and transition handling
+- Multi-signal acoustic candidate selection
+- Neutral transition evidence and routing
+- Dedicated hard-cut, fade, interstitial, and bounded-insert specialists
+- Conservative ambiguous-transition fallback
 - Atomic track persistence
 
 ## Architecture
 
 Brynse is organized around a source-agnostic segmentation core.
 
-```text
-SOURCE
-  ↓
-INGESTION
-  ↓
-RETENTION
-  ↓
-BOUNDARY PROVIDERS
-  ↓
-BOUNDARY CANDIDATES
-  ↓
-BOUNDARY RESOLUTION
-  ↓
-SEGMENT PLAN
-  ↓
-MATERIALIZATION
-  ↓
-SEGMENT
-  ↓
-SINK
-```
+    SOURCE
+      ↓
+    INGESTION
+      ↓
+    RETENTION
+      ↓
+    BOUNDARY PROVIDERS
+      ↓
+    BOUNDARY CANDIDATES
+      ↓
+    BOUNDARY EVIDENCE / RESOLUTION
+      ↓
+    SEGMENT PLAN
+      ↓
+    MATERIALIZATION
+      ↓
+    SEGMENT
+      ↓
+    SINK
 
 Domain-specific integrations provide semantics and boundary signals without
 changing the core segmentation model.
 
+The first-party radio integration adds a routed transition-resolution layer:
+
+    semantic radio candidate
+            ↓
+    multi-signal acoustic selection
+            ↓
+    neutral transition observations
+            ↓
+    Transition Router
+            ↓
+    transition specialist
+            ↓
+    TemporalSplitDecision
+            ↓
+    frame alignment / materialization
+
+The responsibilities are intentionally separated:
+
+- observers describe available evidence
+- the Router decides which transition phenomenon owns the observation
+- the selected specialist owns temporal geometry
+- downstream code applies and aligns the resulting temporal split
+
+The current routed transition families are:
+
+- `HARD_CUT`
+- `FADE`
+- `INTERSTITIAL`
+- `BOUNDED_INSERT`
+- `AMBIGUOUS`
+
+`AMBIGUOUS` is a conservative compatibility fallback rather than a general
+acoustic specialist.
+
 The first-party radio integration depends on the generic engine:
 
-```text
-integrations.radio
-      ↓
-     core
-```
+    integrations.radio
+          ↓
+         core
 
 The core never depends on radio concepts.
 
-For a detailed description of the architecture, data flow, extension points,
-retention model, boundary resolution, and radio integration, see
+For a detailed description of the architecture, data flow, transition routing,
+specialists, retention model, boundary resolution, and radio integration, see
 [`docs/architecture.md`](docs/architecture.md).
+
+## Radio ripping example
+
+Brynse includes a first-party radio integration for splitting a continuous ICY
+radio stream into finalized tracks.
+
+A basic MP3 ripping session is:
+
+    brynse-radio \
+      "https://example.com/radio-stream" \
+      --output ./tracks \
+      --codec mp3
+
+During the session Brynse consumes the stream incrementally, follows ICY metadata,
+settles transitions using bounded acoustic evidence, routes each transition to the
+appropriate specialist, and writes completed tracks as they become available.
+
+Typical output includes the detected metadata and finalized files:
+
+    codec: mp3
+    output: ./tracks
+    ripping stream; press Ctrl+C to stop
+    [   267.598s] Artist - Track
+    written: tracks/Artist - Previous Track.mp3
+
+Codec detection can normally be left automatic by omitting `--codec`.
+
+See [`docs/examples/live-radio-track-ripping.md`](docs/examples/live-radio-track-ripping.md)
+for the complete workflow, behavior, and validation notes.
 
 ## Generic streaming CLI
 

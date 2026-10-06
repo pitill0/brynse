@@ -1800,13 +1800,11 @@ def test_temporal_split_aligner_rejects_collapsed_crossfade_after_alignment() ->
         )
 
 
-def test_temporal_split_aligner_rejects_collapsed_exclusion_after_alignment() -> None:
+def test_temporal_split_aligner_collapses_exclusion_to_hard_cut() -> None:
     from brynse.frames import IncrementalFrameTimeline
-    from brynse.matching import (
-        SplitAlignmentError,
-        TemporalSplitAligner,
-    )
+    from brynse.matching import TemporalSplitAligner
     from brynse.models import (
+        SplitKind,
         TemporalSplitDecision,
         TemporalSplitKind,
     )
@@ -1823,11 +1821,14 @@ def test_temporal_split_aligner_rejects_collapsed_exclusion_after_alignment() ->
         incoming_start_seconds=base + 0.001,
     )
 
-    with pytest.raises(SplitAlignmentError):
-        TemporalSplitAligner().align(
-            decision=decision,
-            timeline=timeline,
-        )
+    aligned = TemporalSplitAligner().align(
+        decision=decision,
+        timeline=timeline,
+    )
+
+    assert aligned.kind is SplitKind.HARD_CUT
+    assert aligned.outgoing_end == timeline.frames[1].offset
+    assert aligned.incoming_start == timeline.frames[1].offset
 
 
 def test_track_range_planner_builds_hard_cut_ranges() -> None:

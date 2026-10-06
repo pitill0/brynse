@@ -33,7 +33,10 @@ from brynse.integrations.radio.session_output import (
 from brynse.integrations.radio.transient import ConservativeTransientExclusionPolicy
 from brynse.live_shadow import LiveShadowBoundaryObserver
 from brynse.models import Segment
-from brynse.orchestrator import MultiSignalAcousticCandidateResolver
+from brynse.orchestrator import (
+    MultiSignalAcousticCandidateResolver,
+    TransitionRoutingObservation,
+)
 from brynse.shadow import ShadowBoundaryAnalysis
 from brynse.source import BinaryIOStreamSource, StreamSource
 from brynse.streaming_spool import create_safe_streaming_spool
@@ -85,6 +88,7 @@ TrackCallback = Callable[[WrittenTrack], None]
 SegmentCallback = Callable[[WrittenSegment], None]
 StartedCallback = Callable[[str, int], None]
 ShadowCallback = Callable[[ShadowBoundaryAnalysis], None]
+RoutingObservationCallback = Callable[[TransitionRoutingObservation], None]
 ShadowObserverFactory = Callable[[str], LiveShadowBoundaryObserver]
 
 
@@ -210,6 +214,7 @@ class RippingRunner:
         codec: str,
         *,
         on_incoming_observation=None,
+        on_routing_observation: RoutingObservationCallback | None = None,
     ) -> BoundaryResolver:
         if codec not in {"aac", "mp3"}:
             raise RippingRunError(f"unsupported codec: {codec!r}")
@@ -233,6 +238,7 @@ class RippingRunner:
                     ffmpeg_binary=config.ffmpeg_binary,
                     on_observation=on_incoming_observation,
                 ),
+                on_routing_observation=on_routing_observation,
             )
         )
 
@@ -245,6 +251,7 @@ class RippingRunner:
         on_segment_written: SegmentCallback | None = None,
         on_shadow_analysis: ShadowCallback | None = None,
         on_incoming_observation=None,
+        on_routing_observation: RoutingObservationCallback | None = None,
     ) -> RippingRunResult:
         """Run until EOF or stop() is requested."""
         self._validate_config()
@@ -276,6 +283,7 @@ class RippingRunner:
                 orchestrator=self._build_orchestrator(
                     codec,
                     on_incoming_observation=on_incoming_observation,
+                    on_routing_observation=on_routing_observation,
                 ),
                 transient_exclusion_policy=transient_policy,
                 acoustic_settle_seconds=_MULTISIGNAL_ACOUSTIC_RADIUS_SECONDS,
@@ -334,6 +342,19 @@ class RippingRunner:
                         on_metadata(event)
 
                 for transition in result.transitions:
+                    outgoing_end = transition.boundary.split.outgoing_end
+                    incoming_start = transition.boundary.split.incoming_start
+
+                    if (
+                        outgoing_end is None
+                        or incoming_start is None
+                        or not output_writer.can_write_transition(
+                            outgoing_end=outgoing_end,
+                            incoming_start=incoming_start,
+                        )
+                    ):
+                        continue
+
                     written = output_writer.write_transition(transition)
 
                     materialized_start = output_writer.retained_start_offset
@@ -383,10 +404,16 @@ class RippingRunner:
                         if resolution is None:
                             continue
 
+                        outgoing_end = resolution.split.outgoing_end
                         incoming_start = resolution.split.incoming_start
+
                         if (
-                            incoming_start is None
-                            or not output_writer.can_write_boundary_at(incoming_start)
+                            outgoing_end is None
+                            or incoming_start is None
+                            or not output_writer.can_write_transition(
+                                outgoing_end=outgoing_end,
+                                incoming_start=incoming_start,
+                            )
                         ):
                             continue
 
