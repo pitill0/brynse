@@ -79,6 +79,27 @@ class SessionOutputWriter:
         current_start = self._current_start_offset
         return current_start is None or incoming_start > current_start
 
+    def can_write_transition(
+        self,
+        *,
+        outgoing_end: int,
+        incoming_start: int,
+    ) -> bool:
+        """Return whether a transition advances the currently open segment."""
+        if outgoing_end < 0:
+            raise ValueError("outgoing_end must be non-negative")
+        if incoming_start < 0:
+            raise ValueError("incoming_start must be non-negative")
+
+        current_start = self._current_start_offset
+        if current_start is None:
+            return True
+
+        return (
+            outgoing_end > current_start
+            and incoming_start > current_start
+        )
+
     def write_segment_transition(
         self,
         transition: SegmentTransition,

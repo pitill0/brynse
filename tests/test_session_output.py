@@ -412,3 +412,25 @@ def test_session_output_writer_rejects_boundary_at_or_before_open_segment(
     assert writer.can_write_boundary_at(5001) is True
     assert writer.can_write_boundary_at(5000) is False
     assert writer.can_write_boundary_at(4999) is False
+
+    assert (
+        writer.can_write_transition(
+            outgoing_end=5001,
+            incoming_start=5001,
+        )
+        is True
+    )
+    assert (
+        writer.can_write_transition(
+            outgoing_end=4999,
+            incoming_start=6000,
+        )
+        is False
+    )
+    assert (
+        writer.can_write_transition(
+            outgoing_end=6000,
+            incoming_start=4999,
+        )
+        is False
+    )

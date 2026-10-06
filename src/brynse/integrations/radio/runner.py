@@ -342,6 +342,19 @@ class RippingRunner:
                         on_metadata(event)
 
                 for transition in result.transitions:
+                    outgoing_end = transition.boundary.split.outgoing_end
+                    incoming_start = transition.boundary.split.incoming_start
+
+                    if (
+                        outgoing_end is None
+                        or incoming_start is None
+                        or not output_writer.can_write_transition(
+                            outgoing_end=outgoing_end,
+                            incoming_start=incoming_start,
+                        )
+                    ):
+                        continue
+
                     written = output_writer.write_transition(transition)
 
                     materialized_start = output_writer.retained_start_offset
@@ -391,10 +404,16 @@ class RippingRunner:
                         if resolution is None:
                             continue
 
+                        outgoing_end = resolution.split.outgoing_end
                         incoming_start = resolution.split.incoming_start
+
                         if (
-                            incoming_start is None
-                            or not output_writer.can_write_boundary_at(incoming_start)
+                            outgoing_end is None
+                            or incoming_start is None
+                            or not output_writer.can_write_transition(
+                                outgoing_end=outgoing_end,
+                                incoming_start=incoming_start,
+                            )
                         ):
                             continue
 

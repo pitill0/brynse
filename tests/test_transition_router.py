@@ -1051,3 +1051,265 @@ def test_phase3_symmetric_bounded_insert_rejects_reference_after_right_support()
     assert assessment.unique_region is True
     assert assessment.left_is_context_structural_peak is False
     assert assessment.right_is_context_structural_peak is False
+
+
+
+
+def test_phase4_symmetric_accepts_single_structural_interior_before_dominant_right_edge() -> None:
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.3,
+    )
+    right = _bounded_insert_edge(
+        120.0,
+        basin_start_seconds=119.5,
+        basin_recovery_seconds=120.5,
+        structural_strength=1.0,
+    )
+
+    interior_proposal = BoundaryProposal(
+        time_seconds=108.0,
+        source=BoundaryProposalSource.STRUCTURAL,
+        strength=0.4,
+    )
+    interior = BoundaryHypothesis(
+        time_seconds=108.0,
+        proposals=(interior_proposal,),
+    )
+
+    region = _bounded_insert_region(
+        reference_time_seconds=118.0,
+        left=left,
+        right=right,
+        interior_hypotheses=(interior,),
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=118.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(left, interior, right),
+        bounded_insert_regions=(region,),
+    )
+
+    router = DefaultTransitionRouter()
+
+    assessment = router.assess_bounded_insert(
+        context=context,
+    )
+
+    assert assessment.candidate is True
+    assert assessment.left_is_context_structural_peak is False
+    assert assessment.right_is_context_structural_peak is True
+    assert assessment.structural_only_interior_count == 1
+    assert (
+        router.classify(context=context)
+        is TransitionKind.BOUNDED_INSERT
+    )
+
+
+def test_phase4_symmetric_rejects_multiple_structural_interiors_before_dominant_right_edge(
+) -> None:
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.3,
+    )
+    right = _bounded_insert_edge(
+        120.0,
+        basin_start_seconds=119.5,
+        basin_recovery_seconds=120.5,
+        structural_strength=1.0,
+    )
+
+    first_proposal = BoundaryProposal(
+        time_seconds=106.0,
+        source=BoundaryProposalSource.STRUCTURAL,
+        strength=0.4,
+    )
+    first = BoundaryHypothesis(
+        time_seconds=106.0,
+        proposals=(first_proposal,),
+    )
+
+    second_proposal = BoundaryProposal(
+        time_seconds=112.0,
+        source=BoundaryProposalSource.STRUCTURAL,
+        strength=0.5,
+    )
+    second = BoundaryHypothesis(
+        time_seconds=112.0,
+        proposals=(second_proposal,),
+    )
+
+    region = _bounded_insert_region(
+        reference_time_seconds=118.0,
+        left=left,
+        right=right,
+        interior_hypotheses=(first, second),
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=118.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(
+            left,
+            first,
+            second,
+            right,
+        ),
+        bounded_insert_regions=(region,),
+    )
+
+    router = DefaultTransitionRouter()
+
+    assessment = router.assess_bounded_insert(
+        context=context,
+    )
+
+    assert assessment.candidate is False
+    assert assessment.left_is_context_structural_peak is False
+    assert assessment.right_is_context_structural_peak is True
+    assert assessment.structural_only_interior_count == 2
+    assert (
+        router.classify(context=context)
+        is not TransitionKind.BOUNDED_INSERT
+    )
+
+
+
+def test_phase4_symmetric_rejects_mixed_interior_families() -> None:
+    from brynse.boundaries import (
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_evidence import TransitionEvidenceState
+    from brynse.transition_router import (
+        DefaultTransitionRouter,
+        TransitionRoutingContext,
+    )
+
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.3,
+    )
+    right = _bounded_insert_edge(
+        120.0,
+        basin_start_seconds=119.5,
+        basin_recovery_seconds=120.5,
+        structural_strength=0.2,
+    )
+
+    structural_proposal = BoundaryProposal(
+        time_seconds=106.0,
+        source=BoundaryProposalSource.STRUCTURAL,
+        strength=0.25,
+    )
+    structural_only = BoundaryHypothesis(
+        time_seconds=106.0,
+        proposals=(structural_proposal,),
+    )
+
+    basin_proposal = BoundaryProposal(
+        time_seconds=112.0,
+        source=BoundaryProposalSource.BASIN,
+    )
+    basin_only = BoundaryHypothesis(
+        time_seconds=112.0,
+        proposals=(basin_proposal,),
+    )
+
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=104.0,
+        left=left,
+        right=right,
+        interior_hypotheses=(
+            structural_only,
+            basin_only,
+        ),
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=104.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(
+            left,
+            structural_only,
+            basin_only,
+            right,
+        ),
+        bounded_insert_regions=(region,),
+    )
+
+    result = DefaultTransitionRouter().assess_bounded_insert(
+        context=context,
+    )
+
+    assert result.candidate is False
+
+
+def test_phase4_symmetric_accepts_structural_only_interior() -> None:
+    from brynse.boundaries import (
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_evidence import TransitionEvidenceState
+    from brynse.transition_router import (
+        DefaultTransitionRouter,
+        TransitionRoutingContext,
+    )
+
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.3,
+    )
+    right = _bounded_insert_edge(
+        120.0,
+        basin_start_seconds=119.5,
+        basin_recovery_seconds=120.5,
+        structural_strength=0.2,
+    )
+
+    proposal = BoundaryProposal(
+        time_seconds=110.0,
+        source=BoundaryProposalSource.STRUCTURAL,
+        strength=0.4,
+    )
+    interior = BoundaryHypothesis(
+        time_seconds=110.0,
+        proposals=(proposal,),
+    )
+
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=105.0,
+        left=left,
+        right=right,
+        interior_hypotheses=(interior,),
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=105.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(
+            left,
+            interior,
+            right,
+        ),
+        bounded_insert_regions=(region,),
+    )
+
+    result = DefaultTransitionRouter().assess_bounded_insert(
+        context=context,
+    )
+
+    assert result.candidate is True

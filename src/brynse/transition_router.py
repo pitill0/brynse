@@ -176,10 +176,52 @@ class DefaultTransitionRouter:
             and not right_peak
         )
 
+        interior_source_sets = tuple(
+            {
+                proposal.source
+                for proposal in hypothesis.proposals
+            }
+            for hypothesis in getattr(
+                region,
+                "interior_hypotheses",
+                (),
+            )
+        )
+
+        has_structural_only_interior = any(
+            sources == {BoundaryProposalSource.STRUCTURAL}
+            for sources in interior_source_sets
+        )
+        has_basin_only_interior = any(
+            sources == {BoundaryProposalSource.BASIN}
+            for sources in interior_source_sets
+        )
+
+        mixed_interior_families = (
+            has_structural_only_interior
+            and has_basin_only_interior
+        )
+
+        single_structural_only_interior = (
+            interior_source_sets
+            == ({BoundaryProposalSource.STRUCTURAL},)
+        )
+
+        terminal_single_insert = (
+            reference_between_supports
+            and not left_peak
+            and right_peak
+            and single_structural_only_interior
+        )
+
         return BoundedInsertRoutingAssessment(
             candidate=(
-                structurally_non_dominant_region
-                or basin_entry_with_internal_structure
+                not mixed_interior_families
+                and (
+                    structurally_non_dominant_region
+                    or basin_entry_with_internal_structure
+                    or terminal_single_insert
+                )
             ),
             related_region_count=region_count,
             unique_region=True,

@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
-from brynse.boundaries import BoundaryConfidence
+from brynse.boundaries import BoundaryConfidence, BoundaryProposalSource
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
 from brynse.transition_router import (
     BoundedInsertOwnership,
@@ -128,6 +128,20 @@ class HardCutSpecialist:
 
             return reference_geometry.recovery_seconds
 
+        enclosed = tuple(
+            geometry
+            for _, geometry in geometries
+            if (
+                selected_time_seconds
+                < geometry.start_seconds
+                and geometry.recovery_seconds
+                < reference_time_seconds
+            )
+        )
+
+        if len(enclosed) == 1:
+            return enclosed[0].recovery_seconds
+
         if geometries:
             return selected_time_seconds
 
@@ -229,6 +243,19 @@ class InterstitialSpecialist:
                 temporal=refined,
             )
 
+        phase_refined = self._refine_dominant_incoming_basin(
+            decision=refined,
+            reference_time_seconds=(
+                observation.routing.reference_time_seconds
+            ),
+            hypotheses=observation.routing.hypotheses,
+        )
+
+        if phase_refined is not None:
+            return TransitionSpecialistResult(
+                temporal=phase_refined,
+            )
+
         analyze_hypotheses = getattr(
             self._incoming_pipeline,
             "analyze_hypotheses",
@@ -262,6 +289,134 @@ class InterstitialSpecialist:
                 outgoing_end_seconds=outgoing,
                 incoming_start_seconds=refined.incoming_start_seconds,
             )
+        )
+
+    @staticmethod
+    def _refine_dominant_incoming_basin(
+        *,
+        decision: TemporalSplitDecision,
+        reference_time_seconds: float,
+        hypotheses,
+    ) -> TemporalSplitDecision | None:
+        from brynse.boundaries import BoundaryProposalSource
+
+        structural_strengths = tuple(
+            proposal.strength
+            for hypothesis in hypotheses
+            for proposal in getattr(
+                hypothesis,
+                "proposals",
+                (),
+            )
+            if (
+                proposal.source is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength is not None
+            )
+        )
+
+        if not structural_strengths:
+            return None
+
+        context_peak = max(structural_strengths)
+
+        matching = []
+
+        for hypothesis in hypotheses:
+            geometry = hypothesis.basin_geometry
+
+            if geometry is None:
+                continue
+
+            if (
+                geometry.recovery_seconds
+                != decision.incoming_start_seconds
+            ):
+                continue
+
+            strengths = tuple(
+                proposal.strength
+                for proposal in getattr(
+                    hypothesis,
+                    "proposals",
+                    (),
+                )
+                if (
+                    proposal.source
+                    is BoundaryProposalSource.STRUCTURAL
+                    and proposal.strength is not None
+                )
+            )
+
+            if not strengths:
+                continue
+
+            if max(strengths) != context_peak:
+                continue
+
+            matching.append(
+                (
+                    hypothesis,
+                    geometry,
+                )
+            )
+
+        if len(matching) != 1:
+            return None
+
+        hypothesis, geometry = matching[0]
+
+        basin_proposal_times = tuple(
+            proposal.time_seconds
+            for proposal in getattr(
+                hypothesis,
+                "proposals",
+                (),
+            )
+            if (
+                proposal.source
+                is BoundaryProposalSource.BASIN
+            )
+        )
+
+        if len(basin_proposal_times) != 1:
+            return None
+
+        if (
+            reference_time_seconds
+            < basin_proposal_times[0]
+        ):
+            return None
+
+        if not (
+            decision.outgoing_end_seconds
+            < geometry.start_seconds
+            < decision.incoming_start_seconds
+        ):
+            return None
+
+        dominant_structural_times = tuple(
+            proposal.time_seconds
+            for proposal in getattr(
+                hypothesis,
+                "proposals",
+                (),
+            )
+            if (
+                proposal.source
+                is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength == context_peak
+            )
+        )
+
+        outgoing = geometry.start_seconds
+
+        if geometry.recovery_seconds in dominant_structural_times:
+            outgoing = geometry.minimum_seconds
+
+        return TemporalSplitDecision(
+            kind=TemporalSplitKind.EXCLUSION,
+            outgoing_end_seconds=outgoing,
+            incoming_start_seconds=decision.incoming_start_seconds,
         )
 
     @staticmethod
@@ -403,8 +558,15 @@ class BoundedInsertSpecialist:
         }
 
     @staticmethod
-    def propose_symmetric_phase_aware(region):
+    def propose_symmetric_phase_aware(
+        region,
+        *,
+        reference_time_seconds=None,
+    ):
         """Propose a phase-aware symmetric exclusion without applying it."""
+        if reference_time_seconds is None:
+            reference_time_seconds = region.reference_time_seconds
+
         outgoing = region.left.time_seconds
 
         geometry = region.left_edge.basin_geometry
@@ -413,6 +575,26 @@ class BoundedInsertSpecialist:
             outgoing = min(
                 outgoing,
                 geometry.recovery_seconds,
+            )
+
+        later_reference_basins = tuple(
+            evidence
+            for evidence in region.left.evidence
+            if (
+                evidence.basin_start_seconds is not None
+                and evidence.basin_recovery_seconds is not None
+                and evidence.proposal.time_seconds
+                > region.left.time_seconds
+                and evidence.basin_start_seconds
+                <= reference_time_seconds
+                <= evidence.basin_recovery_seconds
+            )
+        )
+
+        if len(later_reference_basins) == 1:
+            outgoing = (
+                later_reference_basins[0]
+                .basin_recovery_seconds
             )
 
         incoming = region.right.time_seconds
@@ -527,7 +709,10 @@ class BoundedInsertSpecialist:
             region = symmetric[0]
 
             proposal = self.propose_symmetric_phase_aware(
-                region
+                region,
+                reference_time_seconds=(
+                    observation.routing.reference_time_seconds
+                ),
             )
 
             if proposal is not None:
@@ -614,6 +799,42 @@ class BoundedInsertSpecialist:
 
         outgoing = primary_geometry.recovery_seconds
 
+        from brynse.boundaries import BoundaryProposalSource
+
+        basin_proposal_times = tuple(
+            proposal.time_seconds
+            for proposal in region.primary.proposals
+            if proposal.source is BoundaryProposalSource.BASIN
+        )
+
+        structural_proposals = tuple(
+            proposal
+            for proposal in region.primary.proposals
+            if (
+                proposal.source
+                is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength is not None
+            )
+        )
+
+        if (
+            len(basin_proposal_times) == 1
+            and structural_proposals
+        ):
+            strongest_structural = max(
+                structural_proposals,
+                key=lambda proposal: proposal.strength,
+            )
+            basin_time = basin_proposal_times[0]
+
+            if (
+                strongest_structural.time_seconds
+                < region.primary.time_seconds
+                < basin_time
+                < primary_geometry.recovery_seconds
+            ):
+                outgoing = basin_time
+
         complementary_geometry = (
             region.complementary_edge.basin_geometry
         )
@@ -678,14 +899,109 @@ class LegacyAmbiguousSpecialist:
                 temporal=decision,
             )
 
+        refined = self._incoming_pipeline.refine(
+            decision=decision,
+            window=observation.window,
+            pcm8=observation.pcm8,
+            pcm16=observation.pcm16,
+            hypotheses=observation.routing.hypotheses,
+        )
+
+        refined = self._refine_preceding_multistructural_basin(
+            decision=refined,
+            observation=observation,
+        )
+
         return TransitionSpecialistResult(
-            temporal=self._incoming_pipeline.refine(
-                decision=decision,
-                window=observation.window,
-                pcm8=observation.pcm8,
-                pcm16=observation.pcm16,
-                hypotheses=observation.routing.hypotheses,
+            temporal=refined,
+        )
+
+    @staticmethod
+    def _refine_preceding_multistructural_basin(
+        *,
+        decision: TemporalSplitDecision,
+        observation: TransitionSpecialistInput,
+    ) -> TemporalSplitDecision:
+        if decision.kind is not TemporalSplitKind.EXCLUSION:
+            return decision
+
+        reference = observation.routing.reference_time_seconds
+        outgoing = decision.outgoing_end_seconds
+        incoming = decision.incoming_start_seconds
+
+        candidates = []
+
+        for hypothesis in observation.routing.hypotheses:
+            geometry = getattr(
+                hypothesis,
+                "basin_geometry",
+                None,
             )
+
+            if geometry is None:
+                continue
+
+            if not (
+                geometry.recovery_seconds
+                < outgoing
+                < reference
+            ):
+                continue
+
+            if geometry.recovery_seconds >= incoming:
+                continue
+
+            proposals = getattr(
+                hypothesis,
+                "proposals",
+                (),
+            )
+
+            basin_proposals = tuple(
+                proposal
+                for proposal in proposals
+                if proposal.source
+                is BoundaryProposalSource.BASIN
+            )
+
+            if len(basin_proposals) != 1:
+                continue
+
+            structural_times = tuple(
+                proposal.time_seconds
+                for proposal in proposals
+                if proposal.source
+                is BoundaryProposalSource.STRUCTURAL
+            )
+
+            has_pre_minimum_structure = any(
+                time_seconds < geometry.minimum_seconds
+                for time_seconds in structural_times
+            )
+            has_post_minimum_structure = any(
+                geometry.minimum_seconds
+                < time_seconds
+                < geometry.recovery_seconds
+                for time_seconds in structural_times
+            )
+
+            if not (
+                has_pre_minimum_structure
+                and has_post_minimum_structure
+            ):
+                continue
+
+            candidates.append(geometry)
+
+        if len(candidates) != 1:
+            return decision
+
+        geometry = candidates[0]
+
+        return TemporalSplitDecision(
+            kind=TemporalSplitKind.EXCLUSION,
+            outgoing_end_seconds=geometry.recovery_seconds,
+            incoming_start_seconds=incoming,
         )
 
 
