@@ -134,6 +134,99 @@ Resolvers may also require future context. In that case deferral is preferable t
 forcing a premature decision, and the surrounding runner must retain the bounded
 source context required to settle the pending candidate.
 
+## Transition Router contract
+
+A `TransitionRouter` assigns an observed transition to the specialist that owns
+its transition phenomenon.
+
+Its responsibility is:
+
+    Decide which transition family owns the observation.
+
+It does not decide where the final cut should be placed.
+
+A Router may inspect neutral evidence such as:
+
+- local discontinuity
+- fade observations
+- basin geometry
+- structural proposals
+- bounded-insert topology
+- other source-neutral transition evidence
+
+A Router should:
+
+- classify from observable evidence
+- return explicit transition ownership
+- remain deterministic for deterministic input
+- use an ambiguous or fallback path when stronger ownership is not justified
+- leave temporal geometry to the selected specialist
+
+A Router should not:
+
+- introduce temporal vetoes after specialist ownership has been assigned
+- clamp or rewrite specialist boundaries
+- act as a committee that votes between specialists
+- treat missing evidence as contradictory evidence
+- depend on source-specific semantic labels
+
+The Router answers:
+
+    What phenomenon owns this transition?
+
+It does not answer:
+
+    At what exact time should this transition be cut?
+
+## Transition specialist contract
+
+A `TransitionSpecialist` owns temporal reasoning for one transition phenomenon.
+
+Its responsibility is:
+
+    Analyze evidence relevant to that phenomenon and return the best temporal
+    boundaries it can justify.
+
+A specialist may consume evidence such as:
+
+- the selected acoustic candidate
+- local acoustic profile
+- incoming-boundary hypotheses
+- basin geometry
+- structural evidence
+- fade geometry
+- bounded-insert region evidence
+
+A specialist should:
+
+- model the temporal geometry of its phenomenon
+- understand the internal evolution of that transition
+- preserve outgoing and incoming temporal meaning independently when required
+- return an explicit temporal decision or abstain conservatively
+- remain independently testable
+
+A specialist should not:
+
+- classify unrelated transition families
+- vote against other specialists
+- depend on source-specific metadata semantics to compensate for weak temporal
+  reasoning
+- delegate its core temporal reasoning back to the Router
+
+A useful design rule is:
+
+    A specialist may be narrow, but it must not be superficial.
+
+The current first-party production path includes dedicated specialists for:
+
+- hard cuts
+- fades
+- interstitial regions
+- bounded inserts
+
+An ambiguous compatibility specialist provides conservative fallback behavior
+when the Router cannot justify stronger transition ownership.
+
 ## Policy contract
 
 A policy constrains or influences deterministic engine behavior.
@@ -528,24 +621,35 @@ extension is probably being introduced at the wrong architectural layer.
 
 ## Summary
 
-The extension model can be reduced to five responsibilities:
+The extension model can be reduced to these responsibilities:
 
-```text
-PROVIDER
-    proposes where a boundary may exist
+    PROVIDER
+        proposes where a boundary may exist
 
-RESOLVER
-    decides where the usable boundary belongs
+    RESOLVER / OBSERVER
+        gathers and normalizes usable boundary evidence
 
-POLICY
-    constrains how evidence or plans are interpreted
+    ROUTER
+        decides which transition phenomenon owns the observation
 
-MATERIALIZER
-    turns a plan and retained data into bounded output
+    SPECIALIST
+        decides the temporal geometry for that phenomenon
 
-SINK
-    receives completed output
-```
+    POLICY
+        constrains how evidence or plans are interpreted
+
+    MATERIALIZER
+        turns a plan and retained data into bounded output
+
+    SINK
+        receives completed output
+
+Not every integration requires every layer.
+
+Simple segmentation paths may use a provider and resolver directly.
+
+Richer transition domains may use the observer -> Router -> specialist
+decomposition when different phenomena require different temporal reasoning.
 
 Domain integrations and external adapters connect source-specific intelligence
 to those generic contracts.

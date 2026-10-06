@@ -153,16 +153,49 @@ Boundary candidates are provisional.
 The existence of a candidate does not guarantee that the candidate will become a
 resolved boundary.
 
-A resolver may:
+Resolution may:
 
 - accept a candidate
 - align it to nearby evidence
 - replace its effective position
 - reject it
 - defer resolution until sufficient evidence exists
+- route it to phenomenon-specific temporal reasoning
 
-Consumers should rely on resolved boundaries for segmentation decisions rather
-than assuming that candidate timestamps are final.
+Consumers should rely on resolved temporal decisions rather than assuming that
+candidate timestamps are final.
+
+For routed transitions, the engine preserves a separation of responsibility:
+
+    observation
+        ↓
+    Transition Router
+        ↓
+    transition specialist
+        ↓
+    TemporalSplitDecision
+
+The Router assigns transition ownership.
+
+The selected specialist owns the temporal geometry of that transition
+phenomenon.
+
+This means consumers must not assume that:
+
+- the semantic timestamp is the final cut
+- the selected acoustic candidate is the final cut
+- every transition family shares one universal temporal rule
+- outgoing and incoming boundaries always identify the same instant
+
+Different phenomena may legitimately produce different outgoing and incoming
+positions.
+
+This is required for cases such as:
+
+- hard cuts
+- overlaps and crossfades
+- excluded intervals
+- bounded inserted regions
 
 ## Resolution latency
 
@@ -367,6 +400,7 @@ The engine does not guarantee:
 - deterministic behavior from nondeterministic external providers
 - successful materialization after required retained data has been reclaimed
 - immediate resolution when a resolver requires bounded future context
+- one universal temporal rule that is optimal for every transition phenomenon
 - equality between timestamps that represent different transition semantics
 - interpretation of tracks, speakers, incidents, scenes, or other domain
   concepts by the core
