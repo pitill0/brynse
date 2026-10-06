@@ -40,6 +40,57 @@ FluxTuner remains a first-party integration and reference consumer.
 - Conservative ambiguous-transition fallback
 - Atomic track persistence
 
+## Installation and build
+
+Brynse requires Python 3.11 or newer.
+
+The project uses `setuptools` and can be installed directly from a source
+checkout.
+
+A basic local installation is:
+
+    python3 -m venv .venv
+    . .venv/bin/activate
+    python -m pip install -U pip
+    python -m pip install .
+
+This installs the Brynse package and exposes both command-line entry points:
+
+    brynse
+    brynse-radio
+
+You can verify the installation with:
+
+    brynse --help
+    brynse-radio --help
+
+FFmpeg is required for workflows that perform acoustic decoding or media
+finalization, including the first-party radio ripping path.
+
+For development, install the optional development dependencies with:
+
+    python -m pip install -e '.[dev]'
+
+The repository also provides:
+
+    make test
+
+for the test suite, and:
+
+    make gate
+
+for the complete development validation gate.
+
+To build distributable package artifacts from the checkout, use the standard
+Python build frontend after installing it:
+
+    python -m pip install build
+    python -m build
+
+The resulting source and wheel artifacts are written under:
+
+    dist/
+
 ## Architecture
 
 Brynse is organized around a source-agnostic segmentation core.
@@ -269,15 +320,23 @@ print(response)
 
 ## Development
 
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install -U pip
-python -m pip install -e '.[dev]'
-make gate
-```
+For an editable development checkout:
 
-FFmpeg is required for integration tests that exercise decoding and finalization.
+    python3 -m venv .venv
+    . .venv/bin/activate
+    python -m pip install -U pip
+    python -m pip install -e '.[dev]'
+
+Run the normal test suite with:
+
+    make test
+
+Run the complete repository gate with:
+
+    make gate
+
+FFmpeg is required for integration tests that exercise decoding and
+finalization.
 
 ## License
 
