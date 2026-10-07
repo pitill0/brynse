@@ -53,6 +53,29 @@ class TransitionRoutingContext:
 
 
 @dataclass(frozen=True)
+class HardCutRoutingAssessment:
+    """Non-temporal evidence describing direct-transition fallback ownership.
+
+    Local-discontinuity values remain descriptive measurements: their mere
+    availability does not prove an abrupt transition. The assessment records
+    what evidence is available without inventing a threshold or choosing a
+    temporal boundary.
+    """
+
+    local_discontinuity_complete: bool
+    fade_rise_present: bool
+    supported_handoffs: tuple[BoundaryHypothesis, ...] = ()
+
+    @property
+    def fallback_eligible(self) -> bool:
+        """Return whether legacy direct-transition fallback remains available."""
+        return (
+            self.local_discontinuity_complete
+            and not self.fade_rise_present
+        )
+
+
+@dataclass(frozen=True)
 class TransitionRoute:
     """Non-temporal result describing transition ownership.
 
@@ -63,6 +86,7 @@ class TransitionRoute:
 
     kind: TransitionKind
     bounded_insert_ownership: BoundedInsertOwnership | None = None
+    hard_cut: HardCutRoutingAssessment | None = None
 
 
 class TransitionRouter(Protocol):
@@ -326,6 +350,38 @@ class DefaultTransitionRouter:
 
         return None
 
+    def assess_hard_cut(
+        self,
+        *,
+        context: TransitionRoutingContext,
+    ) -> HardCutRoutingAssessment:
+        """Describe direct-transition evidence without choosing a boundary."""
+        supported_handoffs = tuple(
+            hypothesis
+            for hypothesis in context.hypotheses
+            if (
+                hypothesis.basin_geometry is not None
+                and {
+                    proposal.source
+                    for proposal in hypothesis.proposals
+                }
+                == {
+                    BoundaryProposalSource.BASIN,
+                    BoundaryProposalSource.STRUCTURAL,
+                }
+            )
+        )
+
+        return HardCutRoutingAssessment(
+            local_discontinuity_complete=(
+                self._has_complete_local_discontinuity(
+                    context.evidence,
+                )
+            ),
+            fade_rise_present=context.fade.rise is not None,
+            supported_handoffs=supported_handoffs,
+        )
+
     def classify(
         self,
         *,
@@ -380,12 +436,14 @@ class DefaultTransitionRouter:
                 kind=TransitionKind.INTERSTITIAL,
             )
 
-        if (
-            context.fade.rise is None
-            and self._has_complete_local_discontinuity(context.evidence)
-        ):
+        hard_cut = self.assess_hard_cut(
+            context=context,
+        )
+
+        if hard_cut.fallback_eligible:
             return TransitionRoute(
                 kind=TransitionKind.HARD_CUT,
+                hard_cut=hard_cut,
             )
 
         return TransitionRoute(

@@ -1498,6 +1498,70 @@ def test_bounded_insert_phase2_shadow_does_not_change_resolve() -> None:
     )
 
 
+def test_routed_resolver_passes_hard_cut_assessment_provenance() -> None:
+    from brynse.transition_router import (
+        HardCutRoutingAssessment,
+        TransitionKind,
+        TransitionRoute,
+    )
+    from brynse.transition_specialists import RoutedTransitionResolver
+
+    assessment = HardCutRoutingAssessment(
+        local_discontinuity_complete=True,
+        fade_rise_present=False,
+    )
+
+    class Router:
+        def route(self, *, context):
+            _ = context
+            return TransitionRoute(
+                kind=TransitionKind.HARD_CUT,
+                hard_cut=assessment,
+            )
+
+    class Specialist:
+        def __init__(self):
+            self.observation = None
+
+        def resolve(self, *, observation):
+            self.observation = observation
+            return TransitionSpecialistResult(
+                temporal=None,
+            )
+
+    hard_cut = Specialist()
+
+    resolver = RoutedTransitionResolver(
+        router=Router(),
+        hard_cut=hard_cut,
+        fade=Specialist(),
+        interstitial=Specialist(),
+        bounded_insert=Specialist(),
+        ambiguous=Specialist(),
+    )
+
+    original = _observation()
+
+    kind, result = resolver.resolve(
+        observation=original,
+    )
+
+    assert kind is TransitionKind.HARD_CUT
+    assert result.temporal is None
+
+    routed = hard_cut.observation
+
+    assert routed is not None
+    assert routed is not original
+    assert routed.hard_cut_assessment is assessment
+
+    assert routed.routing is original.routing
+    assert routed.selected is original.selected
+    assert routed.window is original.window
+    assert routed.pcm8 is original.pcm8
+    assert routed.pcm16 is original.pcm16
+
+
 def test_routed_resolver_consumes_route_provenance_without_reclassification() -> None:
     from brynse.transition_router import (
         BoundedInsertOwnership,

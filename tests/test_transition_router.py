@@ -17,6 +17,7 @@ from brynse.transition_evidence import (
 from brynse.transition_router import (
     BoundedInsertOwnership,
     DefaultTransitionRouter,
+    HardCutRoutingAssessment,
     TransitionKind,
     TransitionRoute,
     TransitionRouter,
@@ -365,6 +366,60 @@ def _complete_local_evidence() -> TransitionEvidenceState:
         local_discontinuity_1s=0.65,
         local_discontinuity_2s=0.87,
     )
+
+
+def test_hard_cut_assessment_preserves_descriptive_fallback_evidence() -> None:
+    router = DefaultTransitionRouter()
+
+    assessment = router.assess_hard_cut(
+        context=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=_complete_local_evidence(),
+        )
+    )
+
+    assert assessment == HardCutRoutingAssessment(
+        local_discontinuity_complete=True,
+        fade_rise_present=False,
+        supported_handoffs=(),
+    )
+    assert assessment.fallback_eligible is True
+
+
+def test_hard_cut_assessment_does_not_invent_strength_threshold() -> None:
+    router = DefaultTransitionRouter()
+
+    assessment = router.assess_hard_cut(
+        context=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=TransitionEvidenceState(
+                local_discontinuity_250ms=0.0,
+                local_discontinuity_500ms=0.0,
+                local_discontinuity_1s=0.0,
+                local_discontinuity_2s=0.0,
+            ),
+        )
+    )
+
+    assert assessment.local_discontinuity_complete is True
+    assert assessment.fallback_eligible is True
+
+
+def test_hard_cut_route_carries_assessment_provenance() -> None:
+    router = DefaultTransitionRouter()
+
+    route = router.route(
+        context=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=_complete_local_evidence(),
+        )
+    )
+
+    assert route.kind is TransitionKind.HARD_CUT
+    assert route.hard_cut is not None
+    assert route.hard_cut.local_discontinuity_complete is True
+    assert route.hard_cut.fade_rise_present is False
+    assert route.hard_cut.fallback_eligible is True
 
 
 def test_default_transition_router_routes_complete_local_boundary_as_hard_cut() -> None:
