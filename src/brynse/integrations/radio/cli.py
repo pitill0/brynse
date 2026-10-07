@@ -115,6 +115,10 @@ def _routing_trace_record(observation) -> dict[str, object]:
     outgoing_selection = observation.outgoing_fade_selection
     incoming_selection = observation.incoming_fade_selection
     bounded_insert = observation.bounded_insert
+    bounded_insert_routing = observation.bounded_insert_routing
+    fade_routing = observation.fade_routing
+    interstitial_routing = observation.interstitial_routing
+    hard_cut_routing = observation.hard_cut_routing
     fade_rise = context.fade.rise
 
     local_values = (
@@ -215,6 +219,95 @@ def _routing_trace_record(observation) -> dict[str, object]:
     return {
         "reference_time_seconds": context.reference_time_seconds,
         "router_kind": observation.kind.value,
+        "fade_routing_candidate": (
+            None
+            if fade_routing is None
+            else fade_routing.legacy_candidate
+        ),
+        "fade_routing_two_sided_support": (
+            None
+            if fade_routing is None
+            else fade_routing.has_two_sided_support
+        ),
+        "fade_routing_outgoing_association": (
+            None
+            if fade_routing is None
+            else fade_routing.outgoing_association is not None
+        ),
+        "fade_routing_incoming_association": (
+            None
+            if fade_routing is None
+            else fade_routing.incoming_association is not None
+        ),
+        "fade_routing_outgoing_support_seconds": (
+            None
+            if (
+                fade_routing is None
+                or fade_routing.outgoing_association is None
+            )
+            else fade_routing.outgoing_association.hypothesis.time_seconds
+        ),
+        "fade_routing_incoming_support_seconds": (
+            None
+            if (
+                fade_routing is None
+                or fade_routing.incoming_association is None
+            )
+            else fade_routing.incoming_association.hypothesis.time_seconds
+        ),
+        "interstitial_routing_candidate": (
+            None
+            if interstitial_routing is None
+            else interstitial_routing.legacy_candidate
+        ),
+        "interstitial_routing_handoff_count": (
+            None
+            if interstitial_routing is None
+            else len(interstitial_routing.routing_handoffs)
+        ),
+        "interstitial_supported_handoff_count": (
+            None
+            if interstitial_routing is None
+            else len(interstitial_routing.supported_handoffs)
+        ),
+        "interstitial_absorbed_right_edge_fade": (
+            None
+            if interstitial_routing is None
+            else interstitial_routing.absorbed_right_edge_fade
+        ),
+        "interstitial_terminal_fade_support": (
+            None
+            if interstitial_routing is None
+            else interstitial_routing.has_terminal_fade_support
+        ),
+        "bounded_insert_ownership": (
+            None
+            if (
+                bounded_insert_routing is None
+                or bounded_insert_routing.ownership is None
+            )
+            else bounded_insert_routing.ownership.value
+        ),
+        "bounded_insert_symmetric_candidate": (
+            None
+            if bounded_insert_routing is None
+            else bounded_insert_routing.symmetric_assessment.candidate
+        ),
+        "bounded_insert_asymmetric_candidate": (
+            None
+            if bounded_insert_routing is None
+            else bounded_insert_routing.asymmetric_assessment.candidate
+        ),
+        "hard_cut_fallback_eligible": (
+            None
+            if hard_cut_routing is None
+            else hard_cut_routing.fallback_eligible
+        ),
+        "hard_cut_supported_handoff_count": (
+            None
+            if hard_cut_routing is None
+            else len(hard_cut_routing.supported_handoffs)
+        ),
         "temporal_kind": temporal.kind.value,
         "incoming_start_seconds": temporal.incoming_start_seconds,
         "outgoing_end_seconds": temporal.outgoing_end_seconds,

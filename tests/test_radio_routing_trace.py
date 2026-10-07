@@ -134,6 +134,22 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
     assert record == {
         "reference_time_seconds": 100.0,
         "router_kind": "hard_cut",
+        "fade_routing_candidate": None,
+        "fade_routing_two_sided_support": None,
+        "fade_routing_outgoing_association": None,
+        "fade_routing_incoming_association": None,
+        "fade_routing_outgoing_support_seconds": None,
+        "fade_routing_incoming_support_seconds": None,
+        "interstitial_routing_candidate": None,
+        "interstitial_routing_handoff_count": None,
+        "interstitial_supported_handoff_count": None,
+        "interstitial_absorbed_right_edge_fade": None,
+        "interstitial_terminal_fade_support": None,
+        "bounded_insert_ownership": None,
+        "bounded_insert_symmetric_candidate": None,
+        "bounded_insert_asymmetric_candidate": None,
+        "hard_cut_fallback_eligible": None,
+        "hard_cut_supported_handoff_count": None,
         "temporal_kind": "exclusion",
         "incoming_start_seconds": 102.0,
         "outgoing_end_seconds": 100.0,
@@ -240,6 +256,96 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
         "local_discontinuity_1s": 0.65,
         "local_discontinuity_2s": 0.87,
     }
+
+
+def test_routing_trace_record_preserves_router_v2_assessments() -> None:
+    from dataclasses import replace
+
+    from brynse.transition_router import DefaultTransitionRouter
+
+    base = _observation()
+    router = DefaultTransitionRouter()
+    context = base.context
+
+    bounded_insert_routing = router.assess_bounded_insert_routing(
+        context=context,
+    )
+    fade_routing = router.assess_fade(
+        context=context,
+    )
+    interstitial_routing = router.assess_interstitial(
+        context=context,
+    )
+    hard_cut_routing = router.assess_hard_cut(
+        context=context,
+    )
+
+    observation = replace(
+        base,
+        bounded_insert_routing=bounded_insert_routing,
+        fade_routing=fade_routing,
+        interstitial_routing=interstitial_routing,
+        hard_cut_routing=hard_cut_routing,
+    )
+
+    record = cli._routing_trace_record(observation)
+
+    assert record["fade_routing_candidate"] is fade_routing.legacy_candidate
+    assert (
+        record["fade_routing_two_sided_support"]
+        is fade_routing.has_two_sided_support
+    )
+    assert (
+        record["fade_routing_outgoing_association"]
+        is (fade_routing.outgoing_association is not None)
+    )
+    assert (
+        record["fade_routing_incoming_association"]
+        is (fade_routing.incoming_association is not None)
+    )
+
+    assert (
+        record["interstitial_routing_candidate"]
+        is interstitial_routing.legacy_candidate
+    )
+    assert record["interstitial_routing_handoff_count"] == len(
+        interstitial_routing.routing_handoffs
+    )
+    assert record["interstitial_supported_handoff_count"] == len(
+        interstitial_routing.supported_handoffs
+    )
+    assert (
+        record["interstitial_absorbed_right_edge_fade"]
+        is interstitial_routing.absorbed_right_edge_fade
+    )
+    assert (
+        record["interstitial_terminal_fade_support"]
+        is interstitial_routing.has_terminal_fade_support
+    )
+
+    expected_ownership = (
+        None
+        if bounded_insert_routing.ownership is None
+        else bounded_insert_routing.ownership.value
+    )
+
+    assert record["bounded_insert_ownership"] == expected_ownership
+    assert (
+        record["bounded_insert_symmetric_candidate"]
+        is bounded_insert_routing.symmetric_assessment.candidate
+    )
+    assert (
+        record["bounded_insert_asymmetric_candidate"]
+        is bounded_insert_routing.asymmetric_assessment.candidate
+    )
+
+    assert (
+        record["hard_cut_fallback_eligible"]
+        is hard_cut_routing.fallback_eligible
+    )
+    assert record["hard_cut_supported_handoff_count"] == len(
+        hard_cut_routing.supported_handoffs
+    )
 
 
 def test_routing_trace_record_preserves_fade_rise_diagnostics() -> None:

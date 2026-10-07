@@ -48,7 +48,11 @@ from brynse.transition_evidence import (
 )
 from brynse.transition_router import (
     BoundedInsertRoutingAssessment,
+    BoundedInsertRoutingProvenance,
     DefaultTransitionRouter,
+    FadeRoutingAssessment,
+    HardCutRoutingAssessment,
+    InterstitialRoutingAssessment,
     TransitionKind,
     TransitionRouter,
     TransitionRoutingContext,
@@ -80,6 +84,10 @@ class TransitionRoutingObservation:
     kind: TransitionKind
     temporal: TemporalSplitDecision
     bounded_insert: BoundedInsertRoutingAssessment | None = None
+    bounded_insert_routing: BoundedInsertRoutingProvenance | None = None
+    fade_routing: FadeRoutingAssessment | None = None
+    interstitial_routing: InterstitialRoutingAssessment | None = None
+    hard_cut_routing: HardCutRoutingAssessment | None = None
     outgoing_fade_selection: OutgoingFadeSelection | None = None
     incoming_fade_selection: IncomingFadeSelection | None = None
 
@@ -412,21 +420,48 @@ class MultiSignalAcousticCandidateResolver:
             incoming_fade_selection = diagnostics.incoming_selection
 
         if self._on_routing_observation is not None:
+            bounded_insert = None
+            bounded_insert_routing = None
+            fade_routing = None
+            interstitial_routing = None
+            hard_cut_routing = None
+
+            if isinstance(
+                self._transition_router,
+                DefaultTransitionRouter,
+            ):
+                bounded_insert = (
+                    self._transition_router.assess_bounded_insert(
+                        context=routing_context,
+                    )
+                )
+                bounded_insert_routing = (
+                    self._transition_router.assess_bounded_insert_routing(
+                        context=routing_context,
+                    )
+                )
+                fade_routing = self._transition_router.assess_fade(
+                    context=routing_context,
+                )
+                interstitial_routing = (
+                    self._transition_router.assess_interstitial(
+                        context=routing_context,
+                    )
+                )
+                hard_cut_routing = self._transition_router.assess_hard_cut(
+                    context=routing_context,
+                )
+
             self._on_routing_observation(
                 TransitionRoutingObservation(
                     context=routing_context,
                     kind=routing_kind,
                     temporal=temporal,
-                    bounded_insert=(
-                        self._transition_router.assess_bounded_insert(
-                            context=routing_context,
-                        )
-                        if isinstance(
-                            self._transition_router,
-                            DefaultTransitionRouter,
-                        )
-                        else None
-                    ),
+                    bounded_insert=bounded_insert,
+                    bounded_insert_routing=bounded_insert_routing,
+                    fade_routing=fade_routing,
+                    interstitial_routing=interstitial_routing,
+                    hard_cut_routing=hard_cut_routing,
                     outgoing_fade_selection=outgoing_fade_selection,
                     incoming_fade_selection=incoming_fade_selection,
                 )
