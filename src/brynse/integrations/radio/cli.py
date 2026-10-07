@@ -115,6 +115,7 @@ def _routing_trace_record(observation) -> dict[str, object]:
     outgoing_selection = observation.outgoing_fade_selection
     incoming_selection = observation.incoming_fade_selection
     bounded_insert = observation.bounded_insert
+    fade_rise = context.fade.rise
 
     local_values = (
         evidence.local_discontinuity_250ms,
@@ -217,7 +218,27 @@ def _routing_trace_record(observation) -> dict[str, object]:
         "temporal_kind": temporal.kind.value,
         "incoming_start_seconds": temporal.incoming_start_seconds,
         "outgoing_end_seconds": temporal.outgoing_end_seconds,
-        "fade_rise": context.fade.rise is not None,
+        "fade_rise": fade_rise is not None,
+        "fade_rise_time_seconds": (
+            None
+            if fade_rise is None
+            else fade_rise.time_seconds
+        ),
+        "fade_rise_jump_ratio": (
+            None
+            if fade_rise is None
+            else fade_rise.jump_ratio
+        ),
+        "fade_rise_persistence_ratio": (
+            None
+            if fade_rise is None
+            else fade_rise.persistence_ratio
+        ),
+        "fade_rise_after_global_ratio": (
+            None
+            if fade_rise is None
+            else fade_rise.after_global_ratio
+        ),
         "fade_basins": len(context.fade.basins),
         "fade_outgoing_count": len(context.fade.outgoing_fades),
         "fade_incoming_count": len(context.fade.incoming_fades),

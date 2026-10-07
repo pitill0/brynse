@@ -1,5 +1,6 @@
 import json
 from argparse import Namespace
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,6 +16,7 @@ from brynse.integrations.radio import cli
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
 from brynse.orchestrator import TransitionRoutingObservation
 from brynse.transition_evidence import (
+    CrossfadeRiseEvidence,
     FadeGeometryEvidence,
     FadeRoutingEvidence,
     IncomingFadeEvidence,
@@ -136,6 +138,10 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
         "incoming_start_seconds": 102.0,
         "outgoing_end_seconds": 100.0,
         "fade_rise": False,
+        "fade_rise_time_seconds": None,
+        "fade_rise_jump_ratio": None,
+        "fade_rise_persistence_ratio": None,
+        "fade_rise_after_global_ratio": None,
         "fade_basins": 0,
         "fade_outgoing_count": 1,
         "fade_incoming_count": 1,
@@ -234,6 +240,36 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
         "local_discontinuity_1s": 0.65,
         "local_discontinuity_2s": 0.87,
     }
+
+
+def test_routing_trace_record_preserves_fade_rise_diagnostics() -> None:
+    observation = _observation()
+
+    rise = CrossfadeRiseEvidence(
+        time_seconds=101.75,
+        jump_ratio=3.25,
+        persistence_ratio=4.5,
+        after_global_ratio=2.75,
+    )
+
+    observation = replace(
+        observation,
+        context=replace(
+            observation.context,
+            fade=replace(
+                observation.context.fade,
+                rise=rise,
+            ),
+        ),
+    )
+
+    record = cli._routing_trace_record(observation)
+
+    assert record["fade_rise"] is True
+    assert record["fade_rise_time_seconds"] == 101.75
+    assert record["fade_rise_jump_ratio"] == 3.25
+    assert record["fade_rise_persistence_ratio"] == 4.5
+    assert record["fade_rise_after_global_ratio"] == 2.75
 
 
 def test_run_stream_writes_routing_trace(monkeypatch, tmp_path) -> None:
