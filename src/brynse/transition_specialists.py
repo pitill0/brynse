@@ -52,6 +52,64 @@ class TransitionSpecialist(Protocol):
         ...
 
 
+def _recover_later_reference_basin_hard_cut(
+    *,
+    decision: TemporalSplitDecision,
+    observation: TransitionSpecialistInput,
+) -> TemporalSplitDecision:
+    """Recover a failed direct transition from its supported right basin.
+
+    INTERSTITIAL and AMBIGUOUS specialists may conservatively fall back to a
+    hard cut when incoming refinement cannot prove an exclusion.  If bounded
+    region observation independently shows that the semantic reference lies
+    inside one unique, later BASIN+STRUCTURAL right edge, that edge describes
+    a stronger direct-transition boundary than the earlier fallback cut.
+
+    This recovery deliberately applies only to an already-failed HARD_CUT.
+    Successful exclusions remain owned by their original specialist.
+    """
+
+    if decision.kind is not TemporalSplitKind.HARD_CUT:
+        return decision
+
+    regions = observation.routing.bounded_insert_regions
+
+    if len(regions) != 1:
+        return decision
+
+    region = regions[0]
+
+    if not region.reference_inside_right_basin:
+        return decision
+
+    geometry = region.right_edge.basin_geometry
+
+    if geometry is None:
+        return decision
+
+    sources = {
+        proposal.source
+        for proposal in region.right_edge.proposals
+    }
+
+    if sources != {
+        BoundaryProposalSource.BASIN,
+        BoundaryProposalSource.STRUCTURAL,
+    }:
+        return decision
+
+    boundary = geometry.minimum_seconds
+
+    if boundary <= decision.outgoing_end_seconds:
+        return decision
+
+    return TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=boundary,
+        incoming_start_seconds=boundary,
+    )
+
+
 class HardCutSpecialist:
     """Resolve the acoustic boundary of a genuine abrupt transition."""
 
@@ -317,7 +375,10 @@ class InterstitialSpecialist:
                 )
 
             return TransitionSpecialistResult(
-                temporal=refined,
+                temporal=_recover_later_reference_basin_hard_cut(
+                    decision=refined,
+                    observation=observation,
+                ),
             )
 
         phase_refined = self._refine_dominant_incoming_basin(
@@ -1142,6 +1203,11 @@ class LegacyAmbiguousSpecialist:
         )
 
         refined = self._refine_preceding_multistructural_basin(
+            decision=refined,
+            observation=observation,
+        )
+
+        refined = _recover_later_reference_basin_hard_cut(
             decision=refined,
             observation=observation,
         )

@@ -3566,3 +3566,129 @@ def test_phase4f_compatibility_fallback_does_not_use_incoming_phase() -> None:
         outgoing_end_seconds=100.5,
         incoming_start_seconds=103.0,
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 4g: failed direct-transition right-basin recovery
+# ---------------------------------------------------------------------------
+
+
+def _phase4g_right_basin_observation(
+    *,
+    boundary=100.0,
+    reference_inside_right_basin=True,
+):
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import BoundaryProposalSource
+
+    base = _observation(boundary=boundary)
+
+    right_edge = SimpleNamespace(
+        proposals=(
+            SimpleNamespace(
+                source=BoundaryProposalSource.BASIN,
+            ),
+            SimpleNamespace(
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+        basin_geometry=SimpleNamespace(
+            start_seconds=101.5,
+            minimum_seconds=102.0,
+            recovery_seconds=103.0,
+        ),
+    )
+
+    region = SimpleNamespace(
+        reference_inside_right_basin=reference_inside_right_basin,
+        right_edge=right_edge,
+    )
+
+    return replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=102.25,
+            hypotheses=(),
+            bounded_insert_regions=(region,),
+        ),
+    )
+
+
+def test_phase4g_interstitial_failed_hard_cut_uses_supported_right_basin() -> None:
+    from brynse.transition_specialists import InterstitialSpecialist
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return kwargs["decision"]
+
+    observation = _phase4g_right_basin_observation()
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=102.0,
+        incoming_start_seconds=102.0,
+    )
+
+
+def test_phase4g_ambiguous_failed_hard_cut_uses_supported_right_basin() -> None:
+    from brynse.transition_specialists import LegacyAmbiguousSpecialist
+
+    class TemporalResolver:
+        def resolve(self, **kwargs):
+            return TemporalSplitDecision(
+                kind=TemporalSplitKind.HARD_CUT,
+                outgoing_end_seconds=100.0,
+                incoming_start_seconds=100.0,
+            )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return kwargs["decision"]
+
+    observation = _phase4g_right_basin_observation()
+
+    result = LegacyAmbiguousSpecialist(
+        temporal_resolver=TemporalResolver(),
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=102.0,
+        incoming_start_seconds=102.0,
+    )
+
+
+def test_phase4g_right_basin_recovery_requires_reference_ownership() -> None:
+    from brynse.transition_specialists import InterstitialSpecialist
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return kwargs["decision"]
+
+    observation = _phase4g_right_basin_observation(
+        reference_inside_right_basin=False,
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=100.0,
+    )
