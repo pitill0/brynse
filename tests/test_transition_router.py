@@ -475,7 +475,7 @@ def test_default_transition_router_keeps_single_interstitial_event_ambiguous() -
     assert result is TransitionKind.AMBIGUOUS
 
 
-def test_default_transition_router_keeps_conflicting_clear_patterns_ambiguous() -> None:
+def test_default_transition_router_prefers_interstitial_when_fade_lacks_two_sided_owner() -> None:
     from brynse.transition_router import DefaultTransitionRouter
 
     fade = FadeRoutingEvidence(
@@ -520,8 +520,210 @@ def test_default_transition_router_keeps_conflicting_clear_patterns_ambiguous() 
         )
     )
 
-    assert result is TransitionKind.AMBIGUOUS
+    assert result is TransitionKind.INTERSTITIAL
 
+
+
+def test_fade_interstitial_conflict_prefers_two_sided_fade_owner() -> None:
+    from brynse.transition_evidence import (
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        InterstitialRoutingAssessment,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    outgoing_hypothesis = _interstitial_hypothesis(
+        basin_time=101.0,
+        structural_time=101.2,
+        basin_start=100.7,
+        basin_recovery=101.6,
+    )
+    incoming_hypothesis = _interstitial_hypothesis(
+        basin_time=103.0,
+        structural_time=103.2,
+        basin_start=102.7,
+        basin_recovery=103.6,
+    )
+
+    fade = FadeRoutingAssessment(
+        rise_present=True,
+        basin_count=1,
+        geometry_count=1,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=OutgoingFadeEvidence(
+                start_time_seconds=99.0,
+                floor_time_seconds=101.0,
+                rise_time_seconds=102.0,
+                start_rms=1000.0,
+                floor_rms=100.0,
+                descent_ratio=10.0,
+                descent_consistency=0.9,
+            ),
+            hypothesis=outgoing_hypothesis,
+            support_distance_seconds=0.0,
+        ),
+        incoming_association=IncomingFadeRoutingAssociation(
+            fade=IncomingFadeEvidence(
+                start_time_seconds=102.0,
+                established_time_seconds=103.0,
+                start_rms=100.0,
+                established_rms=800.0,
+                ascent_ratio=8.0,
+                ascent_consistency=0.9,
+                persistence_ratio=3.0,
+            ),
+            hypothesis=incoming_hypothesis,
+            support_distance_seconds=0.0,
+        ),
+    )
+
+    interstitial = InterstitialRoutingAssessment(
+        routing_handoffs=(
+            outgoing_hypothesis,
+            incoming_hypothesis,
+        ),
+        supported_handoffs=(
+            outgoing_hypothesis,
+            incoming_hypothesis,
+        ),
+    )
+
+    assert fade.legacy_candidate is True
+    assert fade.has_two_sided_support is True
+    assert interstitial.legacy_candidate is True
+
+    assert (
+        DefaultTransitionRouter.resolve_fade_interstitial_conflict(
+            fade=fade,
+            interstitial=interstitial,
+        )
+        is TransitionKind.FADE
+    )
+
+
+def test_fade_interstitial_conflict_keeps_absorbed_fade_interstitial() -> None:
+    from brynse.transition_evidence import (
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        InterstitialRoutingAssessment,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    outgoing_hypothesis = _interstitial_hypothesis(
+        basin_time=101.0,
+        structural_time=101.2,
+        basin_start=100.7,
+        basin_recovery=101.6,
+    )
+    incoming_hypothesis = _interstitial_hypothesis(
+        basin_time=103.0,
+        structural_time=103.2,
+        basin_start=102.7,
+        basin_recovery=103.6,
+    )
+
+    fade = FadeRoutingAssessment(
+        rise_present=True,
+        basin_count=1,
+        geometry_count=1,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=OutgoingFadeEvidence(
+                start_time_seconds=99.0,
+                floor_time_seconds=101.0,
+                rise_time_seconds=102.0,
+                start_rms=1000.0,
+                floor_rms=100.0,
+                descent_ratio=10.0,
+                descent_consistency=0.9,
+            ),
+            hypothesis=outgoing_hypothesis,
+            support_distance_seconds=0.0,
+        ),
+        incoming_association=IncomingFadeRoutingAssociation(
+            fade=IncomingFadeEvidence(
+                start_time_seconds=102.0,
+                established_time_seconds=103.0,
+                start_rms=100.0,
+                established_rms=800.0,
+                ascent_ratio=8.0,
+                ascent_consistency=0.9,
+                persistence_ratio=3.0,
+            ),
+            hypothesis=incoming_hypothesis,
+            support_distance_seconds=0.0,
+        ),
+    )
+
+    interstitial = InterstitialRoutingAssessment(
+        routing_handoffs=(
+            outgoing_hypothesis,
+            incoming_hypothesis,
+        ),
+        supported_handoffs=(
+            outgoing_hypothesis,
+            incoming_hypothesis,
+        ),
+        absorbed_right_edge_fade=True,
+    )
+
+    assert (
+        DefaultTransitionRouter.resolve_fade_interstitial_conflict(
+            fade=fade,
+            interstitial=interstitial,
+        )
+        is TransitionKind.INTERSTITIAL
+    )
+
+
+def test_fade_interstitial_conflict_prefers_interstitial_without_complete_fade_owner() -> None:
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        InterstitialRoutingAssessment,
+    )
+
+    left = _interstitial_hypothesis(
+        basin_time=101.0,
+        structural_time=101.2,
+        basin_start=100.7,
+        basin_recovery=101.6,
+    )
+    right = _interstitial_hypothesis(
+        basin_time=103.0,
+        structural_time=103.2,
+        basin_start=102.7,
+        basin_recovery=103.6,
+    )
+
+    fade = FadeRoutingAssessment(
+        rise_present=True,
+        basin_count=1,
+        geometry_count=1,
+    )
+
+    interstitial = InterstitialRoutingAssessment(
+        routing_handoffs=(left, right),
+        supported_handoffs=(left, right),
+    )
+
+    assert fade.legacy_candidate is True
+    assert fade.has_two_sided_support is False
+    assert interstitial.legacy_candidate is True
+
+    assert (
+        DefaultTransitionRouter.resolve_fade_interstitial_conflict(
+            fade=fade,
+            interstitial=interstitial,
+        )
+        is TransitionKind.INTERSTITIAL
+    )
 
 def test_default_transition_router_keeps_unresolved_context_ambiguous() -> None:
     from brynse.transition_router import DefaultTransitionRouter
@@ -745,7 +947,7 @@ def _structural_only_hypothesis(
     ("fade_rise_time_seconds", "expected"),
     [
         (110.1, TransitionKind.INTERSTITIAL),
-        (112.0, TransitionKind.AMBIGUOUS),
+        (112.0, TransitionKind.INTERSTITIAL),
     ],
 )
 def test_transition_router_correlates_right_edge_fade_with_interstitial(

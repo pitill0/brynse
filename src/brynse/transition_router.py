@@ -866,6 +866,30 @@ class DefaultTransitionRouter:
             terminal_fade_candidates=terminal_fades,
         )
 
+    @staticmethod
+    def resolve_fade_interstitial_conflict(
+        *,
+        fade: FadeRoutingAssessment,
+        interstitial: InterstitialRoutingAssessment,
+    ) -> TransitionKind:
+        """Resolve overlapping Fade/Interstitial ownership semantically.
+
+        This is deliberately not a score or confidence vote.
+
+        Interstitial owns a fade already proven to belong to its terminal
+        acoustic edge. Otherwise, a fade with boundary support on both sides
+        is a complete phenomenon and owns the transition. A legacy fade
+        candidate without two-sided association does not override an already
+        established interstitial phenomenon.
+        """
+        if interstitial.absorbed_right_edge_fade:
+            return TransitionKind.INTERSTITIAL
+
+        if fade.has_two_sided_support:
+            return TransitionKind.FADE
+
+        return TransitionKind.INTERSTITIAL
+
     def assess_hard_cut(
         self,
         *,
@@ -973,15 +997,13 @@ class DefaultTransitionRouter:
         interstitial_like = interstitial_assessment.legacy_candidate
 
         if fade_like and interstitial_like:
-            if interstitial_assessment.absorbed_right_edge_fade:
-                return TransitionRoute(
-                    kind=TransitionKind.INTERSTITIAL,
-                    fade_assessment=fade_assessment,
-                    interstitial_assessment=interstitial_assessment,
-                )
+            conflict_kind = self.resolve_fade_interstitial_conflict(
+                fade=fade_assessment,
+                interstitial=interstitial_assessment,
+            )
 
             return TransitionRoute(
-                kind=TransitionKind.AMBIGUOUS,
+                kind=conflict_kind,
                 fade_assessment=fade_assessment,
                 interstitial_assessment=interstitial_assessment,
             )
