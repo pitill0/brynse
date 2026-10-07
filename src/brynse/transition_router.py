@@ -329,6 +329,11 @@ class DefaultTransitionRouter:
         interstitial_like = self._has_interstitial_pattern(context.hypotheses)
 
         if fade_like and interstitial_like:
+            if self._has_interstitial_absorbed_right_edge_fade(
+                context=context,
+            ):
+                return TransitionKind.INTERSTITIAL
+
             return TransitionKind.AMBIGUOUS
 
         if fade_like:
@@ -344,6 +349,51 @@ class DefaultTransitionRouter:
             return TransitionKind.HARD_CUT
 
         return TransitionKind.AMBIGUOUS
+
+    def _has_interstitial_absorbed_right_edge_fade(
+        self,
+        *,
+        context: TransitionRoutingContext,
+    ) -> bool:
+        """Return whether fade evidence belongs to the interstitial right edge.
+
+        A narrow asymmetric-looking symmetric region can carry one structural
+        event internally while its dominant left edge and weaker right edge
+        still describe one interstitial handoff.  When an observed outgoing
+        fade rises inside the right edge's own basin, that fade describes the
+        same terminal edge instead of an independent fade phenomenon.
+        """
+        assessment = self.assess_bounded_insert(
+            context=context,
+        )
+
+        if not (
+            assessment.unique_region
+            and not assessment.candidate
+            and assessment.left_is_context_structural_peak
+            and not assessment.right_is_context_structural_peak
+            and assessment.structural_only_interior_count == 1
+        ):
+            return False
+
+        if len(context.bounded_insert_regions) != 1:
+            return False
+
+        region = context.bounded_insert_regions[0]
+        right_geometry = region.right_geometry
+
+        if right_geometry is None:
+            return False
+
+        return any(
+            fade.rise_time_seconds is not None
+            and (
+                right_geometry.start_seconds
+                <= fade.rise_time_seconds
+                <= right_geometry.recovery_seconds
+            )
+            for fade in context.fade.outgoing_fades
+        )
 
     @staticmethod
     def _has_complete_local_discontinuity(

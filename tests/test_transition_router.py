@@ -11,6 +11,7 @@ from brynse.transition_evidence import (
     CrossfadeBasinEvidence,
     CrossfadeRiseEvidence,
     FadeRoutingEvidence,
+    OutgoingFadeEvidence,
     TransitionEvidenceState,
 )
 from brynse.transition_router import (
@@ -450,6 +451,176 @@ def _bounded_insert_region(
         right=right,
         interior_hypotheses=interior_hypotheses,
     )
+
+
+def _structural_only_hypothesis(
+    time_seconds: float,
+    *,
+    structural_strength: float,
+) -> BoundaryHypothesis:
+    return BoundaryHypothesis(
+        time_seconds=time_seconds,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=time_seconds,
+                source=BoundaryProposalSource.STRUCTURAL,
+                strength=structural_strength,
+            ),
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("fade_rise_time_seconds", "expected"),
+    [
+        (110.1, TransitionKind.INTERSTITIAL),
+        (112.0, TransitionKind.AMBIGUOUS),
+    ],
+)
+def test_transition_router_correlates_right_edge_fade_with_interstitial(
+    fade_rise_time_seconds: float,
+    expected: TransitionKind,
+) -> None:
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=1.0,
+    )
+    right = _bounded_insert_edge(
+        110.0,
+        basin_start_seconds=109.5,
+        basin_recovery_seconds=110.5,
+        structural_strength=0.8,
+    )
+    interior = _structural_only_hypothesis(
+        105.0,
+        structural_strength=0.9,
+    )
+
+    region = _bounded_insert_region(
+        reference_time_seconds=108.0,
+        left=left,
+        right=right,
+        interior_hypotheses=(interior,),
+    )
+
+    fade = FadeRoutingEvidence(
+        rise=CrossfadeRiseEvidence(
+            time_seconds=130.0,
+            jump_ratio=3.5,
+            persistence_ratio=4.0,
+            after_global_ratio=3.0,
+        ),
+        basins=(
+            CrossfadeBasinEvidence(
+                center_time_seconds=107.0,
+                lead_seconds=1.0,
+                width_seconds=0.7,
+                prominence=1.5,
+                quietness=1.8,
+            ),
+        ),
+        outgoing_fades=(
+            OutgoingFadeEvidence(
+                start_time_seconds=106.0,
+                floor_time_seconds=108.5,
+                rise_time_seconds=fade_rise_time_seconds,
+                start_rms=1200.0,
+                floor_rms=120.0,
+                descent_ratio=10.0,
+                descent_consistency=0.9,
+            ),
+        ),
+    )
+
+    result = DefaultTransitionRouter().classify(
+        context=TransitionRoutingContext(
+            reference_time_seconds=108.0,
+            evidence=TransitionEvidenceState(),
+            hypotheses=(left, interior, right),
+            fade=fade,
+            bounded_insert_regions=(region,),
+        )
+    )
+
+    assert result is expected
+
+
+def test_transition_router_does_not_absorb_fade_without_right_edge_geometry() -> None:
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=1.0,
+    )
+
+    right = BoundaryHypothesis(
+        time_seconds=110.0,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=110.0,
+                source=BoundaryProposalSource.STRUCTURAL,
+                strength=0.8,
+            ),
+        ),
+    )
+
+    interior = _structural_only_hypothesis(
+        105.0,
+        structural_strength=0.9,
+    )
+
+    region = _bounded_insert_region(
+        reference_time_seconds=108.0,
+        left=left,
+        right=right,
+        interior_hypotheses=(interior,),
+    )
+
+    fade = FadeRoutingEvidence(
+        rise=CrossfadeRiseEvidence(
+            time_seconds=130.0,
+            jump_ratio=3.5,
+            persistence_ratio=4.0,
+            after_global_ratio=3.0,
+        ),
+        basins=(
+            CrossfadeBasinEvidence(
+                center_time_seconds=107.0,
+                lead_seconds=1.0,
+                width_seconds=0.7,
+                prominence=1.5,
+                quietness=1.8,
+            ),
+        ),
+        outgoing_fades=(
+            OutgoingFadeEvidence(
+                start_time_seconds=106.0,
+                floor_time_seconds=108.5,
+                rise_time_seconds=110.1,
+                start_rms=1200.0,
+                floor_rms=120.0,
+                descent_ratio=10.0,
+                descent_consistency=0.9,
+            ),
+        ),
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=108.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(left, interior, right),
+        fade=fade,
+        bounded_insert_regions=(region,),
+    )
+
+    router = DefaultTransitionRouter()
+
+    assert region.right_geometry is None
+    assert router._has_interstitial_absorbed_right_edge_fade(
+        context=context,
+    ) is False
 
 
 def test_bounded_insert_shadow_accepts_unique_non_dominant_region() -> None:
