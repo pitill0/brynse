@@ -4095,3 +4095,138 @@ def test_phase4i_terminal_fade_rejects_dominant_left_edge() -> None:
         outgoing_end_seconds=102.2,
         incoming_start_seconds=112.0,
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 4j: hard-cut terminal acoustic handoff
+# ---------------------------------------------------------------------------
+
+
+def _phase4j_nikki_observation(
+    *,
+    incoming_phase=True,
+    floor_after_minimum=True,
+    supported=True,
+):
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import (
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+
+    base = _observation(boundary=100.75)
+
+    proposals = [
+        BoundaryProposal(
+            time_seconds=100.5,
+            source=BoundaryProposalSource.BASIN,
+        ),
+    ]
+
+    if supported:
+        proposals.append(
+            BoundaryProposal(
+                time_seconds=100.4,
+                source=BoundaryProposalSource.STRUCTURAL,
+                strength=0.8,
+            )
+        )
+
+    hypothesis = SimpleNamespace(
+        time_seconds=100.5,
+        proposals=tuple(proposals),
+        basin_geometry=SimpleNamespace(
+            start_seconds=99.5,
+            minimum_seconds=100.5,
+            recovery_seconds=101.5,
+        ),
+    )
+
+    floor = 101.25 if floor_after_minimum else 100.25
+
+    incoming_fades = ()
+
+    if incoming_phase:
+        incoming_fades = (
+            SimpleNamespace(
+                start_time_seconds=floor,
+                established_time_seconds=102.0,
+            ),
+        )
+
+    fade = SimpleNamespace(
+        rise=None,
+        outgoing_fades=(
+            SimpleNamespace(
+                start_time_seconds=95.0,
+                floor_time_seconds=floor,
+            ),
+        ),
+        incoming_fades=incoming_fades,
+    )
+
+    return replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=103.0,
+            hypotheses=(hypothesis,),
+            fade=fade,
+        ),
+    )
+
+
+def test_phase4j_hard_cut_uses_terminal_acoustic_handoff() -> None:
+    result = HardCutSpecialist().resolve(
+        observation=_phase4j_nikki_observation(),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=101.25,
+        incoming_start_seconds=101.25,
+    )
+
+
+def test_phase4j_terminal_handoff_requires_matching_incoming_phase() -> None:
+    result = HardCutSpecialist().resolve(
+        observation=_phase4j_nikki_observation(
+            incoming_phase=False,
+        ),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=101.5,
+        incoming_start_seconds=101.5,
+    )
+
+
+def test_phase4j_terminal_handoff_must_follow_basin_minimum() -> None:
+    result = HardCutSpecialist().resolve(
+        observation=_phase4j_nikki_observation(
+            floor_after_minimum=False,
+        ),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=101.5,
+        incoming_start_seconds=101.5,
+    )
+
+
+def test_phase4j_terminal_handoff_requires_supported_basin() -> None:
+    result = HardCutSpecialist().resolve(
+        observation=_phase4j_nikki_observation(
+            supported=False,
+        ),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=101.5,
+        incoming_start_seconds=101.5,
+    )

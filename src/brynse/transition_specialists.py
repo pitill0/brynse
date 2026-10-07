@@ -126,6 +126,14 @@ class HardCutSpecialist:
             hypotheses=observation.routing.hypotheses,
         )
 
+        terminal_handoff = self._refine_terminal_handoff(
+            boundary=boundary,
+            observation=observation,
+        )
+
+        if terminal_handoff is not None:
+            boundary = terminal_handoff
+
         return TransitionSpecialistResult(
             temporal=TemporalSplitDecision(
                 kind=TemporalSplitKind.HARD_CUT,
@@ -133,6 +141,102 @@ class HardCutSpecialist:
                 outgoing_end_seconds=boundary,
             )
         )
+
+    @classmethod
+    def _refine_terminal_handoff(
+        cls,
+        *,
+        boundary: float,
+        observation: TransitionSpecialistInput,
+    ) -> float | None:
+        """Recover a corroborated acoustic handoff inside terminal basin recovery.
+
+        The ordinary hard-cut resolver remains authoritative.  This refinement
+        applies only when that resolver completed the basin containing the
+        selected boundary through its recovery edge.
+
+        If an outgoing fade terminates after that basin's minimum and before
+        its recovery, and an independently observed incoming acoustic phase
+        begins at exactly the same point, that shared point owns the abrupt
+        handoff more precisely than the trailing basin recovery.
+
+        Routing ownership and temporal kind remain HARD_CUT.
+        """
+        fade = observation.routing.fade
+
+        if fade.rise is not None:
+            return None
+
+        selected_time_seconds = observation.selected.time_seconds
+        reference_time_seconds = (
+            observation.routing.reference_time_seconds
+        )
+
+        recovery_candidates = tuple(
+            (
+                hypothesis,
+                hypothesis.basin_geometry,
+            )
+            for hypothesis in observation.routing.hypotheses
+            if (
+                hypothesis.basin_geometry is not None
+                and hypothesis.basin_geometry.recovery_seconds
+                == boundary
+                and hypothesis.basin_geometry.start_seconds
+                <= selected_time_seconds
+                <= hypothesis.basin_geometry.recovery_seconds
+                and selected_time_seconds
+                >= hypothesis.basin_geometry.minimum_seconds
+            )
+        )
+
+        if len(recovery_candidates) != 1:
+            return None
+
+        hypothesis, geometry = recovery_candidates[0]
+
+        sources = cls._proposal_sources(hypothesis)
+
+        if sources != {
+            BoundaryProposalSource.BASIN,
+            BoundaryProposalSource.STRUCTURAL,
+        }:
+            return None
+
+        if reference_time_seconds < geometry.recovery_seconds:
+            return None
+
+        matching_fades = tuple(
+            outgoing_fade
+            for outgoing_fade in fade.outgoing_fades
+            if (
+                outgoing_fade.start_time_seconds
+                < outgoing_fade.floor_time_seconds
+                and geometry.minimum_seconds
+                <= outgoing_fade.floor_time_seconds
+                < geometry.recovery_seconds
+            )
+        )
+
+        if len(matching_fades) != 1:
+            return None
+
+        outgoing_fade = matching_fades[0]
+        handoff = outgoing_fade.floor_time_seconds
+
+        incoming_phases = tuple(
+            incoming
+            for incoming in fade.incoming_fades
+            if (
+                incoming.start_time_seconds == handoff
+                and incoming.established_time_seconds > handoff
+            )
+        )
+
+        if len(incoming_phases) != 1:
+            return None
+
+        return handoff
 
     @classmethod
     def _resolve_boundary(
