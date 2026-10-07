@@ -3692,3 +3692,246 @@ def test_phase4g_right_basin_recovery_requires_reference_ownership() -> None:
         outgoing_end_seconds=100.0,
         incoming_start_seconds=100.0,
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 4h: interstitial terminal-fade outgoing recovery
+# ---------------------------------------------------------------------------
+
+
+def _phase4h_larry_observation(
+    *,
+    reference_inside_right=True,
+    left_peak=True,
+    right_peak=False,
+    fade_starts_before_outgoing=True,
+):
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import BoundaryProposalSource
+
+    base = _observation(boundary=100.0)
+
+    peak_strength = 0.9
+
+    left_strength = peak_strength if left_peak else 0.4
+    right_strength = peak_strength if right_peak else 0.5
+
+    left = SimpleNamespace(
+        proposals=(
+            SimpleNamespace(
+                source=BoundaryProposalSource.BASIN,
+                strength=None,
+            ),
+            SimpleNamespace(
+                source=BoundaryProposalSource.STRUCTURAL,
+                strength=left_strength,
+            ),
+        ),
+        basin_geometry=SimpleNamespace(
+            start_seconds=102.0,
+            minimum_seconds=102.5,
+            recovery_seconds=103.0,
+        ),
+    )
+
+    right_geometry = SimpleNamespace(
+        start_seconds=106.0,
+        minimum_seconds=107.0,
+        recovery_seconds=108.0,
+    )
+
+    right = SimpleNamespace(
+        proposals=(
+            SimpleNamespace(
+                source=BoundaryProposalSource.BASIN,
+                strength=None,
+            ),
+            SimpleNamespace(
+                source=BoundaryProposalSource.STRUCTURAL,
+                strength=right_strength,
+            ),
+        ),
+        basin_geometry=right_geometry,
+    )
+
+    region = SimpleNamespace(
+        left_edge=left,
+        right_edge=right,
+        reference_inside_left_basin=False,
+        reference_inside_right_basin=reference_inside_right,
+        structural_only_interior_count=0,
+    )
+
+    fade_start = 99.0 if fade_starts_before_outgoing else 101.0
+
+    fade = SimpleNamespace(
+        rise=None,
+        outgoing_fades=(
+            SimpleNamespace(
+                start_time_seconds=fade_start,
+                floor_time_seconds=106.8,
+            ),
+        ),
+    )
+
+    context_peak = SimpleNamespace(
+        proposals=(
+            SimpleNamespace(
+                source=BoundaryProposalSource.STRUCTURAL,
+                strength=peak_strength,
+            ),
+        ),
+        basin_geometry=None,
+    )
+
+    hypotheses = (
+        SimpleNamespace(
+            proposals=left.proposals,
+            basin_geometry=left.basin_geometry,
+        ),
+        SimpleNamespace(
+            proposals=right.proposals,
+            basin_geometry=right.basin_geometry,
+        ),
+        context_peak,
+    )
+
+    return replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=107.2,
+            hypotheses=hypotheses,
+            fade=fade,
+            bounded_insert_regions=(region,),
+        ),
+    )
+
+
+def test_phase4h_interstitial_extends_outgoing_to_confirmed_terminal_fade() -> None:
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=107.5,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return ()
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=_phase4h_larry_observation(),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=106.8,
+        incoming_start_seconds=107.5,
+    )
+
+
+def test_phase4h_terminal_fade_requires_reference_inside_right_basin() -> None:
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=107.5,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return ()
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=_phase4h_larry_observation(
+            reference_inside_right=False,
+        ),
+    )
+
+    assert result.temporal is refined
+
+
+def test_phase4h_terminal_fade_requires_left_structural_peak() -> None:
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=107.5,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return ()
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=_phase4h_larry_observation(
+            left_peak=False,
+        ),
+    )
+
+    assert result.temporal is refined
+
+
+def test_phase4h_terminal_fade_rejects_right_structural_peak() -> None:
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=107.5,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return ()
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=_phase4h_larry_observation(
+            right_peak=True,
+        ),
+    )
+
+    assert result.temporal is refined
+
+
+def test_phase4h_terminal_fade_requires_current_outgoing_inside_fade() -> None:
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=107.5,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return ()
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=_phase4h_larry_observation(
+            fade_starts_before_outgoing=False,
+        ),
+    )
+
+    assert result.temporal is refined

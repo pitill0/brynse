@@ -417,8 +417,17 @@ class InterstitialSpecialist:
         )
 
         if outgoing is None:
+            terminal_refined = self._refine_terminal_reference_basin_fade(
+                decision=refined,
+                observation=observation,
+            )
+
             return TransitionSpecialistResult(
-                temporal=refined,
+                temporal=(
+                    terminal_refined
+                    if terminal_refined is not None
+                    else refined
+                ),
             )
 
         return TransitionSpecialistResult(
@@ -427,6 +436,124 @@ class InterstitialSpecialist:
                 outgoing_end_seconds=outgoing,
                 incoming_start_seconds=refined.incoming_start_seconds,
             )
+        )
+
+    @staticmethod
+    def _refine_terminal_reference_basin_fade(
+        *,
+        decision: TemporalSplitDecision,
+        observation: TransitionSpecialistInput,
+    ) -> TemporalSplitDecision | None:
+        """Extend an interstitial outgoing edge through one terminal fade.
+
+        This is deliberately a fallback after ordinary HIGH-confidence
+        outgoing discovery has abstained.  A unique bounded region must put
+        the semantic reference inside its right basin while the left edge,
+        but not the right edge, owns the strongest structural event.
+
+        The current outgoing boundary must already lie inside one observed
+        descending fade, and that fade must terminate inside the same right
+        basin.  The basin therefore independently confirms that the fade
+        floor still belongs to the outgoing track.
+        """
+        from brynse.boundaries import BoundaryProposalSource
+
+        if decision.kind is not TemporalSplitKind.EXCLUSION:
+            return None
+
+        fade = observation.routing.fade
+
+        if fade.rise is not None:
+            return None
+
+        regions = observation.routing.bounded_insert_regions
+
+        if len(regions) != 1:
+            return None
+
+        region = regions[0]
+
+        if not region.reference_inside_right_basin:
+            return None
+
+        if region.reference_inside_left_basin:
+            return None
+
+        if region.structural_only_interior_count != 0:
+            return None
+
+        right_geometry = region.right_edge.basin_geometry
+
+        if right_geometry is None:
+            return None
+
+        structural_strengths = tuple(
+            proposal.strength
+            for hypothesis in observation.routing.hypotheses
+            for proposal in hypothesis.proposals
+            if (
+                proposal.source is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength is not None
+            )
+        )
+
+        if not structural_strengths:
+            return None
+
+        context_peak = max(structural_strengths)
+
+        left_strengths = tuple(
+            proposal.strength
+            for proposal in region.left_edge.proposals
+            if (
+                proposal.source is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength is not None
+            )
+        )
+        right_strengths = tuple(
+            proposal.strength
+            for proposal in region.right_edge.proposals
+            if (
+                proposal.source is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength is not None
+            )
+        )
+
+        left_peak = (
+            bool(left_strengths)
+            and max(left_strengths) == context_peak
+        )
+        right_peak = (
+            bool(right_strengths)
+            and max(right_strengths) == context_peak
+        )
+
+        if not left_peak or right_peak:
+            return None
+
+        matching_fades = tuple(
+            outgoing_fade
+            for outgoing_fade in fade.outgoing_fades
+            if (
+                outgoing_fade.start_time_seconds
+                <= decision.outgoing_end_seconds
+                < outgoing_fade.floor_time_seconds
+                < decision.incoming_start_seconds
+                and right_geometry.start_seconds
+                <= outgoing_fade.floor_time_seconds
+                <= right_geometry.recovery_seconds
+            )
+        )
+
+        if len(matching_fades) != 1:
+            return None
+
+        boundary = matching_fades[0].floor_time_seconds
+
+        return TemporalSplitDecision(
+            kind=TemporalSplitKind.EXCLUSION,
+            outgoing_end_seconds=boundary,
+            incoming_start_seconds=decision.incoming_start_seconds,
         )
 
     @staticmethod
