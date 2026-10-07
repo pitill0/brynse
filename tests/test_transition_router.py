@@ -140,10 +140,13 @@ def test_default_transition_router_classify_matches_route_kind() -> None:
 
     route = router.route(context=context)
 
-    assert route == TransitionRoute(
-        kind=TransitionKind.BOUNDED_INSERT,
-        bounded_insert_ownership=BoundedInsertOwnership.ASYMMETRIC,
+    assert route.kind is TransitionKind.BOUNDED_INSERT
+    assert (
+        route.bounded_insert_ownership
+        is BoundedInsertOwnership.ASYMMETRIC
     )
+    assert route.fade_assessment is not None
+    assert route.fade_assessment.legacy_candidate is False
     assert router.classify(context=context) is route.kind
 
 
@@ -214,6 +217,114 @@ def _interstitial_hypothesis(
             ),
         ),
     )
+
+
+def test_fade_assessment_correlates_boundary_support_without_cutting() -> None:
+    from brynse.boundaries import (
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.transition_evidence import (
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+
+    hypothesis = BoundaryHypothesis(
+        time_seconds=104.0,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=104.0,
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+        evidence=(),
+    )
+
+    outgoing = OutgoingFadeEvidence(
+        start_time_seconds=100.0,
+        floor_time_seconds=104.0,
+        rise_time_seconds=None,
+        start_rms=1000.0,
+        floor_rms=200.0,
+        descent_ratio=5.0,
+        descent_consistency=0.9,
+    )
+
+    incoming = IncomingFadeEvidence(
+        start_time_seconds=104.0,
+        established_time_seconds=105.0,
+        start_rms=200.0,
+        established_rms=1000.0,
+        ascent_ratio=5.0,
+        ascent_consistency=0.9,
+        persistence_ratio=4.0,
+    )
+
+    router = DefaultTransitionRouter()
+
+    assessment = router.assess_fade(
+        context=TransitionRoutingContext(
+            reference_time_seconds=103.0,
+            evidence=TransitionEvidenceState(),
+            hypotheses=(hypothesis,),
+            fade=FadeRoutingEvidence(
+                outgoing_fades=(outgoing,),
+                incoming_fades=(incoming,),
+            ),
+        )
+    )
+
+    assert assessment.rise_present is False
+    assert assessment.basin_count == 0
+    assert assessment.geometry_count == 0
+    assert assessment.outgoing_association is not None
+    assert assessment.outgoing_association.fade is outgoing
+    assert assessment.outgoing_association.hypothesis is hypothesis
+    assert assessment.outgoing_association.support_distance_seconds == 0.0
+
+    assert assessment.incoming_association is not None
+    assert assessment.incoming_association.fade is incoming
+    assert assessment.incoming_association.hypothesis is hypothesis
+    assert assessment.incoming_association.support_distance_seconds == 0.0
+
+    assert assessment.has_two_sided_support is True
+    assert assessment.legacy_candidate is False
+
+    assert not hasattr(assessment, "outgoing_end_seconds")
+    assert not hasattr(assessment, "incoming_start_seconds")
+
+
+def test_fade_route_keeps_legacy_candidate_semantics_with_rich_assessment() -> None:
+    fade = FadeRoutingEvidence(
+        rise=CrossfadeRiseEvidence(
+            time_seconds=431.15,
+            jump_ratio=3.5,
+            persistence_ratio=4.0,
+            after_global_ratio=3.0,
+        ),
+        basins=(
+            CrossfadeBasinEvidence(
+                center_time_seconds=426.75,
+                lead_seconds=0.85,
+                width_seconds=0.7,
+                prominence=1.5,
+                quietness=1.8,
+            ),
+        ),
+    )
+
+    route = DefaultTransitionRouter().route(
+        context=TransitionRoutingContext(
+            reference_time_seconds=427.6,
+            evidence=TransitionEvidenceState(),
+            fade=fade,
+        )
+    )
+
+    assert route.kind is TransitionKind.FADE
+    assert route.fade_assessment is not None
+    assert route.fade_assessment.legacy_candidate is True
 
 
 def test_default_transition_router_routes_clear_fade() -> None:

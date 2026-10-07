@@ -2,31 +2,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from brynse.boundaries import BoundaryConfidence, BoundaryHypothesis
+from brynse.boundaries import BoundaryHypothesis
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
 from brynse.transition_evidence import (
     IncomingFadeEvidence,
     OutgoingFadeEvidence,
 )
+from brynse.transition_router import (
+    DefaultTransitionRouter,
+    IncomingFadeRoutingAssociation,
+    OutgoingFadeRoutingAssociation,
+)
 from brynse.transition_specialists import TransitionSpecialistResult
 
-
-@dataclass(frozen=True)
-class OutgoingFadeSelection:
-    """Descriptive association between an outgoing fade and boundary evidence."""
-
-    fade: OutgoingFadeEvidence
-    hypothesis: BoundaryHypothesis
-    support_distance_seconds: float
-
-
-@dataclass(frozen=True)
-class IncomingFadeSelection:
-    """Descriptive association between an incoming fade and boundary evidence."""
-
-    fade: IncomingFadeEvidence
-    hypothesis: BoundaryHypothesis
-    support_distance_seconds: float
+OutgoingFadeSelection = OutgoingFadeRoutingAssociation
+IncomingFadeSelection = IncomingFadeRoutingAssociation
 
 
 @dataclass(frozen=True)
@@ -40,13 +30,6 @@ class FadeSpecialistDiagnostics:
 class FadeSpecialist:
     """Understand fade transition geometry and resolve fade boundaries."""
 
-    _confidence_rank = {
-        BoundaryConfidence.HIGH: 0,
-        BoundaryConfidence.MEDIUM: 1,
-        BoundaryConfidence.LOW: 2,
-        BoundaryConfidence.UNRESOLVED: 3,
-    }
-
     @classmethod
     def resolve(
         cls,
@@ -59,16 +42,26 @@ class FadeSpecialist:
         reference = observation.routing.reference_time_seconds
         fade_evidence = observation.routing.fade
 
-        outgoing_selection = cls.select_outgoing(
-            reference_time_seconds=reference,
-            outgoing_fades=fade_evidence.outgoing_fades,
-            hypotheses=observation.routing.hypotheses,
+        fade_assessment = getattr(
+            observation,
+            "fade_assessment",
+            None,
         )
-        incoming_selection = cls.select_incoming(
-            reference_time_seconds=reference,
-            incoming_fades=fade_evidence.incoming_fades,
-            hypotheses=observation.routing.hypotheses,
-        )
+
+        if fade_assessment is not None:
+            outgoing_selection = fade_assessment.outgoing_association
+            incoming_selection = fade_assessment.incoming_association
+        else:
+            outgoing_selection = cls.select_outgoing(
+                reference_time_seconds=reference,
+                outgoing_fades=fade_evidence.outgoing_fades,
+                hypotheses=observation.routing.hypotheses,
+            )
+            incoming_selection = cls.select_incoming(
+                reference_time_seconds=reference,
+                incoming_fades=fade_evidence.incoming_fades,
+                hypotheses=observation.routing.hypotheses,
+            )
 
         diagnostics = FadeSpecialistDiagnostics(
             outgoing_selection=outgoing_selection,
@@ -152,88 +145,11 @@ class FadeSpecialist:
         incoming_fades: tuple[IncomingFadeEvidence, ...],
         hypotheses: tuple[BoundaryHypothesis, ...],
     ) -> IncomingFadeSelection | None:
-        """Select incoming geometry with coherent boundary support."""
-
-        if reference_time_seconds < 0:
-            raise ValueError("reference_time_seconds must be non-negative")
-
-        if not incoming_fades or not hypotheses:
-            return None
-
-        candidates = []
-
-        for fade in incoming_fades:
-            # A region already fully established before the transition cannot
-            # describe the incoming side of this transition.
-            if fade.established_time_seconds < reference_time_seconds:
-                continue
-
-            # If the transition precedes the region, its onset is the natural
-            # incoming anchor. If the transition falls inside the region,
-            # establishment is the meaningful later edge.
-            if fade.start_time_seconds >= reference_time_seconds:
-                anchor_time = fade.start_time_seconds
-            else:
-                anchor_time = fade.established_time_seconds
-
-            supported_hypotheses = [
-                hypothesis
-                for hypothesis in hypotheses
-                if hypothesis.time_seconds >= fade.start_time_seconds
-            ]
-            if not supported_hypotheses:
-                continue
-
-            hypothesis = min(
-                supported_hypotheses,
-                key=lambda item: (
-                    abs(anchor_time - item.time_seconds),
-                    abs(anchor_time - reference_time_seconds),
-                    cls._confidence_rank[item.confidence],
-                    item.time_seconds,
-                ),
-            )
-
-            support_distance = abs(
-                anchor_time - hypothesis.time_seconds
-            )
-            transition_distance = abs(
-                anchor_time - reference_time_seconds
-            )
-
-            candidates.append(
-                (
-                    support_distance,
-                    transition_distance,
-                    -fade.ascent_consistency,
-                    -fade.ascent_ratio,
-                    -fade.persistence_ratio,
-                    cls._confidence_rank[hypothesis.confidence],
-                    anchor_time,
-                    fade,
-                    hypothesis,
-                )
-            )
-
-        if not candidates:
-            return None
-
-        (
-            support_distance,
-            _transition_distance,
-            _consistency,
-            _ratio,
-            _persistence,
-            _confidence,
-            _anchor,
-            fade,
-            hypothesis,
-        ) = min(candidates, key=lambda item: item[:7])
-
-        return IncomingFadeSelection(
-            fade=fade,
-            hypothesis=hypothesis,
-            support_distance_seconds=support_distance,
+        """Compatibility wrapper for Router-owned incoming association."""
+        return DefaultTransitionRouter.associate_incoming_fade(
+            reference_time_seconds=reference_time_seconds,
+            incoming_fades=incoming_fades,
+            hypotheses=hypotheses,
         )
 
     @classmethod
@@ -244,51 +160,9 @@ class FadeSpecialist:
         outgoing_fades: tuple[OutgoingFadeEvidence, ...],
         hypotheses: tuple[BoundaryHypothesis, ...],
     ) -> OutgoingFadeSelection | None:
-        """Select outgoing fade geometry with the best boundary support."""
-
-        if reference_time_seconds < 0:
-            raise ValueError("reference_time_seconds must be non-negative")
-
-        if not outgoing_fades or not hypotheses:
-            return None
-
-        eligible_fades = [
-            fade
-            for fade in outgoing_fades
-            if fade.start_time_seconds <= reference_time_seconds
-        ]
-        if not eligible_fades:
-            return None
-
-        pairs = [
-            (
-                abs(
-                    fade.floor_time_seconds
-                    - hypothesis.time_seconds
-                ),
-                cls._confidence_rank[hypothesis.confidence],
-                -fade.descent_consistency,
-                -fade.descent_ratio,
-                -fade.floor_time_seconds,
-                fade,
-                hypothesis,
-            )
-            for fade in eligible_fades
-            for hypothesis in hypotheses
-        ]
-
-        (
-            distance,
-            _confidence,
-            _consistency,
-            _ratio,
-            _floor,
-            fade,
-            hypothesis,
-        ) = min(pairs, key=lambda item: item[:5])
-
-        return OutgoingFadeSelection(
-            fade=fade,
-            hypothesis=hypothesis,
-            support_distance_seconds=distance,
+        """Compatibility wrapper for Router-owned outgoing association."""
+        return DefaultTransitionRouter.associate_outgoing_fade(
+            reference_time_seconds=reference_time_seconds,
+            outgoing_fades=outgoing_fades,
+            hypotheses=hypotheses,
         )

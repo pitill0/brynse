@@ -6,13 +6,19 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
 
-from brynse.boundaries import BoundaryHypothesis, BoundaryProposalSource
+from brynse.boundaries import (
+    BoundaryConfidence,
+    BoundaryHypothesis,
+    BoundaryProposalSource,
+)
 from brynse.bounded_insert import (
     BoundedInsertAsymmetricRegionEvidence,
     BoundedInsertRegionEvidence,
 )
 from brynse.transition_evidence import (
     FadeRoutingEvidence,
+    IncomingFadeEvidence,
+    OutgoingFadeEvidence,
     TransitionEvidenceState,
 )
 
@@ -53,6 +59,48 @@ class TransitionRoutingContext:
 
 
 @dataclass(frozen=True)
+class OutgoingFadeRoutingAssociation:
+    """Descriptive association between outgoing fade and boundary evidence."""
+
+    fade: OutgoingFadeEvidence
+    hypothesis: BoundaryHypothesis
+    support_distance_seconds: float
+
+
+@dataclass(frozen=True)
+class IncomingFadeRoutingAssociation:
+    """Descriptive association between incoming fade and boundary evidence."""
+
+    fade: IncomingFadeEvidence
+    hypothesis: BoundaryHypothesis
+    support_distance_seconds: float
+
+
+@dataclass(frozen=True)
+class FadeRoutingAssessment:
+    """Router-owned interpretation of already observed fade evidence."""
+
+    rise_present: bool
+    basin_count: int
+    geometry_count: int
+    outgoing_association: OutgoingFadeRoutingAssociation | None = None
+    incoming_association: IncomingFadeRoutingAssociation | None = None
+
+    @property
+    def legacy_candidate(self) -> bool:
+        """Preserve the pre-Router-v2 fade routing condition."""
+        return self.rise_present and self.basin_count > 0
+
+    @property
+    def has_two_sided_support(self) -> bool:
+        """Return whether both fade sides have boundary support."""
+        return (
+            self.outgoing_association is not None
+            and self.incoming_association is not None
+        )
+
+
+@dataclass(frozen=True)
 class HardCutRoutingAssessment:
     """Non-temporal evidence describing direct-transition fallback ownership.
 
@@ -87,6 +135,7 @@ class TransitionRoute:
     kind: TransitionKind
     bounded_insert_ownership: BoundedInsertOwnership | None = None
     hard_cut: HardCutRoutingAssessment | None = None
+    fade_assessment: FadeRoutingAssessment | None = None
 
 
 class TransitionRouter(Protocol):
@@ -350,6 +399,183 @@ class DefaultTransitionRouter:
 
         return None
 
+    _fade_confidence_rank = {
+        BoundaryConfidence.HIGH: 0,
+        BoundaryConfidence.MEDIUM: 1,
+        BoundaryConfidence.LOW: 2,
+        BoundaryConfidence.UNRESOLVED: 3,
+    }
+
+    @classmethod
+    def associate_incoming_fade(
+        cls,
+        *,
+        reference_time_seconds: float,
+        incoming_fades: tuple[IncomingFadeEvidence, ...],
+        hypotheses: tuple[BoundaryHypothesis, ...],
+    ) -> IncomingFadeRoutingAssociation | None:
+        """Associate incoming fade geometry with coherent boundary support."""
+        if reference_time_seconds < 0:
+            raise ValueError(
+                "reference_time_seconds must be non-negative"
+            )
+
+        if not incoming_fades or not hypotheses:
+            return None
+
+        candidates = []
+
+        for fade in incoming_fades:
+            if fade.established_time_seconds < reference_time_seconds:
+                continue
+
+            if fade.start_time_seconds >= reference_time_seconds:
+                anchor_time = fade.start_time_seconds
+            else:
+                anchor_time = fade.established_time_seconds
+
+            supported_hypotheses = [
+                hypothesis
+                for hypothesis in hypotheses
+                if hypothesis.time_seconds >= fade.start_time_seconds
+            ]
+
+            if not supported_hypotheses:
+                continue
+
+            hypothesis = min(
+                supported_hypotheses,
+                key=lambda item: (
+                    abs(anchor_time - item.time_seconds),
+                    abs(anchor_time - reference_time_seconds),
+                    cls._fade_confidence_rank[item.confidence],
+                    item.time_seconds,
+                ),
+            )
+
+            support_distance = abs(
+                anchor_time - hypothesis.time_seconds
+            )
+            transition_distance = abs(
+                anchor_time - reference_time_seconds
+            )
+
+            candidates.append(
+                (
+                    support_distance,
+                    transition_distance,
+                    -fade.ascent_consistency,
+                    -fade.ascent_ratio,
+                    -fade.persistence_ratio,
+                    cls._fade_confidence_rank[hypothesis.confidence],
+                    anchor_time,
+                    fade,
+                    hypothesis,
+                )
+            )
+
+        if not candidates:
+            return None
+
+        (
+            support_distance,
+            _transition_distance,
+            _consistency,
+            _ratio,
+            _persistence,
+            _confidence,
+            _anchor,
+            fade,
+            hypothesis,
+        ) = min(candidates, key=lambda item: item[:7])
+
+        return IncomingFadeRoutingAssociation(
+            fade=fade,
+            hypothesis=hypothesis,
+            support_distance_seconds=support_distance,
+        )
+
+    @classmethod
+    def associate_outgoing_fade(
+        cls,
+        *,
+        reference_time_seconds: float,
+        outgoing_fades: tuple[OutgoingFadeEvidence, ...],
+        hypotheses: tuple[BoundaryHypothesis, ...],
+    ) -> OutgoingFadeRoutingAssociation | None:
+        """Associate outgoing fade geometry with coherent boundary support."""
+        if reference_time_seconds < 0:
+            raise ValueError(
+                "reference_time_seconds must be non-negative"
+            )
+
+        if not outgoing_fades or not hypotheses:
+            return None
+
+        eligible_fades = [
+            fade
+            for fade in outgoing_fades
+            if fade.start_time_seconds <= reference_time_seconds
+        ]
+
+        if not eligible_fades:
+            return None
+
+        pairs = [
+            (
+                abs(
+                    fade.floor_time_seconds
+                    - hypothesis.time_seconds
+                ),
+                cls._fade_confidence_rank[hypothesis.confidence],
+                -fade.descent_consistency,
+                -fade.descent_ratio,
+                -fade.floor_time_seconds,
+                fade,
+                hypothesis,
+            )
+            for fade in eligible_fades
+            for hypothesis in hypotheses
+        ]
+
+        (
+            distance,
+            _confidence,
+            _consistency,
+            _ratio,
+            _floor,
+            fade,
+            hypothesis,
+        ) = min(pairs, key=lambda item: item[:5])
+
+        return OutgoingFadeRoutingAssociation(
+            fade=fade,
+            hypothesis=hypothesis,
+            support_distance_seconds=distance,
+        )
+
+    def assess_fade(
+        self,
+        *,
+        context: TransitionRoutingContext,
+    ) -> FadeRoutingAssessment:
+        """Correlate fade evidence without selecting temporal boundaries."""
+        return FadeRoutingAssessment(
+            rise_present=context.fade.rise is not None,
+            basin_count=len(context.fade.basins),
+            geometry_count=len(context.fade.geometries),
+            outgoing_association=self.associate_outgoing_fade(
+                reference_time_seconds=context.reference_time_seconds,
+                outgoing_fades=context.fade.outgoing_fades,
+                hypotheses=context.hypotheses,
+            ),
+            incoming_association=self.associate_incoming_fade(
+                reference_time_seconds=context.reference_time_seconds,
+                incoming_fades=context.fade.incoming_fades,
+                hypotheses=context.hypotheses,
+            ),
+        )
+
     def assess_hard_cut(
         self,
         *,
@@ -401,6 +627,10 @@ class DefaultTransitionRouter:
         context: TransitionRoutingContext,
     ) -> TransitionRoute:
         """Return specialist ownership without resolving temporal boundaries."""
+        fade_assessment = self.assess_fade(
+            context=context,
+        )
+
         bounded_insert_ownership = self.bounded_insert_ownership(
             context=context,
         )
@@ -409,9 +639,10 @@ class DefaultTransitionRouter:
             return TransitionRoute(
                 kind=TransitionKind.BOUNDED_INSERT,
                 bounded_insert_ownership=bounded_insert_ownership,
+                fade_assessment=fade_assessment,
             )
 
-        fade_like = context.fade.rise is not None and bool(context.fade.basins)
+        fade_like = fade_assessment.legacy_candidate
         interstitial_like = self._has_interstitial_pattern(context.hypotheses)
 
         if fade_like and interstitial_like:
@@ -420,20 +651,24 @@ class DefaultTransitionRouter:
             ):
                 return TransitionRoute(
                     kind=TransitionKind.INTERSTITIAL,
+                    fade_assessment=fade_assessment,
                 )
 
             return TransitionRoute(
                 kind=TransitionKind.AMBIGUOUS,
+                fade_assessment=fade_assessment,
             )
 
         if fade_like:
             return TransitionRoute(
                 kind=TransitionKind.FADE,
+                fade_assessment=fade_assessment,
             )
 
         if interstitial_like:
             return TransitionRoute(
                 kind=TransitionKind.INTERSTITIAL,
+                fade_assessment=fade_assessment,
             )
 
         hard_cut = self.assess_hard_cut(
@@ -444,10 +679,12 @@ class DefaultTransitionRouter:
             return TransitionRoute(
                 kind=TransitionKind.HARD_CUT,
                 hard_cut=hard_cut,
+                fade_assessment=fade_assessment,
             )
 
         return TransitionRoute(
             kind=TransitionKind.AMBIGUOUS,
+            fade_assessment=fade_assessment,
         )
 
     def _has_interstitial_absorbed_right_edge_fade(

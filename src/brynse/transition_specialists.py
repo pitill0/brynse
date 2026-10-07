@@ -13,6 +13,7 @@ from brynse.boundaries import BoundaryConfidence, BoundaryProposalSource
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
 from brynse.transition_router import (
     BoundedInsertOwnership,
+    FadeRoutingAssessment,
     HardCutRoutingAssessment,
     TransitionKind,
     TransitionRoute,
@@ -33,6 +34,7 @@ class TransitionSpecialistInput:
     pcm16: Any
     bounded_insert_ownership: BoundedInsertOwnership | None = None
     hard_cut_assessment: HardCutRoutingAssessment | None = None
+    fade_assessment: FadeRoutingAssessment | None = None
 
 
 @dataclass(frozen=True)
@@ -1771,6 +1773,7 @@ class RoutedTransitionResolver:
             kind = route.kind
             bounded_insert_ownership = route.bounded_insert_ownership
             hard_cut_assessment = route.hard_cut
+            fade_assessment = route.fade_assessment
         else:
             # Compatibility path for third-party and test routers that still
             # implement only the original classify() contract.
@@ -1779,6 +1782,7 @@ class RoutedTransitionResolver:
             )
             bounded_insert_ownership = None
             hard_cut_assessment = None
+            fade_assessment = None
 
             if kind is TransitionKind.BOUNDED_INSERT:
                 ownership_resolver = getattr(
@@ -1808,6 +1812,15 @@ class RoutedTransitionResolver:
             routed_observation = replace(
                 routed_observation,
                 hard_cut_assessment=hard_cut_assessment,
+            )
+
+        if (
+            kind is TransitionKind.FADE
+            and fade_assessment is not None
+        ):
+            routed_observation = replace(
+                routed_observation,
+                fade_assessment=fade_assessment,
             )
 
         specialist = self._specialists[kind]
