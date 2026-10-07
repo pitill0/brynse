@@ -163,6 +163,7 @@ class TransitionRoute:
 
     kind: TransitionKind
     bounded_insert_ownership: BoundedInsertOwnership | None = None
+    bounded_insert: BoundedInsertRoutingProvenance | None = None
     hard_cut: HardCutRoutingAssessment | None = None
     fade_assessment: FadeRoutingAssessment | None = None
     interstitial_assessment: InterstitialRoutingAssessment | None = None
@@ -201,6 +202,44 @@ class BoundedInsertAsymmetricRoutingAssessment:
     related_region_count: int
     unique_region: bool
     primary_is_context_structural_peak: bool = False
+
+
+@dataclass(frozen=True)
+class BoundedInsertRoutingProvenance:
+    """Router-owned bounded-insert classification provenance.
+
+    Assessments explain why each evidence family did or did not claim
+    ownership. The owned region identifies the acoustic phenomenon handed to
+    the specialist without choosing any temporal boundary within that region.
+    """
+
+    ownership: BoundedInsertOwnership | None
+    symmetric_assessment: BoundedInsertRoutingAssessment
+    asymmetric_assessment: BoundedInsertAsymmetricRoutingAssessment
+    symmetric_region: BoundedInsertRegionEvidence | None = None
+    asymmetric_region: BoundedInsertAsymmetricRegionEvidence | None = None
+
+    @property
+    def candidate(self) -> bool:
+        """Return whether either bounded-insert family owns the transition."""
+        return self.ownership is not None
+
+    @property
+    def owned_region(
+        self,
+    ) -> (
+        BoundedInsertRegionEvidence
+        | BoundedInsertAsymmetricRegionEvidence
+        | None
+    ):
+        """Return the region selected by existing ownership precedence."""
+        if self.ownership is BoundedInsertOwnership.SYMMETRIC:
+            return self.symmetric_region
+
+        if self.ownership is BoundedInsertOwnership.ASYMMETRIC:
+            return self.asymmetric_region
+
+        return None
 
 
 class DefaultTransitionRouter:
@@ -407,27 +446,71 @@ class DefaultTransitionRouter:
             primary_is_context_structural_peak=primary_peak,
         )
 
+    def assess_bounded_insert_routing(
+        self,
+        *,
+        context: TransitionRoutingContext,
+    ) -> BoundedInsertRoutingProvenance:
+        """Return complete bounded-insert ownership provenance."""
+        symmetric = self.assess_bounded_insert(
+            context=context,
+        )
+
+        asymmetric = self.assess_asymmetric_bounded_insert(
+            context=context,
+        )
+
+        ownership = None
+        symmetric_region = None
+        asymmetric_region = None
+
+        if symmetric.candidate:
+            ownership = BoundedInsertOwnership.SYMMETRIC
+
+            symmetric_regions = getattr(
+                context,
+                "bounded_insert_regions",
+                (),
+            )
+
+            if (
+                getattr(symmetric, "unique_region", False)
+                and len(symmetric_regions) == 1
+            ):
+                symmetric_region = symmetric_regions[0]
+
+        elif asymmetric.candidate:
+            ownership = BoundedInsertOwnership.ASYMMETRIC
+
+            asymmetric_regions = getattr(
+                context,
+                "bounded_insert_asymmetric_regions",
+                (),
+            )
+
+            if (
+                getattr(asymmetric, "unique_region", False)
+                and len(asymmetric_regions) == 1
+            ):
+                asymmetric_region = asymmetric_regions[0]
+
+        return BoundedInsertRoutingProvenance(
+            ownership=ownership,
+            symmetric_assessment=symmetric,
+            asymmetric_assessment=asymmetric,
+            symmetric_region=symmetric_region,
+            asymmetric_region=asymmetric_region,
+        )
+
     def bounded_insert_ownership(
         self,
         *,
         context: TransitionRoutingContext,
     ) -> BoundedInsertOwnership | None:
         """Return which bounded-insert evidence family owns the transition."""
-        symmetric = self.assess_bounded_insert(
+        return self.assess_bounded_insert_routing(
             context=context,
-        )
-
-        if symmetric.candidate:
-            return BoundedInsertOwnership.SYMMETRIC
-
-        asymmetric = self.assess_asymmetric_bounded_insert(
-            context=context,
-        )
-
-        if asymmetric.candidate:
-            return BoundedInsertOwnership.ASYMMETRIC
-
-        return None
+        ).ownership
 
     _fade_confidence_rank = {
         BoundaryConfidence.HIGH: 0,
@@ -842,14 +925,46 @@ class DefaultTransitionRouter:
             context=context,
         )
 
+        bounded_insert = self.assess_bounded_insert_routing(
+            context=context,
+        )
+
         bounded_insert_ownership = self.bounded_insert_ownership(
             context=context,
         )
+
+        if bounded_insert_ownership is not bounded_insert.ownership:
+            bounded_insert = BoundedInsertRoutingProvenance(
+                ownership=bounded_insert_ownership,
+                symmetric_assessment=(
+                    bounded_insert.symmetric_assessment
+                ),
+                asymmetric_assessment=(
+                    bounded_insert.asymmetric_assessment
+                ),
+                symmetric_region=(
+                    bounded_insert.symmetric_region
+                    if (
+                        bounded_insert_ownership
+                        is BoundedInsertOwnership.SYMMETRIC
+                    )
+                    else None
+                ),
+                asymmetric_region=(
+                    bounded_insert.asymmetric_region
+                    if (
+                        bounded_insert_ownership
+                        is BoundedInsertOwnership.ASYMMETRIC
+                    )
+                    else None
+                ),
+            )
 
         if bounded_insert_ownership is not None:
             return TransitionRoute(
                 kind=TransitionKind.BOUNDED_INSERT,
                 bounded_insert_ownership=bounded_insert_ownership,
+                bounded_insert=bounded_insert,
                 fade_assessment=fade_assessment,
                 interstitial_assessment=interstitial_assessment,
             )

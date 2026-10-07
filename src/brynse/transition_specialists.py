@@ -13,6 +13,7 @@ from brynse.boundaries import BoundaryConfidence, BoundaryProposalSource
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
 from brynse.transition_router import (
     BoundedInsertOwnership,
+    BoundedInsertRoutingProvenance,
     FadeRoutingAssessment,
     HardCutRoutingAssessment,
     InterstitialRoutingAssessment,
@@ -34,6 +35,7 @@ class TransitionSpecialistInput:
     pcm8: Any
     pcm16: Any
     bounded_insert_ownership: BoundedInsertOwnership | None = None
+    bounded_insert_assessment: BoundedInsertRoutingProvenance | None = None
     hard_cut_assessment: HardCutRoutingAssessment | None = None
     fade_assessment: FadeRoutingAssessment | None = None
     interstitial_assessment: InterstitialRoutingAssessment | None = None
@@ -1380,14 +1382,26 @@ class BoundedInsertSpecialist:
             observation.routing.bounded_insert_asymmetric_regions
         )
         ownership = observation.bounded_insert_ownership
+        provenance = observation.bounded_insert_assessment
+
+        if provenance is not None:
+            ownership = provenance.ownership
 
         if ownership is BoundedInsertOwnership.SYMMETRIC:
-            if len(symmetric) != 1:
-                return TransitionSpecialistResult(
-                    temporal=None,
-                )
+            if provenance is not None:
+                region = provenance.symmetric_region
 
-            region = symmetric[0]
+                if region is None:
+                    return TransitionSpecialistResult(
+                        temporal=None,
+                    )
+            else:
+                if len(symmetric) != 1:
+                    return TransitionSpecialistResult(
+                        temporal=None,
+                    )
+
+                region = symmetric[0]
 
             proposal = self.propose_structural_bridge_cut(
                 region,
@@ -1438,16 +1452,26 @@ class BoundedInsertSpecialist:
             )
 
         if ownership is BoundedInsertOwnership.ASYMMETRIC:
-            if len(asymmetric) != 1:
-                return TransitionSpecialistResult(
-                    temporal=None,
-                )
+            if provenance is not None:
+                region = provenance.asymmetric_region
+
+                if region is None:
+                    return TransitionSpecialistResult(
+                        temporal=None,
+                    )
+            else:
+                if len(asymmetric) != 1:
+                    return TransitionSpecialistResult(
+                        temporal=None,
+                    )
+
+                region = asymmetric[0]
 
             proposal = None
 
             if observation.routing.fade.rise is None:
                 proposal = self.propose_asymmetric_outer_extent(
-                    asymmetric_region=asymmetric[0],
+                    asymmetric_region=region,
                     symmetric_regions=symmetric,
                     hypotheses=observation.routing.hypotheses,
                 )
@@ -1458,7 +1482,7 @@ class BoundedInsertSpecialist:
                 )
 
             return self._resolve_asymmetric_fallback(
-                asymmetric[0],
+                region,
                 fade=observation.routing.fade,
             )
 
@@ -1809,6 +1833,7 @@ class RoutedTransitionResolver:
 
             kind = route.kind
             bounded_insert_ownership = route.bounded_insert_ownership
+            bounded_insert_assessment = route.bounded_insert
             hard_cut_assessment = route.hard_cut
             fade_assessment = route.fade_assessment
             interstitial_assessment = route.interstitial_assessment
@@ -1819,6 +1844,7 @@ class RoutedTransitionResolver:
                 context=observation.routing,
             )
             bounded_insert_ownership = None
+            bounded_insert_assessment = None
             hard_cut_assessment = None
             fade_assessment = None
             interstitial_assessment = None
@@ -1842,6 +1868,7 @@ class RoutedTransitionResolver:
             routed_observation = replace(
                 observation,
                 bounded_insert_ownership=bounded_insert_ownership,
+                bounded_insert_assessment=bounded_insert_assessment,
             )
 
         if (

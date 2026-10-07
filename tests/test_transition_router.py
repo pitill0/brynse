@@ -1367,6 +1367,100 @@ def test_live_asymmetric_failures_receive_router_ownership(
     )
 
 
+def test_bounded_insert_routing_provenance_preserves_symmetric_region() -> None:
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.2,
+    )
+    right = _bounded_insert_edge(
+        110.0,
+        basin_start_seconds=109.5,
+        basin_recovery_seconds=110.5,
+        structural_strength=0.3,
+    )
+    dominant = _structural_only_boundary(
+        115.0,
+        structural_strength=0.9,
+    )
+
+    region = _bounded_insert_region(
+        reference_time_seconds=105.0,
+        left=left,
+        right=right,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=105.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(left, right, dominant),
+        bounded_insert_regions=(region,),
+    )
+
+    router = DefaultTransitionRouter()
+
+    provenance = router.assess_bounded_insert_routing(
+        context=context,
+    )
+
+    assert provenance.ownership is BoundedInsertOwnership.SYMMETRIC
+    assert provenance.symmetric_assessment.candidate is True
+    assert provenance.symmetric_region is region
+    assert provenance.asymmetric_region is None
+    assert provenance.owned_region is region
+
+    route = router.route(
+        context=context,
+    )
+
+    assert route.kind is TransitionKind.BOUNDED_INSERT
+    assert route.bounded_insert is not None
+    assert route.bounded_insert is not provenance
+    assert (
+        route.bounded_insert.ownership
+        is BoundedInsertOwnership.SYMMETRIC
+    )
+    assert route.bounded_insert.symmetric_region is region
+
+
+def test_bounded_insert_routing_provenance_preserves_asymmetric_region() -> None:
+    primary = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.8,
+    )
+    complementary = _structural_only_boundary(
+        119.0,
+        structural_strength=0.3,
+    )
+
+    region = _asymmetric_region(
+        reference_time_seconds=118.5,
+        primary=primary,
+        complementary=complementary,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=118.5,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(primary, complementary),
+        bounded_insert_asymmetric_regions=(region,),
+    )
+
+    provenance = DefaultTransitionRouter().assess_bounded_insert_routing(
+        context=context,
+    )
+
+    assert provenance.ownership is BoundedInsertOwnership.ASYMMETRIC
+    assert provenance.symmetric_assessment.candidate is False
+    assert provenance.asymmetric_assessment.candidate is True
+    assert provenance.symmetric_region is None
+    assert provenance.asymmetric_region is region
+    assert provenance.owned_region is region
+
+
 def test_bounded_insert_ownership_reports_symmetric_precedence() -> None:
     from types import SimpleNamespace
 

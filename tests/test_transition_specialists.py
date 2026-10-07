@@ -1766,6 +1766,84 @@ def test_routed_resolver_consumes_route_provenance_without_reclassification() ->
     assert routed.pcm16 is original.pcm16
 
 
+def test_routed_resolver_passes_bounded_insert_routing_provenance() -> None:
+    from brynse.transition_router import (
+        BoundedInsertAsymmetricRoutingAssessment,
+        BoundedInsertOwnership,
+        BoundedInsertRoutingAssessment,
+        BoundedInsertRoutingProvenance,
+        TransitionKind,
+        TransitionRoute,
+    )
+    from brynse.transition_specialists import RoutedTransitionResolver
+
+    provenance = BoundedInsertRoutingProvenance(
+        ownership=BoundedInsertOwnership.ASYMMETRIC,
+        symmetric_assessment=BoundedInsertRoutingAssessment(
+            candidate=False,
+            related_region_count=0,
+            unique_region=False,
+        ),
+        asymmetric_assessment=BoundedInsertAsymmetricRoutingAssessment(
+            candidate=True,
+            related_region_count=1,
+            unique_region=True,
+            primary_is_context_structural_peak=True,
+        ),
+    )
+
+    class Router:
+        def route(self, *, context):
+            _ = context
+            return TransitionRoute(
+                kind=TransitionKind.BOUNDED_INSERT,
+                bounded_insert_ownership=provenance.ownership,
+                bounded_insert=provenance,
+            )
+
+    class Specialist:
+        def __init__(self):
+            self.observation = None
+
+        def resolve(self, *, observation):
+            self.observation = observation
+            return TransitionSpecialistResult(
+                temporal=None,
+            )
+
+    bounded_insert = Specialist()
+
+    resolver = RoutedTransitionResolver(
+        router=Router(),
+        hard_cut=Specialist(),
+        fade=Specialist(),
+        interstitial=Specialist(),
+        bounded_insert=bounded_insert,
+        ambiguous=Specialist(),
+    )
+
+    original = _observation()
+
+    kind, result = resolver.resolve(
+        observation=original,
+    )
+
+    assert kind is TransitionKind.BOUNDED_INSERT
+    assert result.temporal is None
+
+    routed = bounded_insert.observation
+
+    assert routed is not None
+    assert routed is not original
+    assert (
+        routed.bounded_insert_ownership
+        is BoundedInsertOwnership.ASYMMETRIC
+    )
+    assert routed.bounded_insert_assessment is provenance
+    assert routed.routing is original.routing
+    assert routed.selected is original.selected
+
+
 def test_routed_resolver_passes_bounded_insert_ownership_provenance() -> None:
     from brynse.transition_router import (
         BoundedInsertOwnership,
@@ -1909,6 +1987,62 @@ def test_bounded_insert_phase2_symmetric_provenance_gets_authority() -> None:
         kind=TemporalSplitKind.EXCLUSION,
         outgoing_end_seconds=1623.731,
         incoming_start_seconds=1635.106,
+    )
+
+
+def test_bounded_insert_routing_provenance_owns_symmetric_region_identity() -> None:
+    from dataclasses import replace
+
+    from brynse.transition_router import (
+        BoundedInsertAsymmetricRoutingAssessment,
+        BoundedInsertOwnership,
+        BoundedInsertRoutingAssessment,
+        BoundedInsertRoutingProvenance,
+    )
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    owned = _bounded_insert_test_region(
+        left_time=100.0,
+        right_time=108.0,
+    )
+    unrelated = _bounded_insert_test_region(
+        left_time=200.0,
+        right_time=208.0,
+    )
+
+    base = _bounded_insert_specialist_observation(
+        regions=(unrelated,),
+    )
+
+    provenance = BoundedInsertRoutingProvenance(
+        ownership=BoundedInsertOwnership.SYMMETRIC,
+        symmetric_assessment=BoundedInsertRoutingAssessment(
+            candidate=True,
+            related_region_count=1,
+            unique_region=True,
+        ),
+        asymmetric_assessment=BoundedInsertAsymmetricRoutingAssessment(
+            candidate=False,
+            related_region_count=0,
+            unique_region=False,
+        ),
+        symmetric_region=owned,
+    )
+
+    observation = replace(
+        base,
+        bounded_insert_ownership=BoundedInsertOwnership.SYMMETRIC,
+        bounded_insert_assessment=provenance,
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=108.0,
     )
 
 
