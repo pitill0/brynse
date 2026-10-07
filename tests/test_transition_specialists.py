@@ -1498,6 +1498,63 @@ def test_bounded_insert_phase2_shadow_does_not_change_resolve() -> None:
     )
 
 
+def test_routed_resolver_passes_interstitial_assessment_provenance() -> None:
+    from brynse.transition_router import (
+        InterstitialRoutingAssessment,
+        TransitionKind,
+        TransitionRoute,
+    )
+    from brynse.transition_specialists import RoutedTransitionResolver
+
+    assessment = InterstitialRoutingAssessment()
+
+    class Router:
+        def route(self, *, context):
+            _ = context
+            return TransitionRoute(
+                kind=TransitionKind.INTERSTITIAL,
+                interstitial_assessment=assessment,
+            )
+
+    class Specialist:
+        def __init__(self):
+            self.observation = None
+
+        def resolve(self, *, observation):
+            self.observation = observation
+            return TransitionSpecialistResult(
+                temporal=None,
+            )
+
+    interstitial = Specialist()
+
+    resolver = RoutedTransitionResolver(
+        router=Router(),
+        hard_cut=Specialist(),
+        fade=Specialist(),
+        interstitial=interstitial,
+        bounded_insert=Specialist(),
+        ambiguous=Specialist(),
+    )
+
+    original = _observation()
+
+    kind, result = resolver.resolve(
+        observation=original,
+    )
+
+    assert kind is TransitionKind.INTERSTITIAL
+    assert result.temporal is None
+
+    routed = interstitial.observation
+
+    assert routed is not None
+    assert routed is not original
+    assert routed.interstitial_assessment is assessment
+    assert routed.routing is original.routing
+    assert routed.selected is original.selected
+
+
 def test_routed_resolver_passes_fade_assessment_provenance() -> None:
     from brynse.transition_router import (
         FadeRoutingAssessment,

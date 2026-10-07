@@ -101,6 +101,35 @@ class FadeRoutingAssessment:
 
 
 @dataclass(frozen=True)
+class InterstitialRoutingAssessment:
+    """Router-owned interpretation of interstitial acoustic evidence.
+
+    Routing handoffs preserve the exact legacy Router criterion. Supported
+    handoffs preserve the broader BASIN+STRUCTURAL ownership understood by the
+    temporal specialist. Neither collection selects a final boundary.
+    """
+
+    routing_handoffs: tuple[BoundaryHypothesis, ...] = ()
+    supported_handoffs: tuple[BoundaryHypothesis, ...] = ()
+    absorbed_right_edge_fade: bool = False
+    terminal_fade_region: BoundedInsertRegionEvidence | None = None
+    terminal_fade_candidates: tuple[OutgoingFadeEvidence, ...] = ()
+
+    @property
+    def legacy_candidate(self) -> bool:
+        """Preserve the pre-Router-v2 interstitial routing condition."""
+        return len(self.routing_handoffs) >= 2
+
+    @property
+    def has_terminal_fade_support(self) -> bool:
+        """Return whether a right-edge region owns terminal fade evidence."""
+        return (
+            self.terminal_fade_region is not None
+            and bool(self.terminal_fade_candidates)
+        )
+
+
+@dataclass(frozen=True)
 class HardCutRoutingAssessment:
     """Non-temporal evidence describing direct-transition fallback ownership.
 
@@ -136,6 +165,7 @@ class TransitionRoute:
     bounded_insert_ownership: BoundedInsertOwnership | None = None
     hard_cut: HardCutRoutingAssessment | None = None
     fade_assessment: FadeRoutingAssessment | None = None
+    interstitial_assessment: InterstitialRoutingAssessment | None = None
 
 
 class TransitionRouter(Protocol):
@@ -576,6 +606,183 @@ class DefaultTransitionRouter:
             ),
         )
 
+    @staticmethod
+    def _interstitial_supported_handoff(
+        hypothesis: BoundaryHypothesis,
+    ) -> bool:
+        """Return whether one hypothesis has basin and structural ownership."""
+        sources = {
+            proposal.source
+            for proposal in hypothesis.proposals
+        }
+
+        return (
+            hypothesis.basin_geometry is not None
+            and BoundaryProposalSource.BASIN in sources
+            and BoundaryProposalSource.STRUCTURAL in sources
+        )
+
+    @classmethod
+    def _interstitial_routing_handoff(
+        cls,
+        hypothesis: BoundaryHypothesis,
+    ) -> bool:
+        """Return whether one hypothesis matches the exact legacy criterion."""
+        if not cls._interstitial_supported_handoff(hypothesis):
+            return False
+
+        sources = {
+            proposal.source
+            for proposal in hypothesis.proposals
+        }
+
+        return sources == {
+            BoundaryProposalSource.BASIN,
+            BoundaryProposalSource.STRUCTURAL,
+        }
+
+    def _interstitial_terminal_fade_ownership(
+        self,
+        *,
+        context: TransitionRoutingContext,
+    ) -> tuple[
+        BoundedInsertRegionEvidence | None,
+        tuple[OutgoingFadeEvidence, ...],
+    ]:
+        """Correlate terminal fade evidence with one interstitial right edge.
+
+        This method deliberately stops before temporal decision state is
+        considered. The specialist still decides whether its current resolved
+        outgoing/incoming boundaries make one of these fades usable.
+        """
+        if context.fade.rise is not None:
+            return None, ()
+
+        regions = context.bounded_insert_regions
+
+        if len(regions) != 1:
+            return None, ()
+
+        region = regions[0]
+
+        if not region.reference_inside_right_basin:
+            return None, ()
+
+        if region.reference_inside_left_basin:
+            return None, ()
+
+        if region.structural_only_interior_count != 0:
+            return None, ()
+
+        right_geometry = region.right_edge.basin_geometry
+
+        if right_geometry is None:
+            return None, ()
+
+        structural_strengths = tuple(
+            proposal.strength
+            for hypothesis in context.hypotheses
+            for proposal in hypothesis.proposals
+            if (
+                proposal.source is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength is not None
+            )
+        )
+
+        if not structural_strengths:
+            return None, ()
+
+        context_peak = max(structural_strengths)
+
+        left_strengths = tuple(
+            proposal.strength
+            for proposal in region.left_edge.proposals
+            if (
+                proposal.source is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength is not None
+            )
+        )
+
+        right_strengths = tuple(
+            proposal.strength
+            for proposal in region.right_edge.proposals
+            if (
+                proposal.source is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength is not None
+            )
+        )
+
+        left_peak = (
+            bool(left_strengths)
+            and max(left_strengths) == context_peak
+        )
+
+        right_peak = (
+            bool(right_strengths)
+            and max(right_strengths) == context_peak
+        )
+
+        if not left_peak or right_peak:
+            return None, ()
+
+        candidates = tuple(
+            outgoing_fade
+            for outgoing_fade in context.fade.outgoing_fades
+            if (
+                right_geometry.start_seconds
+                <= outgoing_fade.floor_time_seconds
+                <= right_geometry.recovery_seconds
+            )
+        )
+
+        if not candidates:
+            return None, ()
+
+        return region, candidates
+
+    def assess_interstitial(
+        self,
+        *,
+        context: TransitionRoutingContext,
+    ) -> InterstitialRoutingAssessment:
+        """Correlate interstitial ownership without choosing temporal cuts."""
+        ordered = tuple(
+            sorted(
+                context.hypotheses,
+                key=lambda hypothesis: hypothesis.time_seconds,
+            )
+        )
+
+        supported_handoffs = tuple(
+            hypothesis
+            for hypothesis in ordered
+            if self._interstitial_supported_handoff(hypothesis)
+        )
+
+        routing_handoffs = tuple(
+            hypothesis
+            for hypothesis in supported_handoffs
+            if self._interstitial_routing_handoff(hypothesis)
+        )
+
+        terminal_region, terminal_fades = (
+            self._interstitial_terminal_fade_ownership(
+                context=context,
+            )
+        )
+
+        return InterstitialRoutingAssessment(
+            routing_handoffs=routing_handoffs,
+            supported_handoffs=supported_handoffs,
+            absorbed_right_edge_fade=(
+                self._has_interstitial_absorbed_right_edge_fade(
+                    context=context,
+                )
+            ),
+            terminal_fade_region=terminal_region,
+            terminal_fade_candidates=terminal_fades,
+        )
+
     def assess_hard_cut(
         self,
         *,
@@ -631,6 +838,10 @@ class DefaultTransitionRouter:
             context=context,
         )
 
+        interstitial_assessment = self.assess_interstitial(
+            context=context,
+        )
+
         bounded_insert_ownership = self.bounded_insert_ownership(
             context=context,
         )
@@ -640,35 +851,38 @@ class DefaultTransitionRouter:
                 kind=TransitionKind.BOUNDED_INSERT,
                 bounded_insert_ownership=bounded_insert_ownership,
                 fade_assessment=fade_assessment,
+                interstitial_assessment=interstitial_assessment,
             )
 
         fade_like = fade_assessment.legacy_candidate
-        interstitial_like = self._has_interstitial_pattern(context.hypotheses)
+        interstitial_like = interstitial_assessment.legacy_candidate
 
         if fade_like and interstitial_like:
-            if self._has_interstitial_absorbed_right_edge_fade(
-                context=context,
-            ):
+            if interstitial_assessment.absorbed_right_edge_fade:
                 return TransitionRoute(
                     kind=TransitionKind.INTERSTITIAL,
                     fade_assessment=fade_assessment,
+                    interstitial_assessment=interstitial_assessment,
                 )
 
             return TransitionRoute(
                 kind=TransitionKind.AMBIGUOUS,
                 fade_assessment=fade_assessment,
+                interstitial_assessment=interstitial_assessment,
             )
 
         if fade_like:
             return TransitionRoute(
                 kind=TransitionKind.FADE,
                 fade_assessment=fade_assessment,
+                interstitial_assessment=interstitial_assessment,
             )
 
         if interstitial_like:
             return TransitionRoute(
                 kind=TransitionKind.INTERSTITIAL,
                 fade_assessment=fade_assessment,
+                interstitial_assessment=interstitial_assessment,
             )
 
         hard_cut = self.assess_hard_cut(
@@ -680,11 +894,13 @@ class DefaultTransitionRouter:
                 kind=TransitionKind.HARD_CUT,
                 hard_cut=hard_cut,
                 fade_assessment=fade_assessment,
+                interstitial_assessment=interstitial_assessment,
             )
 
         return TransitionRoute(
             kind=TransitionKind.AMBIGUOUS,
             fade_assessment=fade_assessment,
+            interstitial_assessment=interstitial_assessment,
         )
 
     def _has_interstitial_absorbed_right_edge_fade(
@@ -745,28 +961,3 @@ class DefaultTransitionRouter:
                 evidence.local_discontinuity_2s,
             )
         )
-
-    @staticmethod
-    def _has_interstitial_pattern(
-        hypotheses: tuple[BoundaryHypothesis, ...],
-    ) -> bool:
-        matching = 0
-
-        for hypothesis in hypotheses:
-            sources = {proposal.source for proposal in hypothesis.proposals}
-
-            if sources != {
-                BoundaryProposalSource.BASIN,
-                BoundaryProposalSource.STRUCTURAL,
-            }:
-                continue
-
-            if hypothesis.basin_geometry is None:
-                continue
-
-            matching += 1
-
-            if matching >= 2:
-                return True
-
-        return False

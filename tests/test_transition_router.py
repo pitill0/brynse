@@ -359,6 +359,65 @@ def test_default_transition_router_routes_clear_fade() -> None:
     assert result is TransitionKind.FADE
 
 
+def test_interstitial_assessment_orders_supported_handoffs_without_cutting() -> None:
+    router = DefaultTransitionRouter()
+
+    left = _interstitial_hypothesis(
+        basin_time=100.5,
+        structural_time=100.7,
+        basin_start=100.2,
+        basin_recovery=101.0,
+    )
+
+    right = _interstitial_hypothesis(
+        basin_time=102.0,
+        structural_time=102.2,
+        basin_start=101.7,
+        basin_recovery=102.6,
+    )
+
+    assessment = router.assess_interstitial(
+        context=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=TransitionEvidenceState(),
+            hypotheses=(right, left),
+        )
+    )
+
+    assert assessment.routing_handoffs == (left, right)
+    assert assessment.supported_handoffs == (left, right)
+    assert assessment.legacy_candidate is True
+    assert assessment.absorbed_right_edge_fade is False
+    assert assessment.terminal_fade_region is None
+    assert assessment.terminal_fade_candidates == ()
+
+    assert not hasattr(assessment, "outgoing_end_seconds")
+    assert not hasattr(assessment, "incoming_start_seconds")
+
+
+def test_interstitial_assessment_keeps_single_handoff_non_candidate() -> None:
+    router = DefaultTransitionRouter()
+
+    hypothesis = _interstitial_hypothesis(
+        basin_time=101.0,
+        structural_time=101.2,
+        basin_start=100.7,
+        basin_recovery=101.6,
+    )
+
+    assessment = router.assess_interstitial(
+        context=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=TransitionEvidenceState(),
+            hypotheses=(hypothesis,),
+        )
+    )
+
+    assert assessment.routing_handoffs == (hypothesis,)
+    assert assessment.supported_handoffs == (hypothesis,)
+    assert assessment.legacy_candidate is False
+
+
 def test_default_transition_router_routes_clear_interstitial_pattern() -> None:
     from brynse.transition_router import DefaultTransitionRouter
 
@@ -377,15 +436,22 @@ def test_default_transition_router_routes_clear_interstitial_pattern() -> None:
         ),
     )
 
-    result = DefaultTransitionRouter().classify(
-        context=TransitionRoutingContext(
-            reference_time_seconds=100.0,
-            evidence=TransitionEvidenceState(),
-            hypotheses=hypotheses,
-        )
+    router = DefaultTransitionRouter()
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=100.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=hypotheses,
     )
 
-    assert result is TransitionKind.INTERSTITIAL
+    route = router.route(
+        context=context,
+    )
+
+    assert route.kind is TransitionKind.INTERSTITIAL
+    assert route.interstitial_assessment is not None
+    assert route.interstitial_assessment.legacy_candidate is True
+    assert router.classify(context=context) is route.kind
 
 
 def test_default_transition_router_keeps_single_interstitial_event_ambiguous() -> None:

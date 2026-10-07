@@ -15,6 +15,7 @@ from brynse.transition_router import (
     BoundedInsertOwnership,
     FadeRoutingAssessment,
     HardCutRoutingAssessment,
+    InterstitialRoutingAssessment,
     TransitionKind,
     TransitionRoute,
     TransitionRouter,
@@ -35,6 +36,7 @@ class TransitionSpecialistInput:
     bounded_insert_ownership: BoundedInsertOwnership | None = None
     hard_cut_assessment: HardCutRoutingAssessment | None = None
     fade_assessment: FadeRoutingAssessment | None = None
+    interstitial_assessment: InterstitialRoutingAssessment | None = None
 
 
 @dataclass(frozen=True)
@@ -476,6 +478,11 @@ class InterstitialSpecialist:
             recovered = self._recover_supported_exclusion(
                 selected_time_seconds=boundary,
                 hypotheses=observation.routing.hypotheses,
+                supported_handoffs=(
+                    observation.interstitial_assessment.supported_handoffs
+                    if observation.interstitial_assessment is not None
+                    else None
+                ),
             )
 
             if recovered is not None:
@@ -569,6 +576,31 @@ class InterstitialSpecialist:
 
         if decision.kind is not TemporalSplitKind.EXCLUSION:
             return None
+
+        assessment = observation.interstitial_assessment
+
+        if assessment is not None:
+            matching_fades = tuple(
+                outgoing_fade
+                for outgoing_fade in assessment.terminal_fade_candidates
+                if (
+                    outgoing_fade.start_time_seconds
+                    <= decision.outgoing_end_seconds
+                    < outgoing_fade.floor_time_seconds
+                    < decision.incoming_start_seconds
+                )
+            )
+
+            if len(matching_fades) != 1:
+                return None
+
+            return TemporalSplitDecision(
+                kind=TemporalSplitKind.EXCLUSION,
+                outgoing_end_seconds=(
+                    matching_fades[0].floor_time_seconds
+                ),
+                incoming_start_seconds=decision.incoming_start_seconds,
+            )
 
         fade = observation.routing.fade
 
@@ -798,6 +830,7 @@ class InterstitialSpecialist:
         *,
         selected_time_seconds: float,
         hypotheses,
+        supported_handoffs=None,
     ) -> TemporalSplitDecision | None:
         from brynse.boundaries import BoundaryProposalSource
 
@@ -825,17 +858,21 @@ class InterstitialSpecialist:
         left = before[-1]
         right = after[0]
 
-        def supported(hypothesis) -> bool:
-            sources = {
-                proposal.source
-                for proposal in hypothesis.proposals
-            }
+        if supported_handoffs is None:
+            def supported(hypothesis) -> bool:
+                sources = {
+                    proposal.source
+                    for proposal in hypothesis.proposals
+                }
 
-            return (
-                hypothesis.basin_geometry is not None
-                and BoundaryProposalSource.BASIN in sources
-                and BoundaryProposalSource.STRUCTURAL in sources
-            )
+                return (
+                    hypothesis.basin_geometry is not None
+                    and BoundaryProposalSource.BASIN in sources
+                    and BoundaryProposalSource.STRUCTURAL in sources
+                )
+        else:
+            def supported(hypothesis) -> bool:
+                return hypothesis in supported_handoffs
 
         if not supported(left) or not supported(right):
             return None
@@ -1774,6 +1811,7 @@ class RoutedTransitionResolver:
             bounded_insert_ownership = route.bounded_insert_ownership
             hard_cut_assessment = route.hard_cut
             fade_assessment = route.fade_assessment
+            interstitial_assessment = route.interstitial_assessment
         else:
             # Compatibility path for third-party and test routers that still
             # implement only the original classify() contract.
@@ -1783,6 +1821,7 @@ class RoutedTransitionResolver:
             bounded_insert_ownership = None
             hard_cut_assessment = None
             fade_assessment = None
+            interstitial_assessment = None
 
             if kind is TransitionKind.BOUNDED_INSERT:
                 ownership_resolver = getattr(
@@ -1821,6 +1860,15 @@ class RoutedTransitionResolver:
             routed_observation = replace(
                 routed_observation,
                 fade_assessment=fade_assessment,
+            )
+
+        if (
+            kind is TransitionKind.INTERSTITIAL
+            and interstitial_assessment is not None
+        ):
+            routed_observation = replace(
+                routed_observation,
+                interstitial_assessment=interstitial_assessment,
             )
 
         specialist = self._specialists[kind]
