@@ -105,6 +105,37 @@ class HardCutSpecialist:
             ):
                 return selected_geometry.recovery_seconds
 
+            selected_hypothesis = cls._hypothesis_for_geometry(
+                geometry=selected_geometry,
+                geometries=geometries,
+            )
+            selected_sources = cls._proposal_sources(
+                selected_hypothesis,
+            )
+
+            if (
+                selected_sources is not None
+                and BoundaryProposalSource.STRUCTURAL
+                in selected_sources
+                and reference_time_seconds
+                >= selected_geometry.recovery_seconds
+            ):
+                return selected_geometry.recovery_seconds
+
+            if (
+                selected_sources is not None
+                and BoundaryProposalSource.BASIN
+                in selected_sources
+                and BoundaryProposalSource.STRUCTURAL
+                not in selected_sources
+                and selected_time_seconds
+                < selected_geometry.minimum_seconds
+                and selected_geometry.start_seconds
+                <= reference_time_seconds
+                <= selected_geometry.minimum_seconds
+            ):
+                return reference_time_seconds
+
             if (
                 selected_geometry.start_seconds
                 <= reference_time_seconds
@@ -124,6 +155,23 @@ class HardCutSpecialist:
                 reference_time_seconds
                 <= reference_geometry.minimum_seconds
             ):
+                reference_hypothesis = cls._hypothesis_for_geometry(
+                    geometry=reference_geometry,
+                    geometries=geometries,
+                )
+                reference_sources = cls._proposal_sources(
+                    reference_hypothesis,
+                )
+
+                if (
+                    reference_sources is not None
+                    and BoundaryProposalSource.BASIN
+                    in reference_sources
+                    and BoundaryProposalSource.STRUCTURAL
+                    not in reference_sources
+                ):
+                    return reference_time_seconds
+
                 return reference_geometry.minimum_seconds
 
             return reference_geometry.recovery_seconds
@@ -159,6 +207,35 @@ class HardCutSpecialist:
             return hypothesis.time_seconds
 
         return selected_time_seconds
+
+    @staticmethod
+    def _hypothesis_for_geometry(
+        *,
+        geometry,
+        geometries,
+    ):
+        for hypothesis, candidate in geometries:
+            if candidate is geometry:
+                return hypothesis
+
+        return None
+
+    @staticmethod
+    def _proposal_sources(hypothesis):
+        proposals = getattr(
+            hypothesis,
+            "proposals",
+            None,
+        )
+
+        if proposals is None:
+            return None
+
+        return {
+            proposal.source
+            for proposal in proposals
+            if hasattr(proposal, "source")
+        }
 
     @staticmethod
     def _containing_geometry(
@@ -557,6 +634,106 @@ class BoundedInsertSpecialist:
             BoundaryProposalSource.STRUCTURAL
         }
 
+    @classmethod
+    def propose_structural_bridge_cut(
+        cls,
+        region,
+    ):
+        """Collapse one structural bridge that owns the semantic handoff."""
+        interior = region.interior_hypotheses
+
+        if len(interior) != 1:
+            return None
+
+        bridge = interior[0]
+
+        if not cls._is_structural_only(bridge):
+            return None
+
+        nearest = min(
+            (
+                region.left,
+                bridge,
+                region.right,
+            ),
+            key=lambda hypothesis: (
+                abs(
+                    hypothesis.time_seconds
+                    - region.reference_time_seconds
+                ),
+                hypothesis.time_seconds,
+            ),
+        )
+
+        if nearest is not bridge:
+            return None
+
+        boundary = bridge.time_seconds
+
+        return TemporalSplitDecision(
+            kind=TemporalSplitKind.HARD_CUT,
+            outgoing_end_seconds=boundary,
+            incoming_start_seconds=boundary,
+        )
+
+    @classmethod
+    def propose_symmetric_outer_extent(
+        cls,
+        *,
+        region,
+        hypotheses,
+    ):
+        """Recover one supported predecessor through structural-only interior."""
+        anchor = region.left
+
+        previous_supported = tuple(
+            hypothesis
+            for hypothesis in hypotheses
+            if (
+                hypothesis.time_seconds < anchor.time_seconds
+                and cls._is_supported_edge(hypothesis)
+            )
+        )
+
+        if not previous_supported:
+            return None
+
+        predecessor = max(
+            previous_supported,
+            key=lambda hypothesis: hypothesis.time_seconds,
+        )
+
+        interior = tuple(
+            hypothesis
+            for hypothesis in hypotheses
+            if (
+                predecessor.time_seconds
+                < hypothesis.time_seconds
+                < anchor.time_seconds
+            )
+        )
+
+        if not interior:
+            return None
+
+        if not all(
+            cls._is_structural_only(hypothesis)
+            for hypothesis in interior
+        ):
+            return None
+
+        outgoing = predecessor.time_seconds
+        incoming = region.right.time_seconds
+
+        if outgoing >= incoming:
+            return None
+
+        return TemporalSplitDecision(
+            kind=TemporalSplitKind.EXCLUSION,
+            outgoing_end_seconds=outgoing,
+            incoming_start_seconds=incoming,
+        )
+
     @staticmethod
     def propose_symmetric_phase_aware(
         region,
@@ -708,6 +885,26 @@ class BoundedInsertSpecialist:
 
             region = symmetric[0]
 
+            proposal = self.propose_structural_bridge_cut(
+                region,
+            )
+
+            if proposal is not None:
+                return TransitionSpecialistResult(
+                    temporal=proposal,
+                )
+
+            if observation.routing.fade.rise is None:
+                proposal = self.propose_symmetric_outer_extent(
+                    region=region,
+                    hypotheses=observation.routing.hypotheses,
+                )
+
+                if proposal is not None:
+                    return TransitionSpecialistResult(
+                        temporal=proposal,
+                    )
+
             proposal = self.propose_symmetric_phase_aware(
                 region,
                 reference_time_seconds=(
@@ -730,11 +927,14 @@ class BoundedInsertSpecialist:
                     temporal=None,
                 )
 
-            proposal = self.propose_asymmetric_outer_extent(
-                asymmetric_region=asymmetric[0],
-                symmetric_regions=symmetric,
-                hypotheses=observation.routing.hypotheses,
-            )
+            proposal = None
+
+            if observation.routing.fade.rise is None:
+                proposal = self.propose_asymmetric_outer_extent(
+                    asymmetric_region=asymmetric[0],
+                    symmetric_regions=symmetric,
+                    hypotheses=observation.routing.hypotheses,
+                )
 
             if proposal is not None:
                 return TransitionSpecialistResult(
