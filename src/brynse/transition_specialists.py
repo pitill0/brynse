@@ -974,6 +974,176 @@ class BoundedInsertSpecialist:
         )
 
     @classmethod
+    def _refine_symmetric_predecessor_terminal_fade(
+        cls,
+        *,
+        decision: TemporalSplitDecision,
+        region,
+        observation: TransitionSpecialistInput,
+    ) -> TemporalSplitDecision | None:
+        """Recover a terminal outgoing fade before a symmetric insert.
+
+        The symmetric region still owns the inserted material and therefore
+        keeps its resolved incoming edge.  This refinement only retracts an
+        outgoing edge when an immediately preceding supported basin contains
+        both the end of one observed outgoing fade and the start of an
+        independently observed incoming acoustic phase.
+
+        This deliberately refines temporal geometry only; Router ownership
+        and the symmetric insert extent remain unchanged.
+        """
+        from brynse.boundaries import BoundaryProposalSource
+
+        if decision.kind is not TemporalSplitKind.EXCLUSION:
+            return None
+
+        fade = observation.routing.fade
+
+        if fade.rise is not None:
+            return None
+
+        if len(region.interior_hypotheses) != 1:
+            return None
+
+        if not cls._is_structural_only(
+            region.interior_hypotheses[0]
+        ):
+            return None
+
+        if (
+            region.reference_inside_left_basin
+            or region.reference_inside_right_basin
+        ):
+            return None
+
+        if not (
+            region.left.time_seconds
+            <= observation.routing.reference_time_seconds
+            <= region.right.time_seconds
+        ):
+            return None
+
+        left_geometry = region.left_edge.basin_geometry
+
+        if left_geometry is None:
+            return None
+
+        if (
+            decision.outgoing_end_seconds
+            != left_geometry.recovery_seconds
+        ):
+            return None
+
+        structural_strengths = tuple(
+            proposal.strength
+            for hypothesis in observation.routing.hypotheses
+            for proposal in hypothesis.proposals
+            if (
+                proposal.source
+                is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength is not None
+            )
+        )
+
+        if not structural_strengths:
+            return None
+
+        context_peak = max(structural_strengths)
+
+        left_strengths = tuple(
+            proposal.strength
+            for proposal in region.left_edge.proposals
+            if (
+                proposal.source
+                is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength is not None
+            )
+        )
+        right_strengths = tuple(
+            proposal.strength
+            for proposal in region.right_edge.proposals
+            if (
+                proposal.source
+                is BoundaryProposalSource.STRUCTURAL
+                and proposal.strength is not None
+            )
+        )
+
+        left_peak = (
+            bool(left_strengths)
+            and max(left_strengths) == context_peak
+        )
+        right_peak = (
+            bool(right_strengths)
+            and max(right_strengths) == context_peak
+        )
+
+        if left_peak or right_peak:
+            return None
+
+        ordered_before_left = tuple(
+            hypothesis
+            for hypothesis in sorted(
+                observation.routing.hypotheses,
+                key=lambda hypothesis: hypothesis.time_seconds,
+            )
+            if hypothesis.time_seconds < region.left.time_seconds
+        )
+
+        if not ordered_before_left:
+            return None
+
+        predecessor = ordered_before_left[-1]
+
+        if not cls._is_supported_edge(predecessor):
+            return None
+
+        predecessor_geometry = predecessor.basin_geometry
+
+        if (
+            predecessor_geometry.recovery_seconds
+            >= left_geometry.start_seconds
+        ):
+            return None
+
+        matching_fades = tuple(
+            outgoing_fade
+            for outgoing_fade in fade.outgoing_fades
+            if (
+                outgoing_fade.start_time_seconds
+                < outgoing_fade.floor_time_seconds
+                < decision.outgoing_end_seconds
+                and predecessor_geometry.start_seconds
+                <= outgoing_fade.floor_time_seconds
+                <= predecessor_geometry.recovery_seconds
+            )
+        )
+
+        if len(matching_fades) != 1:
+            return None
+
+        outgoing_fade = matching_fades[0]
+        boundary = outgoing_fade.floor_time_seconds
+
+        incoming_phase = tuple(
+            incoming
+            for incoming in fade.incoming_fades
+            if (
+                incoming.start_time_seconds == boundary
+                and incoming.established_time_seconds > boundary
+            )
+        )
+
+        if len(incoming_phase) != 1:
+            return None
+
+        return TemporalSplitDecision(
+            kind=TemporalSplitKind.EXCLUSION,
+            outgoing_end_seconds=boundary,
+            incoming_start_seconds=decision.incoming_start_seconds,
+        )
+
+    @classmethod
     def propose_asymmetric_outer_extent(
         cls,
         *,
@@ -1101,8 +1271,20 @@ class BoundedInsertSpecialist:
             )
 
             if proposal is not None:
+                terminal_refined = (
+                    self._refine_symmetric_predecessor_terminal_fade(
+                        decision=proposal,
+                        region=region,
+                        observation=observation,
+                    )
+                )
+
                 return TransitionSpecialistResult(
-                    temporal=proposal,
+                    temporal=(
+                        terminal_refined
+                        if terminal_refined is not None
+                        else proposal
+                    ),
                 )
 
             return self._resolve_symmetric_fallback(

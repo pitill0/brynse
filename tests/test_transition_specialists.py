@@ -3935,3 +3935,163 @@ def test_phase4h_terminal_fade_requires_current_outgoing_inside_fade() -> None:
     )
 
     assert result.temporal is refined
+
+
+# ---------------------------------------------------------------------------
+# Phase 4i: symmetric bounded-insert predecessor terminal fade
+# ---------------------------------------------------------------------------
+
+
+def _phase4i_mark_observation(
+    *,
+    incoming_phase=True,
+    floor_inside_predecessor=True,
+    left_peak=False,
+):
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_router import BoundedInsertOwnership
+
+    predecessor = _phase2_supported_edge(
+        time_seconds=98.0,
+        basin_start_seconds=97.0,
+        basin_recovery_seconds=99.5,
+        structural_strength=0.9,
+    )
+
+    left = _phase2_supported_edge(
+        time_seconds=102.4,
+        basin_start_seconds=101.5,
+        basin_recovery_seconds=102.2,
+        structural_strength=(
+            0.9 if left_peak else 0.4
+        ),
+    )
+
+    interior = _phase2_structural_only(
+        time_seconds=106.0,
+    )
+
+    right = _phase2_supported_edge(
+        time_seconds=112.0,
+        basin_start_seconds=111.5,
+        basin_recovery_seconds=112.4,
+        structural_strength=0.5,
+    )
+
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=103.0,
+        left=left,
+        right=right,
+        interior_hypotheses=(interior,),
+    )
+
+    floor = 98.5 if floor_inside_predecessor else 100.0
+
+    incoming_fades = ()
+
+    if incoming_phase:
+        incoming_fades = (
+            SimpleNamespace(
+                start_time_seconds=floor,
+                established_time_seconds=105.0,
+            ),
+        )
+
+    fade = SimpleNamespace(
+        rise=None,
+        outgoing_fades=(
+            SimpleNamespace(
+                start_time_seconds=90.0,
+                floor_time_seconds=floor,
+            ),
+        ),
+        incoming_fades=incoming_fades,
+    )
+
+    base = _bounded_insert_specialist_observation(
+        regions=(region,),
+    )
+
+    return replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=103.0,
+            hypotheses=(
+                predecessor,
+                left,
+                interior,
+                right,
+            ),
+            fade=fade,
+            bounded_insert_regions=(region,),
+        ),
+        bounded_insert_ownership=(
+            BoundedInsertOwnership.SYMMETRIC
+        ),
+    )
+
+
+def test_phase4i_symmetric_insert_uses_predecessor_terminal_fade() -> None:
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=_phase4i_mark_observation(),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=98.5,
+        incoming_start_seconds=112.0,
+    )
+
+
+def test_phase4i_terminal_fade_requires_matching_incoming_phase() -> None:
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=_phase4i_mark_observation(
+            incoming_phase=False,
+        ),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=102.2,
+        incoming_start_seconds=112.0,
+    )
+
+
+def test_phase4i_terminal_fade_must_belong_to_predecessor_basin() -> None:
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=_phase4i_mark_observation(
+            floor_inside_predecessor=False,
+        ),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=102.2,
+        incoming_start_seconds=112.0,
+    )
+
+
+def test_phase4i_terminal_fade_rejects_dominant_left_edge() -> None:
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=_phase4i_mark_observation(
+            left_peak=True,
+        ),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=102.2,
+        incoming_start_seconds=112.0,
+    )
