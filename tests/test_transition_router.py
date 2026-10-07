@@ -15,8 +15,10 @@ from brynse.transition_evidence import (
     TransitionEvidenceState,
 )
 from brynse.transition_router import (
+    BoundedInsertOwnership,
     DefaultTransitionRouter,
     TransitionKind,
+    TransitionRoute,
     TransitionRouter,
     TransitionRoutingContext,
 )
@@ -105,6 +107,43 @@ def test_transition_routing_context_carries_no_resolved_boundary() -> None:
     assert not hasattr(context, "incoming_start_seconds")
     assert not hasattr(context, "outgoing_end_seconds")
 
+
+
+def test_transition_route_carries_ownership_without_temporal_boundary() -> None:
+    route = TransitionRoute(
+        kind=TransitionKind.BOUNDED_INSERT,
+        bounded_insert_ownership=BoundedInsertOwnership.ASYMMETRIC,
+    )
+
+    assert route.kind is TransitionKind.BOUNDED_INSERT
+    assert (
+        route.bounded_insert_ownership
+        is BoundedInsertOwnership.ASYMMETRIC
+    )
+    assert not hasattr(route, "incoming_start_seconds")
+    assert not hasattr(route, "outgoing_end_seconds")
+
+
+def test_default_transition_router_classify_matches_route_kind() -> None:
+    class Router(DefaultTransitionRouter):
+        def bounded_insert_ownership(self, *, context):
+            _ = context
+            return BoundedInsertOwnership.ASYMMETRIC
+
+    router = Router()
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=42.0,
+        evidence=TransitionEvidenceState(),
+    )
+
+    route = router.route(context=context)
+
+    assert route == TransitionRoute(
+        kind=TransitionKind.BOUNDED_INSERT,
+        bounded_insert_ownership=BoundedInsertOwnership.ASYMMETRIC,
+    )
+    assert router.classify(context=context) is route.kind
 
 
 def test_transition_routing_context_preserves_fade_evidence() -> None:

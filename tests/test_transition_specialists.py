@@ -1498,6 +1498,92 @@ def test_bounded_insert_phase2_shadow_does_not_change_resolve() -> None:
     )
 
 
+def test_routed_resolver_consumes_route_provenance_without_reclassification() -> None:
+    from brynse.transition_router import (
+        BoundedInsertOwnership,
+        TransitionKind,
+        TransitionRoute,
+    )
+    from brynse.transition_specialists import RoutedTransitionResolver
+
+    class Router:
+        def __init__(self):
+            self.route_calls = []
+            self.classify_calls = []
+            self.ownership_calls = []
+
+        def route(self, *, context):
+            self.route_calls.append(context)
+            return TransitionRoute(
+                kind=TransitionKind.BOUNDED_INSERT,
+                bounded_insert_ownership=(
+                    BoundedInsertOwnership.ASYMMETRIC
+                ),
+            )
+
+        def classify(self, *, context):
+            self.classify_calls.append(context)
+            raise AssertionError(
+                "route-aware resolver must not call classify()"
+            )
+
+        def bounded_insert_ownership(self, *, context):
+            self.ownership_calls.append(context)
+            raise AssertionError(
+                "route already carries bounded-insert provenance"
+            )
+
+    class Specialist:
+        def __init__(self):
+            self.observation = None
+
+        def resolve(self, *, observation):
+            self.observation = observation
+            return TransitionSpecialistResult(
+                temporal=None,
+            )
+
+    router = Router()
+    bounded_insert = Specialist()
+
+    resolver = RoutedTransitionResolver(
+        router=router,
+        hard_cut=Specialist(),
+        fade=Specialist(),
+        interstitial=Specialist(),
+        bounded_insert=bounded_insert,
+        ambiguous=Specialist(),
+    )
+
+    original = _observation()
+
+    kind, result = resolver.resolve(
+        observation=original,
+    )
+
+    assert kind is TransitionKind.BOUNDED_INSERT
+    assert result.temporal is None
+
+    assert router.route_calls == [original.routing]
+    assert router.classify_calls == []
+    assert router.ownership_calls == []
+
+    routed = bounded_insert.observation
+
+    assert routed is not None
+    assert routed is not original
+    assert (
+        routed.bounded_insert_ownership
+        is BoundedInsertOwnership.ASYMMETRIC
+    )
+
+    assert routed.routing is original.routing
+    assert routed.selected is original.selected
+    assert routed.window is original.window
+    assert routed.pcm8 is original.pcm8
+    assert routed.pcm16 is original.pcm16
+
+
 def test_routed_resolver_passes_bounded_insert_ownership_provenance() -> None:
     from brynse.transition_router import (
         BoundedInsertOwnership,

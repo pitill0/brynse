@@ -52,6 +52,19 @@ class TransitionRoutingContext:
             raise ValueError("reference_time_seconds must be non-negative")
 
 
+@dataclass(frozen=True)
+class TransitionRoute:
+    """Non-temporal result describing transition ownership.
+
+    A route selects the specialist that owns the observed phenomenon and may
+    carry already-established routing provenance. Exact temporal boundaries
+    remain exclusively specialist-owned.
+    """
+
+    kind: TransitionKind
+    bounded_insert_ownership: BoundedInsertOwnership | None = None
+
+
 class TransitionRouter(Protocol):
     """Classify transition context without choosing temporal boundaries."""
 
@@ -318,12 +331,29 @@ class DefaultTransitionRouter:
         *,
         context: TransitionRoutingContext,
     ) -> TransitionKind:
+        """Return which specialist owns the transition.
+
+        ``classify()`` remains the compatibility API. Router-v2-aware callers
+        may consume ``route()`` to obtain the same kind together with routing
+        provenance.
+        """
+        return self.route(context=context).kind
+
+    def route(
+        self,
+        *,
+        context: TransitionRoutingContext,
+    ) -> TransitionRoute:
+        """Return specialist ownership without resolving temporal boundaries."""
         bounded_insert_ownership = self.bounded_insert_ownership(
             context=context,
         )
 
         if bounded_insert_ownership is not None:
-            return TransitionKind.BOUNDED_INSERT
+            return TransitionRoute(
+                kind=TransitionKind.BOUNDED_INSERT,
+                bounded_insert_ownership=bounded_insert_ownership,
+            )
 
         fade_like = context.fade.rise is not None and bool(context.fade.basins)
         interstitial_like = self._has_interstitial_pattern(context.hypotheses)
@@ -332,23 +362,35 @@ class DefaultTransitionRouter:
             if self._has_interstitial_absorbed_right_edge_fade(
                 context=context,
             ):
-                return TransitionKind.INTERSTITIAL
+                return TransitionRoute(
+                    kind=TransitionKind.INTERSTITIAL,
+                )
 
-            return TransitionKind.AMBIGUOUS
+            return TransitionRoute(
+                kind=TransitionKind.AMBIGUOUS,
+            )
 
         if fade_like:
-            return TransitionKind.FADE
+            return TransitionRoute(
+                kind=TransitionKind.FADE,
+            )
 
         if interstitial_like:
-            return TransitionKind.INTERSTITIAL
+            return TransitionRoute(
+                kind=TransitionKind.INTERSTITIAL,
+            )
 
         if (
             context.fade.rise is None
             and self._has_complete_local_discontinuity(context.evidence)
         ):
-            return TransitionKind.HARD_CUT
+            return TransitionRoute(
+                kind=TransitionKind.HARD_CUT,
+            )
 
-        return TransitionKind.AMBIGUOUS
+        return TransitionRoute(
+            kind=TransitionKind.AMBIGUOUS,
+        )
 
     def _has_interstitial_absorbed_right_edge_fade(
         self,

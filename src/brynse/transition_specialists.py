@@ -14,6 +14,7 @@ from brynse.models import TemporalSplitDecision, TemporalSplitKind
 from brynse.transition_router import (
     BoundedInsertOwnership,
     TransitionKind,
+    TransitionRoute,
     TransitionRouter,
     TransitionRoutingContext,
 )
@@ -1745,30 +1746,56 @@ class RoutedTransitionResolver:
         *,
         observation: TransitionSpecialistInput,
     ) -> tuple[TransitionKind, TransitionSpecialistResult]:
-        """Classify once, then delegate to exactly one specialist."""
+        """Route once, then delegate to exactly one temporal specialist."""
 
-        kind = self._router.classify(
-            context=observation.routing,
+        route_resolver = getattr(
+            self._router,
+            "route",
+            None,
         )
 
         routed_observation = observation
 
-        if kind is TransitionKind.BOUNDED_INSERT:
-            ownership_resolver = getattr(
-                self._router,
-                "bounded_insert_ownership",
-                None,
+        if callable(route_resolver):
+            route = route_resolver(
+                context=observation.routing,
             )
 
-            if ownership_resolver is not None:
-                ownership = ownership_resolver(
-                    context=observation.routing,
+            if not isinstance(route, TransitionRoute):
+                raise TypeError(
+                    "transition router route() must return TransitionRoute"
                 )
 
-                routed_observation = replace(
-                    observation,
-                    bounded_insert_ownership=ownership,
+            kind = route.kind
+            bounded_insert_ownership = route.bounded_insert_ownership
+        else:
+            # Compatibility path for third-party and test routers that still
+            # implement only the original classify() contract.
+            kind = self._router.classify(
+                context=observation.routing,
+            )
+            bounded_insert_ownership = None
+
+            if kind is TransitionKind.BOUNDED_INSERT:
+                ownership_resolver = getattr(
+                    self._router,
+                    "bounded_insert_ownership",
+                    None,
                 )
+
+                if ownership_resolver is not None:
+                    bounded_insert_ownership = ownership_resolver(
+                        context=observation.routing,
+                    )
+
+        if (
+            kind is TransitionKind.BOUNDED_INSERT
+            and bounded_insert_ownership is not None
+        ):
+            routed_observation = replace(
+                observation,
+                bounded_insert_ownership=bounded_insert_ownership,
+            )
 
         specialist = self._specialists[kind]
 
