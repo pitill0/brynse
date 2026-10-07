@@ -3391,3 +3391,178 @@ def test_phase4e_hard_cut_keeps_basin_only_reference_when_selected_is_inside_sam
         outgoing_end_seconds=204.800,
         incoming_start_seconds=204.800,
     )
+
+
+
+# ---------------------------------------------------------------------------
+# Phase 4f: asymmetric pre-basin structural extent
+# ---------------------------------------------------------------------------
+
+
+def _phase4f_asymmetric_observation(
+    *,
+    incoming_established_seconds,
+    incoming_start_seconds=98.8,
+):
+    from dataclasses import replace
+
+    from brynse.boundaries import (
+        BoundaryEvidence,
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.bounded_insert import (
+        BoundedInsertAsymmetricRegionEvidence,
+    )
+    from brynse.transition_evidence import (
+        FadeRoutingEvidence,
+        IncomingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        BoundedInsertOwnership,
+    )
+
+    structural = BoundaryProposal(
+        time_seconds=98.7,
+        source=BoundaryProposalSource.STRUCTURAL,
+        strength=0.48,
+    )
+    basin = BoundaryProposal(
+        time_seconds=100.0,
+        source=BoundaryProposalSource.BASIN,
+    )
+
+    primary = BoundaryHypothesis(
+        time_seconds=100.0,
+        proposals=(
+            structural,
+            basin,
+        ),
+        evidence=(
+            BoundaryEvidence(
+                proposal=basin,
+                basin_depth=0.2,
+                basin_start_seconds=99.5,
+                basin_recovery_seconds=100.5,
+            ),
+        ),
+    )
+
+    complementary_proposal = BoundaryProposal(
+        time_seconds=103.0,
+        source=BoundaryProposalSource.STRUCTURAL,
+        strength=0.2,
+    )
+    complementary = BoundaryHypothesis(
+        time_seconds=103.0,
+        proposals=(complementary_proposal,),
+    )
+
+    region = BoundedInsertAsymmetricRegionEvidence(
+        reference_time_seconds=102.0,
+        primary=primary,
+        complementary=complementary,
+    )
+
+    base = _asymmetric_specialist_observation(
+        region
+    )
+
+    return replace(
+        base,
+        routing=replace(
+            base.routing,
+            fade=FadeRoutingEvidence(
+                incoming_fades=(
+                    IncomingFadeEvidence(
+                        start_time_seconds=(
+                            incoming_start_seconds
+                        ),
+                        established_time_seconds=(
+                            incoming_established_seconds
+                        ),
+                        start_rms=100.0,
+                        established_rms=500.0,
+                        ascent_ratio=5.0,
+                        ascent_consistency=0.5,
+                        persistence_ratio=3.0,
+                    ),
+                ),
+            ),
+        ),
+        bounded_insert_ownership=(
+            BoundedInsertOwnership.ASYMMETRIC
+        ),
+    )
+
+
+def test_phase4f_asymmetric_pre_basin_structural_owns_outer_left_extent() -> None:
+    from brynse.transition_specialists import (
+        BoundedInsertSpecialist,
+    )
+
+    observation = _phase4f_asymmetric_observation(
+        incoming_established_seconds=99.2,
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=98.7,
+        incoming_start_seconds=103.0,
+    )
+
+
+def test_phase4f_asymmetric_pre_basin_structural_requires_local_incoming_phase() -> None:
+    from brynse.transition_specialists import (
+        BoundedInsertSpecialist,
+    )
+
+    observation = _phase4f_asymmetric_observation(
+        incoming_start_seconds=90.0,
+        incoming_established_seconds=91.0,
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.5,
+        incoming_start_seconds=103.0,
+    )
+
+
+def test_phase4f_compatibility_fallback_does_not_use_incoming_phase() -> None:
+    from dataclasses import replace
+
+    from brynse.transition_specialists import (
+        BoundedInsertSpecialist,
+    )
+
+    observation = _phase4f_asymmetric_observation(
+        incoming_established_seconds=99.2,
+    )
+
+    # Remove Router provenance.  This exercises the compatibility
+    # path, which deliberately calls the fallback without fade
+    # evidence and must preserve its historical result.
+    observation = replace(
+        observation,
+        bounded_insert_ownership=None,
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.5,
+        incoming_start_seconds=103.0,
+    )

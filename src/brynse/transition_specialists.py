@@ -942,7 +942,8 @@ class BoundedInsertSpecialist:
                 )
 
             return self._resolve_asymmetric_fallback(
-                asymmetric[0]
+                asymmetric[0],
+                fade=observation.routing.fade,
             )
 
         # Compatibility path for direct specialist use without
@@ -989,6 +990,8 @@ class BoundedInsertSpecialist:
     @staticmethod
     def _resolve_asymmetric_fallback(
         region,
+        *,
+        fade=None,
     ) -> TransitionSpecialistResult:
         primary_geometry = region.primary_edge.basin_geometry
 
@@ -1034,6 +1037,37 @@ class BoundedInsertSpecialist:
                 < primary_geometry.recovery_seconds
             ):
                 outgoing = basin_time
+
+        # Phase 4f:
+        # A single structural proposal immediately preceding the
+        # primary basin can describe the true outer-left extent of
+        # an asymmetric insert when independent incoming-phase
+        # evidence becomes established between that structural
+        # onset and the basin entry.
+        #
+        # This refines temporal geometry only.  Router ownership
+        # remains unchanged, and direct/legacy specialist use
+        # receives fade=None and therefore preserves its existing
+        # fallback behavior.
+        if (
+            fade is not None
+            and fade.rise is None
+            and len(structural_proposals) == 1
+        ):
+            structural = structural_proposals[0]
+
+            if structural.time_seconds < primary_geometry.start_seconds:
+                incoming_phase_reaches_basin = any(
+                    (
+                        structural.time_seconds
+                        <= incoming.established_time_seconds
+                        <= primary_geometry.start_seconds
+                    )
+                    for incoming in fade.incoming_fades
+                )
+
+                if incoming_phase_reaches_basin:
+                    outgoing = structural.time_seconds
 
         complementary_geometry = (
             region.complementary_edge.basin_geometry
