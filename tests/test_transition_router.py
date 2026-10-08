@@ -351,6 +351,222 @@ def test_fade_assessment_correlates_boundary_support_without_cutting() -> None:
     assert not hasattr(assessment, "incoming_start_seconds")
 
 
+def test_fade_assessment_prefers_outgoing_reconciled_with_selected_incoming() -> None:
+    from brynse.boundaries import (
+        BoundaryConfidence,
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.transition_evidence import (
+        FadeGeometryEvidence,
+        FadeRoutingEvidence,
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+        TransitionEvidenceState,
+    )
+    from brynse.transition_router import (
+        DefaultTransitionRouter,
+        TransitionRoutingContext,
+    )
+
+    def hypothesis(time: float) -> BoundaryHypothesis:
+        return BoundaryHypothesis(
+            time_seconds=time,
+            proposals=(
+                BoundaryProposal(
+                    time_seconds=time,
+                    source=BoundaryProposalSource.STRUCTURAL,
+                ),
+            ),
+            evidence=(),
+            confidence=BoundaryConfidence.UNRESOLVED,
+        )
+
+    stale_outgoing = OutgoingFadeEvidence(
+        start_time_seconds=90.0,
+        floor_time_seconds=95.0,
+        rise_time_seconds=None,
+        start_rms=1000.0,
+        floor_rms=100.0,
+        descent_ratio=10.0,
+        descent_consistency=0.9,
+    )
+    coherent_outgoing = OutgoingFadeEvidence(
+        start_time_seconds=98.0,
+        floor_time_seconds=101.0,
+        rise_time_seconds=104.0,
+        start_rms=1000.0,
+        floor_rms=50.0,
+        descent_ratio=20.0,
+        descent_consistency=0.95,
+    )
+    incoming = IncomingFadeEvidence(
+        start_time_seconds=101.0,
+        established_time_seconds=104.0,
+        start_rms=50.0,
+        established_rms=1000.0,
+        ascent_ratio=20.0,
+        ascent_consistency=0.95,
+        persistence_ratio=10.0,
+    )
+
+    stale_support = hypothesis(95.0)
+    coherent_support = hypothesis(101.2)
+
+    router = DefaultTransitionRouter()
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=100.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(
+            stale_support,
+            coherent_support,
+        ),
+        fade=FadeRoutingEvidence(
+            outgoing_fades=(
+                stale_outgoing,
+                coherent_outgoing,
+            ),
+            incoming_fades=(incoming,),
+            geometries=(
+                FadeGeometryEvidence(
+                    outgoing=coherent_outgoing,
+                    incoming=incoming,
+                ),
+            ),
+        ),
+    )
+
+    legacy_outgoing = router.associate_outgoing_fade(
+        reference_time_seconds=context.reference_time_seconds,
+        outgoing_fades=context.fade.outgoing_fades,
+        hypotheses=context.hypotheses,
+    )
+
+    assert legacy_outgoing is not None
+    assert legacy_outgoing.fade is stale_outgoing
+
+    assessment = router.assess_fade(context=context)
+
+    assert assessment.incoming_association is not None
+    assert assessment.incoming_association.fade is incoming
+
+    assert assessment.outgoing_association is not None
+    assert assessment.outgoing_association.fade is coherent_outgoing
+    assert assessment.outgoing_association.hypothesis is coherent_support
+
+
+def test_fade_assessment_keeps_legacy_outgoing_without_selected_geometry() -> None:
+    from brynse.boundaries import (
+        BoundaryConfidence,
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.transition_evidence import (
+        FadeGeometryEvidence,
+        FadeRoutingEvidence,
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+        TransitionEvidenceState,
+    )
+    from brynse.transition_router import (
+        DefaultTransitionRouter,
+        TransitionRoutingContext,
+    )
+
+    def hypothesis(time: float) -> BoundaryHypothesis:
+        return BoundaryHypothesis(
+            time_seconds=time,
+            proposals=(
+                BoundaryProposal(
+                    time_seconds=time,
+                    source=BoundaryProposalSource.STRUCTURAL,
+                ),
+            ),
+            evidence=(),
+            confidence=BoundaryConfidence.UNRESOLVED,
+        )
+
+    legacy_outgoing = OutgoingFadeEvidence(
+        start_time_seconds=98.0,
+        floor_time_seconds=101.0,
+        rise_time_seconds=None,
+        start_rms=1000.0,
+        floor_rms=100.0,
+        descent_ratio=10.0,
+        descent_consistency=0.9,
+    )
+    unrelated_outgoing = OutgoingFadeEvidence(
+        start_time_seconds=97.0,
+        floor_time_seconds=99.0,
+        rise_time_seconds=None,
+        start_rms=900.0,
+        floor_rms=100.0,
+        descent_ratio=9.0,
+        descent_consistency=0.8,
+    )
+
+    selected_incoming = IncomingFadeEvidence(
+        start_time_seconds=102.0,
+        established_time_seconds=104.0,
+        start_rms=100.0,
+        established_rms=900.0,
+        ascent_ratio=9.0,
+        ascent_consistency=0.9,
+        persistence_ratio=5.0,
+    )
+    unrelated_incoming = IncomingFadeEvidence(
+        start_time_seconds=98.5,
+        established_time_seconds=99.5,
+        start_rms=100.0,
+        established_rms=500.0,
+        ascent_ratio=5.0,
+        ascent_consistency=0.8,
+        persistence_ratio=3.0,
+    )
+
+    support = hypothesis(101.0)
+    incoming_support = hypothesis(102.1)
+
+    router = DefaultTransitionRouter()
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=100.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(
+            support,
+            incoming_support,
+        ),
+        fade=FadeRoutingEvidence(
+            outgoing_fades=(
+                legacy_outgoing,
+                unrelated_outgoing,
+            ),
+            incoming_fades=(
+                selected_incoming,
+                unrelated_incoming,
+            ),
+            geometries=(
+                FadeGeometryEvidence(
+                    outgoing=unrelated_outgoing,
+                    incoming=unrelated_incoming,
+                ),
+            ),
+        ),
+    )
+
+    assessment = router.assess_fade(context=context)
+
+    assert assessment.incoming_association is not None
+    assert assessment.incoming_association.fade is selected_incoming
+
+    assert assessment.outgoing_association is not None
+    assert assessment.outgoing_association.fade is legacy_outgoing
+    assert assessment.outgoing_association.hypothesis is support
+
+
 def test_fade_route_keeps_legacy_candidate_semantics_with_rich_assessment() -> None:
     fade = FadeRoutingEvidence(
         rise=CrossfadeRiseEvidence(

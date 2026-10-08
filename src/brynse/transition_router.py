@@ -693,20 +693,44 @@ class DefaultTransitionRouter:
         context: TransitionRoutingContext,
     ) -> FadeRoutingAssessment:
         """Correlate fade evidence without selecting temporal boundaries."""
+        outgoing_association = self.associate_outgoing_fade(
+            reference_time_seconds=context.reference_time_seconds,
+            outgoing_fades=context.fade.outgoing_fades,
+            hypotheses=context.hypotheses,
+        )
+        incoming_association = self.associate_incoming_fade(
+            reference_time_seconds=context.reference_time_seconds,
+            incoming_fades=context.fade.incoming_fades,
+            hypotheses=context.hypotheses,
+        )
+
+        if incoming_association is not None:
+            coherent_outgoing_fades = tuple(
+                geometry.outgoing
+                for geometry in context.fade.geometries
+                if geometry.incoming is incoming_association.fade
+            )
+
+            if coherent_outgoing_fades:
+                coherent_outgoing_association = (
+                    self.associate_outgoing_fade(
+                        reference_time_seconds=(
+                            context.reference_time_seconds
+                        ),
+                        outgoing_fades=coherent_outgoing_fades,
+                        hypotheses=context.hypotheses,
+                    )
+                )
+
+                if coherent_outgoing_association is not None:
+                    outgoing_association = coherent_outgoing_association
+
         return FadeRoutingAssessment(
             rise_present=context.fade.rise is not None,
             basin_count=len(context.fade.basins),
             geometry_count=len(context.fade.geometries),
-            outgoing_association=self.associate_outgoing_fade(
-                reference_time_seconds=context.reference_time_seconds,
-                outgoing_fades=context.fade.outgoing_fades,
-                hypotheses=context.hypotheses,
-            ),
-            incoming_association=self.associate_incoming_fade(
-                reference_time_seconds=context.reference_time_seconds,
-                incoming_fades=context.fade.incoming_fades,
-                hypotheses=context.hypotheses,
-            ),
+            outgoing_association=outgoing_association,
+            incoming_association=incoming_association,
         )
 
     @staticmethod
