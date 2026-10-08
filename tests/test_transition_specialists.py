@@ -549,6 +549,409 @@ def test_ambiguous_fallback_preserves_none() -> None:
     assert result.temporal is None
 
 
+def _phase6_fade_hypothesis(*, time: float):
+    from brynse.boundaries import (
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+
+    return BoundaryHypothesis(
+        time_seconds=time,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=time,
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+        evidence=(),
+    )
+
+
+def _phase6_replace(instance, /, **changes):
+    from dataclasses import replace
+
+    return replace(instance, **changes)
+
+
+def test_fade_specialist_uses_shared_reconciled_hard_cut_edge() -> None:
+    from brynse.fade_specialist import FadeSpecialist
+    from brynse.transition_evidence import (
+        CrossfadeRiseEvidence,
+        FadeGeometryEvidence,
+        FadeRoutingEvidence,
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    outgoing = OutgoingFadeEvidence(
+        start_time_seconds=99.0,
+        floor_time_seconds=101.0,
+        rise_time_seconds=105.0,
+        start_rms=1000.0,
+        floor_rms=50.0,
+        descent_ratio=20.0,
+        descent_consistency=0.95,
+    )
+    incoming = IncomingFadeEvidence(
+        start_time_seconds=101.0,
+        established_time_seconds=104.0,
+        start_rms=50.0,
+        established_rms=1000.0,
+        ascent_ratio=20.0,
+        ascent_consistency=0.95,
+        persistence_ratio=10.0,
+    )
+
+    outgoing_support = _phase6_fade_hypothesis(time=100.2)
+    incoming_support = _phase6_fade_hypothesis(time=103.0)
+
+    original = _observation(boundary=100.0)
+
+    observation = _phase6_replace(
+        original,
+        routing=_phase6_replace(
+            original.routing,
+            reference_time_seconds=101.5,
+            hypotheses=(
+                outgoing_support,
+                incoming_support,
+            ),
+            fade=FadeRoutingEvidence(
+                rise=CrossfadeRiseEvidence(
+                    time_seconds=105.0,
+                    jump_ratio=3.0,
+                    persistence_ratio=4.0,
+                    after_global_ratio=3.0,
+                ),
+                outgoing_fades=(outgoing,),
+                incoming_fades=(incoming,),
+                geometries=(
+                    FadeGeometryEvidence(
+                        outgoing=outgoing,
+                        incoming=incoming,
+                    ),
+                ),
+            ),
+        ),
+        fade_assessment=FadeRoutingAssessment(
+            rise_present=True,
+            basin_count=0,
+            geometry_count=1,
+            outgoing_association=OutgoingFadeRoutingAssociation(
+                fade=outgoing,
+                hypothesis=outgoing_support,
+                support_distance_seconds=0.8,
+            ),
+            incoming_association=IncomingFadeRoutingAssociation(
+                fade=incoming,
+                hypothesis=incoming_support,
+                support_distance_seconds=2.0,
+            ),
+        ),
+    )
+
+    result = FadeSpecialist.resolve(observation=observation)
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        incoming_start_seconds=101.0,
+        outgoing_end_seconds=101.0,
+    )
+
+
+def test_fade_specialist_uses_shared_reconciled_crossfade_edges() -> None:
+    from brynse.fade_specialist import FadeSpecialist
+    from brynse.transition_evidence import (
+        CrossfadeRiseEvidence,
+        FadeGeometryEvidence,
+        FadeRoutingEvidence,
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    outgoing = OutgoingFadeEvidence(
+        start_time_seconds=99.0,
+        floor_time_seconds=101.4,
+        rise_time_seconds=105.0,
+        start_rms=1000.0,
+        floor_rms=50.0,
+        descent_ratio=20.0,
+        descent_consistency=0.95,
+    )
+    incoming = IncomingFadeEvidence(
+        start_time_seconds=101.0,
+        established_time_seconds=104.0,
+        start_rms=50.0,
+        established_rms=1000.0,
+        ascent_ratio=20.0,
+        ascent_consistency=0.95,
+        persistence_ratio=10.0,
+    )
+
+    outgoing_support = _phase6_fade_hypothesis(time=100.2)
+    incoming_support = _phase6_fade_hypothesis(time=103.0)
+
+    original = _observation(boundary=100.0)
+
+    observation = _phase6_replace(
+        original,
+        routing=_phase6_replace(
+            original.routing,
+            reference_time_seconds=101.5,
+            hypotheses=(
+                outgoing_support,
+                incoming_support,
+            ),
+            fade=FadeRoutingEvidence(
+                rise=CrossfadeRiseEvidence(
+                    time_seconds=105.0,
+                    jump_ratio=3.0,
+                    persistence_ratio=4.0,
+                    after_global_ratio=3.0,
+                ),
+                outgoing_fades=(outgoing,),
+                incoming_fades=(incoming,),
+                geometries=(
+                    FadeGeometryEvidence(
+                        outgoing=outgoing,
+                        incoming=incoming,
+                    ),
+                ),
+            ),
+        ),
+        fade_assessment=FadeRoutingAssessment(
+            rise_present=True,
+            basin_count=0,
+            geometry_count=1,
+            outgoing_association=OutgoingFadeRoutingAssociation(
+                fade=outgoing,
+                hypothesis=outgoing_support,
+                support_distance_seconds=1.2,
+            ),
+            incoming_association=IncomingFadeRoutingAssociation(
+                fade=incoming,
+                hypothesis=incoming_support,
+                support_distance_seconds=2.0,
+            ),
+        ),
+    )
+
+    result = FadeSpecialist.resolve(observation=observation)
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.CROSSFADE,
+        incoming_start_seconds=101.0,
+        outgoing_end_seconds=101.4,
+    )
+
+
+def test_fade_specialist_uses_shared_reconciled_exclusion_edges() -> None:
+    from brynse.fade_specialist import FadeSpecialist
+    from brynse.transition_evidence import (
+        CrossfadeRiseEvidence,
+        FadeGeometryEvidence,
+        FadeRoutingEvidence,
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    outgoing = OutgoingFadeEvidence(
+        start_time_seconds=99.0,
+        floor_time_seconds=101.0,
+        rise_time_seconds=105.0,
+        start_rms=1000.0,
+        floor_rms=50.0,
+        descent_ratio=20.0,
+        descent_consistency=0.95,
+    )
+    incoming = IncomingFadeEvidence(
+        start_time_seconds=101.4,
+        established_time_seconds=104.0,
+        start_rms=50.0,
+        established_rms=1000.0,
+        ascent_ratio=20.0,
+        ascent_consistency=0.95,
+        persistence_ratio=10.0,
+    )
+
+    outgoing_support = _phase6_fade_hypothesis(time=100.2)
+    incoming_support = _phase6_fade_hypothesis(time=103.0)
+
+    original = _observation(boundary=100.0)
+
+    observation = _phase6_replace(
+        original,
+        routing=_phase6_replace(
+            original.routing,
+            reference_time_seconds=101.5,
+            hypotheses=(
+                outgoing_support,
+                incoming_support,
+            ),
+            fade=FadeRoutingEvidence(
+                rise=CrossfadeRiseEvidence(
+                    time_seconds=105.0,
+                    jump_ratio=3.0,
+                    persistence_ratio=4.0,
+                    after_global_ratio=3.0,
+                ),
+                outgoing_fades=(outgoing,),
+                incoming_fades=(incoming,),
+                geometries=(
+                    FadeGeometryEvidence(
+                        outgoing=outgoing,
+                        incoming=incoming,
+                    ),
+                ),
+            ),
+        ),
+        fade_assessment=FadeRoutingAssessment(
+            rise_present=True,
+            basin_count=0,
+            geometry_count=1,
+            outgoing_association=OutgoingFadeRoutingAssociation(
+                fade=outgoing,
+                hypothesis=outgoing_support,
+                support_distance_seconds=0.8,
+            ),
+            incoming_association=IncomingFadeRoutingAssociation(
+                fade=incoming,
+                hypothesis=incoming_support,
+                support_distance_seconds=1.6,
+            ),
+        ),
+    )
+
+    result = FadeSpecialist.resolve(observation=observation)
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        incoming_start_seconds=101.4,
+        outgoing_end_seconds=101.0,
+    )
+
+
+def test_fade_specialist_preserves_policy_without_shared_reconciled_geometry() -> None:
+    from brynse.fade_specialist import FadeSpecialist
+    from brynse.transition_evidence import (
+        CrossfadeRiseEvidence,
+        FadeGeometryEvidence,
+        FadeRoutingEvidence,
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    outgoing = OutgoingFadeEvidence(
+        start_time_seconds=99.0,
+        floor_time_seconds=101.0,
+        rise_time_seconds=105.0,
+        start_rms=1000.0,
+        floor_rms=50.0,
+        descent_ratio=20.0,
+        descent_consistency=0.95,
+    )
+    selected_incoming = IncomingFadeEvidence(
+        start_time_seconds=101.0,
+        established_time_seconds=104.0,
+        start_rms=50.0,
+        established_rms=1000.0,
+        ascent_ratio=20.0,
+        ascent_consistency=0.95,
+        persistence_ratio=10.0,
+    )
+    other_incoming = IncomingFadeEvidence(
+        start_time_seconds=100.0,
+        established_time_seconds=100.8,
+        start_rms=80.0,
+        established_rms=500.0,
+        ascent_ratio=6.25,
+        ascent_consistency=0.8,
+        persistence_ratio=4.0,
+    )
+
+    outgoing_support = _phase6_fade_hypothesis(time=100.2)
+    incoming_support = _phase6_fade_hypothesis(time=103.0)
+
+    original = _observation(boundary=100.0)
+
+    observation = _phase6_replace(
+        original,
+        routing=_phase6_replace(
+            original.routing,
+            reference_time_seconds=101.5,
+            hypotheses=(
+                outgoing_support,
+                incoming_support,
+            ),
+            fade=FadeRoutingEvidence(
+                rise=CrossfadeRiseEvidence(
+                    time_seconds=105.0,
+                    jump_ratio=3.0,
+                    persistence_ratio=4.0,
+                    after_global_ratio=3.0,
+                ),
+                outgoing_fades=(outgoing,),
+                incoming_fades=(
+                    selected_incoming,
+                    other_incoming,
+                ),
+                geometries=(
+                    FadeGeometryEvidence(
+                        outgoing=outgoing,
+                        incoming=other_incoming,
+                    ),
+                ),
+            ),
+        ),
+        fade_assessment=FadeRoutingAssessment(
+            rise_present=True,
+            basin_count=0,
+            geometry_count=1,
+            outgoing_association=OutgoingFadeRoutingAssociation(
+                fade=outgoing,
+                hypothesis=outgoing_support,
+                support_distance_seconds=0.8,
+            ),
+            incoming_association=IncomingFadeRoutingAssociation(
+                fade=selected_incoming,
+                hypothesis=incoming_support,
+                support_distance_seconds=2.0,
+            ),
+        ),
+    )
+
+    result = FadeSpecialist.resolve(observation=observation)
+
+    # The old reference/rise coherence rule remains authoritative when
+    # Router-v2 does not provide one exact shared reconciled geometry.
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        incoming_start_seconds=100.0,
+        outgoing_end_seconds=100.0,
+    )
+
+
 def test_fade_specialist_resolves_crossfade_from_observed_rise() -> None:
     from brynse.fade_specialist import FadeSpecialist
     from brynse.transition_evidence import (

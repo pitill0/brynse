@@ -68,6 +68,45 @@ class FadeSpecialist:
             incoming_selection=incoming_selection,
         )
 
+        if (
+            fade_assessment is not None
+            and outgoing_selection is not None
+            and incoming_selection is not None
+        ):
+            reconciled_geometries = tuple(
+                geometry
+                for geometry in fade_evidence.geometries
+                if (
+                    geometry.outgoing is outgoing_selection.fade
+                    and geometry.incoming is incoming_selection.fade
+                )
+            )
+
+            if len(reconciled_geometries) == 1:
+                geometry = reconciled_geometries[0]
+                specialist_outgoing = (
+                    geometry.outgoing.floor_time_seconds
+                )
+                specialist_incoming = (
+                    geometry.incoming.start_time_seconds
+                )
+
+                if specialist_incoming == specialist_outgoing:
+                    kind = TemporalSplitKind.HARD_CUT
+                elif specialist_incoming < specialist_outgoing:
+                    kind = TemporalSplitKind.CROSSFADE
+                else:
+                    kind = TemporalSplitKind.EXCLUSION
+
+                return TransitionSpecialistResult(
+                    temporal=TemporalSplitDecision(
+                        kind=kind,
+                        incoming_start_seconds=specialist_incoming,
+                        outgoing_end_seconds=specialist_outgoing,
+                    ),
+                    diagnostics=diagnostics,
+                )
+
         outgoing = fade_evidence.rise
 
         if outgoing is None:
