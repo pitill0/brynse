@@ -1642,6 +1642,78 @@ def test_bounded_insert_phase2_shadow_does_not_change_resolve() -> None:
     )
 
 
+def test_routed_resolver_exposes_exact_transition_route() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_evidence import TransitionEvidenceState
+    from brynse.transition_router import (
+        TransitionKind,
+        TransitionRoute,
+        TransitionRoutingContext,
+        TransitionSemanticRoles,
+    )
+    from brynse.transition_specialists import RoutedTransitionResolver
+
+    outgoing = SimpleNamespace(time_seconds=90.0)
+    incoming = SimpleNamespace(time_seconds=110.0)
+    roles = TransitionSemanticRoles(
+        outgoing_handoff=outgoing,
+        incoming_handoff=incoming,
+    )
+
+    route = TransitionRoute(
+        kind=TransitionKind.INTERSTITIAL,
+        semantic_roles=roles,
+    )
+
+    class Router:
+        def route(self, *, context):
+            _ = context
+            return route
+
+    class Specialist:
+        def resolve(self, *, observation):
+            assert observation.semantic_roles is roles
+            return TransitionSpecialistResult(
+                temporal=TemporalSplitDecision(
+                    kind=TemporalSplitKind.EXCLUSION,
+                    outgoing_end_seconds=90.0,
+                    incoming_start_seconds=110.0,
+                )
+            )
+
+    unused = Specialist()
+
+    resolver = RoutedTransitionResolver(
+        router=Router(),
+        hard_cut=unused,
+        fade=unused,
+        interstitial=unused,
+        bounded_insert=unused,
+        ambiguous=unused,
+    )
+
+    observation = TransitionSpecialistInput(
+        routing=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=TransitionEvidenceState(),
+        ),
+        selected=SimpleNamespace(time_seconds=100.0),
+        profile=SimpleNamespace(),
+        window=SimpleNamespace(),
+        pcm8=SimpleNamespace(),
+        pcm16=SimpleNamespace(),
+    )
+
+    kind, result, resolved_route = resolver.resolve_with_route(
+        observation=observation,
+    )
+
+    assert kind is TransitionKind.INTERSTITIAL
+    assert result.temporal is not None
+    assert resolved_route is route
+
+
 def test_routed_resolver_passes_semantic_roles() -> None:
     from types import SimpleNamespace
 

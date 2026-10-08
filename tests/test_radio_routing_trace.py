@@ -134,6 +134,9 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
     assert record == {
         "reference_time_seconds": 100.0,
         "router_kind": "hard_cut",
+        "semantic_outgoing_handoff_seconds": None,
+        "semantic_incoming_handoff_seconds": None,
+        "semantic_inserted_region_kind": None,
         "fade_routing_candidate": None,
         "fade_routing_two_sided_support": None,
         "fade_routing_outgoing_association": None,
@@ -256,6 +259,65 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
         "local_discontinuity_1s": 0.65,
         "local_discontinuity_2s": 0.87,
     }
+
+
+def test_routing_trace_record_exposes_exact_semantic_handoffs() -> None:
+    from brynse.transition_router import (
+        TransitionRoute,
+        TransitionSemanticRoles,
+    )
+
+    base = _observation()
+    hypothesis = base.context.hypotheses[0]
+
+    route = TransitionRoute(
+        kind=TransitionKind.HARD_CUT,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=hypothesis,
+            incoming_handoff=hypothesis,
+        ),
+    )
+
+    record = cli._routing_trace_record(
+        replace(
+            base,
+            route=route,
+        )
+    )
+
+    assert record["semantic_outgoing_handoff_seconds"] == 101.1
+    assert record["semantic_incoming_handoff_seconds"] == 101.1
+    assert record["semantic_inserted_region_kind"] is None
+
+
+def test_routing_trace_record_exposes_exact_inserted_region_kind() -> None:
+    from brynse.transition_router import (
+        BoundedInsertOwnership,
+        TransitionRoute,
+        TransitionSemanticRoles,
+    )
+
+    base = _observation()
+
+    route = TransitionRoute(
+        kind=TransitionKind.BOUNDED_INSERT,
+        bounded_insert_ownership=BoundedInsertOwnership.SYMMETRIC,
+        semantic_roles=TransitionSemanticRoles(
+            inserted_region=object(),
+        ),
+    )
+
+    record = cli._routing_trace_record(
+        replace(
+            base,
+            kind=TransitionKind.BOUNDED_INSERT,
+            route=route,
+        )
+    )
+
+    assert record["semantic_outgoing_handoff_seconds"] is None
+    assert record["semantic_incoming_handoff_seconds"] is None
+    assert record["semantic_inserted_region_kind"] == "symmetric"
 
 
 def test_routing_trace_record_preserves_router_v2_assessments() -> None:

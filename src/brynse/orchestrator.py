@@ -54,6 +54,7 @@ from brynse.transition_router import (
     HardCutRoutingAssessment,
     InterstitialRoutingAssessment,
     TransitionKind,
+    TransitionRoute,
     TransitionRouter,
     TransitionRoutingContext,
 )
@@ -83,6 +84,7 @@ class TransitionRoutingObservation:
     context: TransitionRoutingContext
     kind: TransitionKind
     temporal: TemporalSplitDecision
+    route: TransitionRoute | None = None
     bounded_insert: BoundedInsertRoutingAssessment | None = None
     bounded_insert_routing: BoundedInsertRoutingProvenance | None = None
     fade_routing: FadeRoutingAssessment | None = None
@@ -393,8 +395,8 @@ class MultiSignalAcousticCandidateResolver:
             pcm16=pcm16,
         )
 
-        routing_kind, specialist_result = (
-            self._routed_transition_resolver.resolve(
+        routing_kind, specialist_result, transition_route = (
+            self._routed_transition_resolver.resolve_with_route(
                 observation=specialist_input,
             )
         )
@@ -457,6 +459,7 @@ class MultiSignalAcousticCandidateResolver:
                     context=routing_context,
                     kind=routing_kind,
                     temporal=temporal,
+                    route=transition_route,
                     bounded_insert=bounded_insert,
                     bounded_insert_routing=bounded_insert_routing,
                     fade_routing=fade_routing,

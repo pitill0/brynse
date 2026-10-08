@@ -119,6 +119,12 @@ def _routing_trace_record(observation) -> dict[str, object]:
     fade_routing = observation.fade_routing
     interstitial_routing = observation.interstitial_routing
     hard_cut_routing = observation.hard_cut_routing
+    route = observation.route
+    semantic_roles = (
+        None
+        if route is None
+        else route.semantic_roles
+    )
     fade_rise = context.fade.rise
 
     local_values = (
@@ -219,6 +225,32 @@ def _routing_trace_record(observation) -> dict[str, object]:
     return {
         "reference_time_seconds": context.reference_time_seconds,
         "router_kind": observation.kind.value,
+        "semantic_outgoing_handoff_seconds": (
+            None
+            if (
+                semantic_roles is None
+                or semantic_roles.outgoing_handoff is None
+            )
+            else semantic_roles.outgoing_handoff.time_seconds
+        ),
+        "semantic_incoming_handoff_seconds": (
+            None
+            if (
+                semantic_roles is None
+                or semantic_roles.incoming_handoff is None
+            )
+            else semantic_roles.incoming_handoff.time_seconds
+        ),
+        "semantic_inserted_region_kind": (
+            None
+            if (
+                semantic_roles is None
+                or semantic_roles.inserted_region is None
+                or route is None
+                or route.bounded_insert_ownership is None
+            )
+            else route.bounded_insert_ownership.value
+        ),
         "fade_routing_candidate": (
             None
             if fade_routing is None

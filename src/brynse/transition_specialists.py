@@ -1926,6 +1926,22 @@ class RoutedTransitionResolver:
         observation: TransitionSpecialistInput,
     ) -> tuple[TransitionKind, TransitionSpecialistResult]:
         """Route once, then delegate to exactly one temporal specialist."""
+        kind, result, _route = self.resolve_with_route(
+            observation=observation,
+        )
+        return kind, result
+
+    def resolve_with_route(
+        self,
+        *,
+        observation: TransitionSpecialistInput,
+    ) -> tuple[
+        TransitionKind,
+        TransitionSpecialistResult,
+        TransitionRoute | None,
+    ]:
+        """Resolve and expose the exact Router-v2 route used for dispatch."""
+        route = None
 
         route_resolver = getattr(
             self._router,
@@ -2026,4 +2042,4 @@ class RoutedTransitionResolver:
             observation=routed_observation,
         )
 
-        return kind, result
+        return kind, result, route
