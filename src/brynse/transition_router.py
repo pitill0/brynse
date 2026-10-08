@@ -887,6 +887,50 @@ class DefaultTransitionRouter:
         )
 
     @staticmethod
+    def assign_interstitial_roles(
+        *,
+        fade: FadeRoutingAssessment,
+        interstitial: InterstitialRoutingAssessment,
+    ) -> TransitionSemanticRoles | None:
+        """Assign interstitial evidence roles without choosing temporal cuts.
+
+        Fade associations already identify which reconciled hypothesis is
+        acoustically associated with each semantic side.  An association is
+        promoted to an interstitial role only when the same hypothesis is also
+        independently owned by the interstitial supported-handoff set.
+
+        Partial roles are intentional: missing support remains unknown rather
+        than being inferred from temporal proximity.
+        """
+        supported = interstitial.supported_handoffs
+
+        outgoing = (
+            fade.outgoing_association.hypothesis
+            if (
+                fade.outgoing_association is not None
+                and fade.outgoing_association.hypothesis in supported
+            )
+            else None
+        )
+
+        incoming = (
+            fade.incoming_association.hypothesis
+            if (
+                fade.incoming_association is not None
+                and fade.incoming_association.hypothesis in supported
+            )
+            else None
+        )
+
+        if outgoing is None and incoming is None:
+            return None
+
+        return TransitionSemanticRoles(
+            outgoing_handoff=outgoing,
+            incoming_handoff=incoming,
+        )
+
+    @staticmethod
     def resolve_fade_interstitial_conflict(
         *,
         fade: FadeRoutingAssessment,
@@ -1022,10 +1066,20 @@ class DefaultTransitionRouter:
                 interstitial=interstitial_assessment,
             )
 
+            semantic_roles = (
+                self.assign_interstitial_roles(
+                    fade=fade_assessment,
+                    interstitial=interstitial_assessment,
+                )
+                if conflict_kind is TransitionKind.INTERSTITIAL
+                else None
+            )
+
             return TransitionRoute(
                 kind=conflict_kind,
                 fade_assessment=fade_assessment,
                 interstitial_assessment=interstitial_assessment,
+                semantic_roles=semantic_roles,
             )
 
         if fade_like:
@@ -1040,6 +1094,10 @@ class DefaultTransitionRouter:
                 kind=TransitionKind.INTERSTITIAL,
                 fade_assessment=fade_assessment,
                 interstitial_assessment=interstitial_assessment,
+                semantic_roles=self.assign_interstitial_roles(
+                    fade=fade_assessment,
+                    interstitial=interstitial_assessment,
+                ),
             )
 
         hard_cut = self.assess_hard_cut(

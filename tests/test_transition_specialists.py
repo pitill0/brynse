@@ -126,6 +126,150 @@ def test_interstitial_specialist_refines_outgoing_from_supported_analysis() -> N
     )
 
 
+def test_interstitial_specialist_uses_routed_outgoing_role_instead_of_nearest_high() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import (
+        BoundaryEvidence,
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.transition_router import TransitionSemanticRoles
+
+    def hypothesis(time_seconds):
+        basin = BoundaryProposal(
+            time_seconds=time_seconds,
+            source=BoundaryProposalSource.BASIN,
+        )
+        structural = BoundaryProposal(
+            time_seconds=time_seconds,
+            source=BoundaryProposalSource.STRUCTURAL,
+        )
+
+        return BoundaryHypothesis(
+            time_seconds=time_seconds,
+            proposals=(basin, structural),
+            evidence=(
+                BoundaryEvidence(
+                    proposal=basin,
+                    basin_start_seconds=time_seconds - 0.5,
+                    basin_recovery_seconds=time_seconds + 0.5,
+                ),
+            ),
+        )
+
+    routed_outgoing = hypothesis(96.0)
+    nearer_high = hypothesis(104.0)
+
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=108.0,
+    )
+
+    def analysis(item):
+        return SimpleNamespace(
+            hypothesis=item,
+            assessment=SimpleNamespace(
+                candidate_confidence=BoundaryConfidence.HIGH,
+            ),
+        )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return (
+                analysis(routed_outgoing),
+                analysis(nearer_high),
+            )
+
+    base = _observation(boundary=100.0)
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            hypotheses=(routed_outgoing, nearer_high),
+        ),
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=routed_outgoing,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=96.0,
+        incoming_start_seconds=108.0,
+    )
+
+
+def test_interstitial_specialist_routed_outgoing_role_must_still_be_high() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import (
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.transition_router import TransitionSemanticRoles
+
+    routed_outgoing = BoundaryHypothesis(
+        time_seconds=96.0,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=96.0,
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+    )
+
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=108.0,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return (
+                SimpleNamespace(
+                    hypothesis=routed_outgoing,
+                    assessment=SimpleNamespace(
+                        candidate_confidence=BoundaryConfidence.UNRESOLVED,
+                    ),
+                ),
+            )
+
+    base = _observation(boundary=100.0)
+    observation = replace(
+        base,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=routed_outgoing,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal is refined
+
+
 def test_interstitial_specialist_keeps_outgoing_without_supported_analysis() -> None:
     refined = TemporalSplitDecision(
         kind=TemporalSplitKind.EXCLUSION,

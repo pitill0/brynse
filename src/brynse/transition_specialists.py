@@ -479,12 +479,24 @@ class InterstitialSpecialist:
         )
 
         if refined.kind is not TemporalSplitKind.EXCLUSION:
+            semantic_roles = observation.semantic_roles
+
             recovered = self._recover_supported_exclusion(
                 selected_time_seconds=boundary,
                 hypotheses=observation.routing.hypotheses,
                 supported_handoffs=(
                     observation.interstitial_assessment.supported_handoffs
                     if observation.interstitial_assessment is not None
+                    else None
+                ),
+                outgoing_handoff=(
+                    semantic_roles.outgoing_handoff
+                    if semantic_roles is not None
+                    else None
+                ),
+                incoming_handoff=(
+                    semantic_roles.incoming_handoff
+                    if semantic_roles is not None
                     else None
                 ),
             )
@@ -534,6 +546,11 @@ class InterstitialSpecialist:
             selected_time_seconds=boundary,
             incoming_start_seconds=refined.incoming_start_seconds,
             analyses=analyses,
+            outgoing_handoff=(
+                observation.semantic_roles.outgoing_handoff
+                if observation.semantic_roles is not None
+                else None
+            ),
         )
 
         if outgoing is None:
@@ -835,32 +852,44 @@ class InterstitialSpecialist:
         selected_time_seconds: float,
         hypotheses,
         supported_handoffs=None,
+        outgoing_handoff=None,
+        incoming_handoff=None,
     ) -> TemporalSplitDecision | None:
         from brynse.boundaries import BoundaryProposalSource
 
-        ordered = tuple(
-            sorted(
-                hypotheses,
-                key=lambda hypothesis: hypothesis.time_seconds,
+        complete_role_pair = (
+            outgoing_handoff is not None
+            and incoming_handoff is not None
+            and outgoing_handoff is not incoming_handoff
+        )
+
+        if complete_role_pair:
+            left = outgoing_handoff
+            right = incoming_handoff
+        else:
+            ordered = tuple(
+                sorted(
+                    hypotheses,
+                    key=lambda hypothesis: hypothesis.time_seconds,
+                )
             )
-        )
 
-        before = tuple(
-            hypothesis
-            for hypothesis in ordered
-            if hypothesis.time_seconds < selected_time_seconds
-        )
-        after = tuple(
-            hypothesis
-            for hypothesis in ordered
-            if hypothesis.time_seconds > selected_time_seconds
-        )
+            before = tuple(
+                hypothesis
+                for hypothesis in ordered
+                if hypothesis.time_seconds < selected_time_seconds
+            )
+            after = tuple(
+                hypothesis
+                for hypothesis in ordered
+                if hypothesis.time_seconds > selected_time_seconds
+            )
 
-        if not before or not after:
-            return None
+            if not before or not after:
+                return None
 
-        left = before[-1]
-        right = after[0]
+            left = before[-1]
+            right = after[0]
 
         if supported_handoffs is None:
             def supported(hypothesis) -> bool:
@@ -879,6 +908,9 @@ class InterstitialSpecialist:
                 return hypothesis in supported_handoffs
 
         if not supported(left) or not supported(right):
+            return None
+
+        if left.time_seconds >= right.time_seconds:
             return None
 
         left_distance = (
@@ -918,7 +950,31 @@ class InterstitialSpecialist:
         selected_time_seconds: float,
         incoming_start_seconds: float,
         analyses,
+        outgoing_handoff=None,
     ) -> float | None:
+        if outgoing_handoff is not None:
+            matching = tuple(
+                analysis
+                for analysis in analyses
+                if analysis.hypothesis is outgoing_handoff
+            )
+
+            if len(matching) != 1:
+                return None
+
+            analysis = matching[0]
+
+            if (
+                analysis.assessment.candidate_confidence
+                is not BoundaryConfidence.HIGH
+            ):
+                return None
+
+            if analysis.hypothesis.time_seconds >= incoming_start_seconds:
+                return None
+
+            return analysis.hypothesis.time_seconds
+
         supported = tuple(
             analysis.hypothesis.time_seconds
             for analysis in analyses

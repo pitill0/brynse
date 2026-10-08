@@ -474,6 +474,235 @@ def test_interstitial_assessment_keeps_single_handoff_non_candidate() -> None:
     assert assessment.legacy_candidate is False
 
 
+def test_interstitial_roles_reuse_supported_fade_associations() -> None:
+    from brynse.transition_evidence import (
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        InterstitialRoutingAssessment,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    outgoing = _interstitial_hypothesis(
+        basin_time=98.0,
+        structural_time=98.2,
+        basin_start=97.5,
+        basin_recovery=98.5,
+    )
+    incoming = _interstitial_hypothesis(
+        basin_time=102.0,
+        structural_time=102.2,
+        basin_start=101.5,
+        basin_recovery=102.5,
+    )
+
+    fade = FadeRoutingAssessment(
+        rise_present=False,
+        basin_count=0,
+        geometry_count=0,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=OutgoingFadeEvidence(
+                start_time_seconds=96.0,
+                floor_time_seconds=98.0,
+                rise_time_seconds=None,
+                start_rms=1000.0,
+                floor_rms=100.0,
+                descent_ratio=10.0,
+                descent_consistency=0.9,
+            ),
+            hypothesis=outgoing,
+            support_distance_seconds=0.0,
+        ),
+        incoming_association=IncomingFadeRoutingAssociation(
+            fade=IncomingFadeEvidence(
+                start_time_seconds=101.0,
+                established_time_seconds=102.0,
+                start_rms=100.0,
+                established_rms=800.0,
+                ascent_ratio=8.0,
+                ascent_consistency=0.9,
+                persistence_ratio=3.0,
+            ),
+            hypothesis=incoming,
+            support_distance_seconds=0.0,
+        ),
+    )
+    interstitial = InterstitialRoutingAssessment(
+        routing_handoffs=(outgoing, incoming),
+        supported_handoffs=(outgoing, incoming),
+    )
+
+    roles = DefaultTransitionRouter.assign_interstitial_roles(
+        fade=fade,
+        interstitial=interstitial,
+    )
+
+    assert roles is not None
+    assert roles.outgoing_handoff is outgoing
+    assert roles.incoming_handoff is incoming
+
+
+def test_interstitial_roles_allow_partial_supported_association() -> None:
+    from brynse.transition_evidence import OutgoingFadeEvidence
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        InterstitialRoutingAssessment,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    outgoing = _interstitial_hypothesis(
+        basin_time=98.0,
+        structural_time=98.2,
+        basin_start=97.5,
+        basin_recovery=98.5,
+    )
+
+    fade = FadeRoutingAssessment(
+        rise_present=False,
+        basin_count=0,
+        geometry_count=0,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=OutgoingFadeEvidence(
+                start_time_seconds=96.0,
+                floor_time_seconds=98.0,
+                rise_time_seconds=None,
+                start_rms=1000.0,
+                floor_rms=100.0,
+                descent_ratio=10.0,
+                descent_consistency=0.9,
+            ),
+            hypothesis=outgoing,
+            support_distance_seconds=0.0,
+        ),
+    )
+    interstitial = InterstitialRoutingAssessment(
+        supported_handoffs=(outgoing,),
+    )
+
+    roles = DefaultTransitionRouter.assign_interstitial_roles(
+        fade=fade,
+        interstitial=interstitial,
+    )
+
+    assert roles is not None
+    assert roles.outgoing_handoff is outgoing
+    assert roles.incoming_handoff is None
+
+
+def test_interstitial_roles_allow_same_supported_handoff_on_both_sides() -> None:
+    from brynse.transition_evidence import (
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        InterstitialRoutingAssessment,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    shared = _interstitial_hypothesis(
+        basin_time=100.0,
+        structural_time=100.2,
+        basin_start=99.0,
+        basin_recovery=101.0,
+    )
+
+    fade = FadeRoutingAssessment(
+        rise_present=False,
+        basin_count=0,
+        geometry_count=0,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=OutgoingFadeEvidence(
+                start_time_seconds=98.0,
+                floor_time_seconds=100.0,
+                rise_time_seconds=None,
+                start_rms=1000.0,
+                floor_rms=100.0,
+                descent_ratio=10.0,
+                descent_consistency=0.9,
+            ),
+            hypothesis=shared,
+            support_distance_seconds=0.0,
+        ),
+        incoming_association=IncomingFadeRoutingAssociation(
+            fade=IncomingFadeEvidence(
+                start_time_seconds=99.0,
+                established_time_seconds=100.0,
+                start_rms=100.0,
+                established_rms=800.0,
+                ascent_ratio=8.0,
+                ascent_consistency=0.9,
+                persistence_ratio=3.0,
+            ),
+            hypothesis=shared,
+            support_distance_seconds=0.0,
+        ),
+    )
+    interstitial = InterstitialRoutingAssessment(
+        supported_handoffs=(shared,),
+    )
+
+    roles = DefaultTransitionRouter.assign_interstitial_roles(
+        fade=fade,
+        interstitial=interstitial,
+    )
+
+    assert roles is not None
+    assert roles.outgoing_handoff is shared
+    assert roles.incoming_handoff is shared
+
+
+def test_interstitial_roles_ignore_fade_association_without_interstitial_support() -> None:
+    from brynse.boundaries import BoundaryProposal, BoundaryProposalSource
+    from brynse.transition_evidence import OutgoingFadeEvidence
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        InterstitialRoutingAssessment,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    unrelated = BoundaryHypothesis(
+        time_seconds=98.0,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=98.0,
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+    )
+
+    fade = FadeRoutingAssessment(
+        rise_present=False,
+        basin_count=0,
+        geometry_count=0,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=OutgoingFadeEvidence(
+                start_time_seconds=96.0,
+                floor_time_seconds=98.0,
+                rise_time_seconds=None,
+                start_rms=1000.0,
+                floor_rms=100.0,
+                descent_ratio=10.0,
+                descent_consistency=0.9,
+            ),
+            hypothesis=unrelated,
+            support_distance_seconds=0.0,
+        ),
+    )
+
+    assert (
+        DefaultTransitionRouter.assign_interstitial_roles(
+            fade=fade,
+            interstitial=InterstitialRoutingAssessment(),
+        )
+        is None
+    )
+
+
 def test_default_transition_router_routes_clear_interstitial_pattern() -> None:
     from brynse.transition_router import DefaultTransitionRouter
 
