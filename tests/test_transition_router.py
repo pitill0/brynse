@@ -599,6 +599,113 @@ def test_fade_route_keeps_legacy_candidate_semantics_with_rich_assessment() -> N
     assert route.fade_assessment.legacy_candidate is True
 
 
+def test_fade_route_rejects_completed_geometry_from_earlier_transition() -> None:
+    from brynse.boundaries import (
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.transition_evidence import (
+        FadeGeometryEvidence,
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+
+    reference = 120.0
+
+    outgoing_support = BoundaryHypothesis(
+        time_seconds=101.0,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=101.0,
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+        evidence=(),
+    )
+
+    later_support = BoundaryHypothesis(
+        time_seconds=130.0,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=130.0,
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+        evidence=(),
+    )
+
+    outgoing = OutgoingFadeEvidence(
+        start_time_seconds=96.0,
+        floor_time_seconds=101.0,
+        rise_time_seconds=104.0,
+        start_rms=1000.0,
+        floor_rms=100.0,
+        descent_ratio=10.0,
+        descent_consistency=0.9,
+    )
+
+    completed_incoming = IncomingFadeEvidence(
+        start_time_seconds=101.0,
+        established_time_seconds=106.0,
+        start_rms=100.0,
+        established_rms=900.0,
+        ascent_ratio=9.0,
+        ascent_consistency=0.9,
+        persistence_ratio=4.0,
+    )
+
+    fade = FadeRoutingEvidence(
+        rise=CrossfadeRiseEvidence(
+            time_seconds=130.0,
+            jump_ratio=3.5,
+            persistence_ratio=4.0,
+            after_global_ratio=3.0,
+        ),
+        basins=(
+            CrossfadeBasinEvidence(
+                center_time_seconds=101.0,
+                lead_seconds=0.85,
+                width_seconds=0.7,
+                prominence=1.5,
+                quietness=1.8,
+            ),
+        ),
+        outgoing_fades=(outgoing,),
+        incoming_fades=(completed_incoming,),
+        geometries=(
+            FadeGeometryEvidence(
+                outgoing=outgoing,
+                incoming=completed_incoming,
+            ),
+        ),
+    )
+
+    router = DefaultTransitionRouter()
+    context = TransitionRoutingContext(
+        reference_time_seconds=reference,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(outgoing_support, later_support),
+        fade=fade,
+    )
+
+    assessment = router.assess_fade(context=context)
+
+    assert assessment.legacy_candidate is True
+    assert assessment.outgoing_association is not None
+    assert assessment.outgoing_association.fade is outgoing
+    assert assessment.incoming_association is None
+    assert assessment.stale_completed_geometry is True
+    assert assessment.ownership_candidate is False
+
+    route = router.route(context=context)
+
+    assert route.kind is TransitionKind.AMBIGUOUS
+    assert route.fade_assessment is not None
+    assert route.fade_assessment.legacy_candidate is True
+    assert route.fade_assessment.ownership_candidate is False
+
+
 def test_default_transition_router_routes_clear_fade() -> None:
     from brynse.transition_router import DefaultTransitionRouter
 

@@ -85,11 +85,24 @@ class FadeRoutingAssessment:
     geometry_count: int
     outgoing_association: OutgoingFadeRoutingAssociation | None = None
     incoming_association: IncomingFadeRoutingAssociation | None = None
+    stale_completed_geometry: bool = False
 
     @property
     def legacy_candidate(self) -> bool:
         """Preserve the pre-Router-v2 fade routing condition."""
         return self.rise_present and self.basin_count > 0
+
+    @property
+    def ownership_candidate(self) -> bool:
+        """Return whether fade evidence may own the current transition.
+
+        Legacy rise+basin semantics remain available when rich correlation
+        cannot say more. When correlated geometry proves that the selected
+        outgoing fade already completed into an incoming fade before the
+        current reference, that completed earlier phenomenon must not own
+        the later transition.
+        """
+        return self.legacy_candidate and not self.stale_completed_geometry
 
     @property
     def has_two_sided_support(self) -> bool:
@@ -718,12 +731,34 @@ class DefaultTransitionRouter:
                 if coherent_outgoing_association is not None:
                     outgoing_association = coherent_outgoing_association
 
+        stale_completed_geometry = False
+
+        if (
+            outgoing_association is not None
+            and incoming_association is None
+        ):
+            associated_geometries = tuple(
+                geometry
+                for geometry in context.fade.geometries
+                if geometry.outgoing is outgoing_association.fade
+            )
+
+            stale_completed_geometry = (
+                bool(associated_geometries)
+                and all(
+                    geometry.incoming.established_time_seconds
+                    < context.reference_time_seconds
+                    for geometry in associated_geometries
+                )
+            )
+
         return FadeRoutingAssessment(
             rise_present=context.fade.rise is not None,
             basin_count=len(context.fade.basins),
             geometry_count=len(context.fade.geometries),
             outgoing_association=outgoing_association,
             incoming_association=incoming_association,
+            stale_completed_geometry=stale_completed_geometry,
         )
 
     @staticmethod
@@ -1307,7 +1342,7 @@ class DefaultTransitionRouter:
                 ),
             )
 
-        fade_like = fade_assessment.legacy_candidate
+        fade_like = fade_assessment.ownership_candidate
         interstitial_like = interstitial_assessment.legacy_candidate
 
         if fade_like and interstitial_like:
