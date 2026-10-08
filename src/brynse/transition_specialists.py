@@ -21,6 +21,7 @@ from brynse.transition_router import (
     TransitionRoute,
     TransitionRouter,
     TransitionRoutingContext,
+    TransitionSemanticRoles,
 )
 
 
@@ -39,6 +40,7 @@ class TransitionSpecialistInput:
     hard_cut_assessment: HardCutRoutingAssessment | None = None
     fade_assessment: FadeRoutingAssessment | None = None
     interstitial_assessment: InterstitialRoutingAssessment | None = None
+    semantic_roles: TransitionSemanticRoles | None = None
 
 
 @dataclass(frozen=True)
@@ -1837,6 +1839,7 @@ class RoutedTransitionResolver:
             hard_cut_assessment = route.hard_cut
             fade_assessment = route.fade_assessment
             interstitial_assessment = route.interstitial_assessment
+            semantic_roles = route.semantic_roles
         else:
             # Compatibility path for third-party and test routers that still
             # implement only the original classify() contract.
@@ -1848,6 +1851,7 @@ class RoutedTransitionResolver:
             hard_cut_assessment = None
             fade_assessment = None
             interstitial_assessment = None
+            semantic_roles = None
 
             if kind is TransitionKind.BOUNDED_INSERT:
                 ownership_resolver = getattr(
@@ -1896,6 +1900,12 @@ class RoutedTransitionResolver:
             routed_observation = replace(
                 routed_observation,
                 interstitial_assessment=interstitial_assessment,
+            )
+
+        if semantic_roles is not None:
+            routed_observation = replace(
+                routed_observation,
+                semantic_roles=semantic_roles,
             )
 
         specialist = self._specialists[kind]

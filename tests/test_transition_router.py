@@ -22,6 +22,7 @@ from brynse.transition_router import (
     TransitionRoute,
     TransitionRouter,
     TransitionRoutingContext,
+    TransitionSemanticRoles,
 )
 
 
@@ -123,6 +124,61 @@ def test_transition_route_carries_ownership_without_temporal_boundary() -> None:
     )
     assert not hasattr(route, "incoming_start_seconds")
     assert not hasattr(route, "outgoing_end_seconds")
+
+
+def test_transition_semantic_roles_reference_evidence_without_temporal_cuts() -> None:
+    from brynse.boundaries import BoundaryProposal, BoundaryProposalSource
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+
+    outgoing = BoundaryHypothesis(
+        time_seconds=98.0,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=98.0,
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+    )
+    incoming = BoundaryHypothesis(
+        time_seconds=102.0,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=102.0,
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+    )
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=100.0,
+        left=outgoing,
+        right=incoming,
+    )
+
+    roles = TransitionSemanticRoles(
+        outgoing_handoff=outgoing,
+        incoming_handoff=incoming,
+        inserted_region=region,
+    )
+
+    assert roles.outgoing_handoff is outgoing
+    assert roles.incoming_handoff is incoming
+    assert roles.inserted_region is region
+
+    for temporal_name in (
+        "incoming_start_seconds",
+        "outgoing_end_seconds",
+        "boundary_time_seconds",
+        "cut_time_seconds",
+    ):
+        assert not hasattr(roles, temporal_name)
+
+
+def test_transition_route_semantic_roles_default_to_none() -> None:
+    route = TransitionRoute(
+        kind=TransitionKind.AMBIGUOUS,
+    )
+
+    assert route.semantic_roles is None
 
 
 def test_default_transition_router_classify_matches_route_kind() -> None:

@@ -1498,6 +1498,98 @@ def test_bounded_insert_phase2_shadow_does_not_change_resolve() -> None:
     )
 
 
+def test_routed_resolver_passes_semantic_roles() -> None:
+    from types import SimpleNamespace
+
+    from brynse.boundaries import (
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.transition_router import (
+        TransitionKind,
+        TransitionRoute,
+        TransitionRoutingContext,
+        TransitionSemanticRoles,
+    )
+    from brynse.transition_specialists import RoutedTransitionResolver
+
+    outgoing = BoundaryHypothesis(
+        time_seconds=99.0,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=99.0,
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+    )
+    incoming = BoundaryHypothesis(
+        time_seconds=101.0,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=101.0,
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+    )
+
+    roles = TransitionSemanticRoles(
+        outgoing_handoff=outgoing,
+        incoming_handoff=incoming,
+    )
+
+    class Router:
+        def route(self, *, context):
+            return TransitionRoute(
+                kind=TransitionKind.INTERSTITIAL,
+                semantic_roles=roles,
+            )
+
+        def classify(self, *, context):
+            return TransitionKind.INTERSTITIAL
+
+    class Specialist:
+        observation = None
+
+        def resolve(self, *, observation):
+            self.observation = observation
+            return TransitionSpecialistResult(
+                temporal=None,
+            )
+
+    interstitial = Specialist()
+
+    resolver = RoutedTransitionResolver(
+        router=Router(),
+        hard_cut=Specialist(),
+        fade=Specialist(),
+        interstitial=interstitial,
+        bounded_insert=Specialist(),
+        ambiguous=Specialist(),
+    )
+
+    observation = TransitionSpecialistInput(
+        routing=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=SimpleNamespace(),
+        ),
+        selected=SimpleNamespace(time_seconds=100.0),
+        profile=None,
+        window=None,
+        pcm8=None,
+        pcm16=None,
+    )
+
+    kind, result = resolver.resolve(
+        observation=observation,
+    )
+
+    assert kind is TransitionKind.INTERSTITIAL
+    assert result.temporal is None
+    assert interstitial.observation is not None
+    assert interstitial.observation.semantic_roles is roles
+
+
 def test_routed_resolver_passes_interstitial_assessment_provenance() -> None:
     from brynse.transition_router import (
         InterstitialRoutingAssessment,

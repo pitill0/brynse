@@ -153,6 +153,25 @@ class HardCutRoutingAssessment:
 
 
 @dataclass(frozen=True)
+class TransitionSemanticRoles:
+    """Router-owned semantic roles for already observed acoustic evidence.
+
+    Roles identify which descriptive evidence belongs to each side of a
+    transition without selecting the exact temporal geometry within that
+    evidence. Specialists remain solely responsible for final split
+    boundaries.
+    """
+
+    outgoing_handoff: BoundaryHypothesis | None = None
+    incoming_handoff: BoundaryHypothesis | None = None
+    inserted_region: (
+        BoundedInsertRegionEvidence
+        | BoundedInsertAsymmetricRegionEvidence
+        | None
+    ) = None
+
+
+@dataclass(frozen=True)
 class TransitionRoute:
     """Non-temporal result describing transition ownership.
 
@@ -167,6 +186,7 @@ class TransitionRoute:
     hard_cut: HardCutRoutingAssessment | None = None
     fade_assessment: FadeRoutingAssessment | None = None
     interstitial_assessment: InterstitialRoutingAssessment | None = None
+    semantic_roles: TransitionSemanticRoles | None = None
 
 
 class TransitionRouter(Protocol):
