@@ -1082,6 +1082,7 @@ class DefaultTransitionRouter:
         *,
         fade: FadeRoutingAssessment,
         interstitial: InterstitialRoutingAssessment,
+        context: TransitionRoutingContext | None = None,
     ) -> TransitionSemanticRoles | None:
         """Assign interstitial evidence roles without choosing temporal cuts.
 
@@ -1092,6 +1093,13 @@ class DefaultTransitionRouter:
 
         Partial roles are intentional: missing support remains unknown rather
         than being inferred from temporal proximity.
+
+        When routing context is available, an already-known outgoing handoff
+        may complete the incoming identity through exactly one observed
+        bounded-region relationship whose right edge is independently owned by
+        the interstitial supported-handoff set.  The region supplies semantic
+        relationship only; it does not transfer bounded-insert ownership or
+        choose temporal geometry.
         """
         supported = interstitial.supported_handoffs
 
@@ -1112,6 +1120,23 @@ class DefaultTransitionRouter:
             )
             else None
         )
+
+        if (
+            outgoing is not None
+            and incoming is None
+            and context is not None
+        ):
+            matching_regions = tuple(
+                region
+                for region in context.bounded_insert_regions
+                if (
+                    region.left is outgoing
+                    and region.right in supported
+                )
+            )
+
+            if len(matching_regions) == 1:
+                incoming = matching_regions[0].right
 
         if outgoing is None and incoming is None:
             return None
@@ -1304,6 +1329,7 @@ class DefaultTransitionRouter:
                 self.assign_interstitial_roles(
                     fade=fade_assessment,
                     interstitial=interstitial_assessment,
+                    context=context,
                 )
                 if conflict_kind is TransitionKind.INTERSTITIAL
                 else None
@@ -1331,6 +1357,7 @@ class DefaultTransitionRouter:
                 semantic_roles=self.assign_interstitial_roles(
                     fade=fade_assessment,
                     interstitial=interstitial_assessment,
+                    context=context,
                 ),
             )
 

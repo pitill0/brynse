@@ -808,6 +808,167 @@ def test_interstitial_roles_allow_partial_supported_association() -> None:
     assert roles.incoming_handoff is None
 
 
+def test_interstitial_roles_complete_incoming_from_unique_observed_region() -> None:
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_evidence import (
+        OutgoingFadeEvidence,
+        TransitionEvidenceState,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        InterstitialRoutingAssessment,
+        OutgoingFadeRoutingAssociation,
+        TransitionRoutingContext,
+    )
+
+    outgoing = _interstitial_hypothesis(
+        basin_time=98.0,
+        structural_time=98.2,
+        basin_start=97.5,
+        basin_recovery=98.5,
+    )
+    incoming = _interstitial_hypothesis(
+        basin_time=102.0,
+        structural_time=102.2,
+        basin_start=101.5,
+        basin_recovery=102.5,
+    )
+
+    fade = FadeRoutingAssessment(
+        rise_present=False,
+        basin_count=0,
+        geometry_count=0,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=OutgoingFadeEvidence(
+                start_time_seconds=96.0,
+                floor_time_seconds=98.0,
+                rise_time_seconds=None,
+                start_rms=1000.0,
+                floor_rms=100.0,
+                descent_ratio=10.0,
+                descent_consistency=0.9,
+            ),
+            hypothesis=outgoing,
+            support_distance_seconds=0.0,
+        ),
+    )
+    interstitial = InterstitialRoutingAssessment(
+        supported_handoffs=(outgoing, incoming),
+    )
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=100.0,
+        left=outgoing,
+        right=incoming,
+    )
+    context = TransitionRoutingContext(
+        reference_time_seconds=100.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(outgoing, incoming),
+        bounded_insert_regions=(region,),
+    )
+
+    roles = DefaultTransitionRouter.assign_interstitial_roles(
+        fade=fade,
+        interstitial=interstitial,
+        context=context,
+    )
+
+    assert roles is not None
+    assert roles.outgoing_handoff is outgoing
+    assert roles.incoming_handoff is incoming
+
+
+def test_interstitial_roles_keep_incoming_unknown_when_region_is_ambiguous() -> None:
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_evidence import (
+        OutgoingFadeEvidence,
+        TransitionEvidenceState,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        InterstitialRoutingAssessment,
+        OutgoingFadeRoutingAssociation,
+        TransitionRoutingContext,
+    )
+
+    outgoing = _interstitial_hypothesis(
+        basin_time=98.0,
+        structural_time=98.2,
+        basin_start=97.5,
+        basin_recovery=98.5,
+    )
+    incoming_a = _interstitial_hypothesis(
+        basin_time=102.0,
+        structural_time=102.2,
+        basin_start=101.5,
+        basin_recovery=102.5,
+    )
+    incoming_b = _interstitial_hypothesis(
+        basin_time=106.0,
+        structural_time=106.2,
+        basin_start=105.5,
+        basin_recovery=106.5,
+    )
+
+    fade = FadeRoutingAssessment(
+        rise_present=False,
+        basin_count=0,
+        geometry_count=0,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=OutgoingFadeEvidence(
+                start_time_seconds=96.0,
+                floor_time_seconds=98.0,
+                rise_time_seconds=None,
+                start_rms=1000.0,
+                floor_rms=100.0,
+                descent_ratio=10.0,
+                descent_consistency=0.9,
+            ),
+            hypothesis=outgoing,
+            support_distance_seconds=0.0,
+        ),
+    )
+    interstitial = InterstitialRoutingAssessment(
+        supported_handoffs=(
+            outgoing,
+            incoming_a,
+            incoming_b,
+        ),
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=100.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(
+            outgoing,
+            incoming_a,
+            incoming_b,
+        ),
+        bounded_insert_regions=(
+            BoundedInsertRegionEvidence(
+                reference_time_seconds=100.0,
+                left=outgoing,
+                right=incoming_a,
+            ),
+            BoundedInsertRegionEvidence(
+                reference_time_seconds=100.0,
+                left=outgoing,
+                right=incoming_b,
+            ),
+        ),
+    )
+
+    roles = DefaultTransitionRouter.assign_interstitial_roles(
+        fade=fade,
+        interstitial=interstitial,
+        context=context,
+    )
+
+    assert roles is not None
+    assert roles.outgoing_handoff is outgoing
+    assert roles.incoming_handoff is None
+
+
 def test_interstitial_roles_allow_same_supported_handoff_on_both_sides() -> None:
     from brynse.transition_evidence import (
         IncomingFadeEvidence,

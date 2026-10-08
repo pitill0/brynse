@@ -283,6 +283,71 @@ def test_interstitial_distinct_roles_preserve_existing_pipeline() -> None:
     assert pipeline.calls == 1
 
 
+def test_interstitial_complete_roles_recover_supported_exclusion() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.transition_router import (
+        InterstitialRoutingAssessment,
+        TransitionSemanticRoles,
+    )
+
+    outgoing = SimpleNamespace(
+        time_seconds=100.0,
+        basin_geometry=SimpleNamespace(
+            start_seconds=99.0,
+            minimum_seconds=100.0,
+            recovery_seconds=101.0,
+        ),
+    )
+    incoming = SimpleNamespace(
+        time_seconds=108.0,
+        basin_geometry=SimpleNamespace(
+            start_seconds=107.0,
+            minimum_seconds=107.5,
+            recovery_seconds=107.8,
+        ),
+    )
+
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=105.0,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+    base = _observation(boundary=100.0)
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            hypotheses=(outgoing, incoming),
+        ),
+        interstitial_assessment=InterstitialRoutingAssessment(
+            supported_handoffs=(outgoing, incoming),
+        ),
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=outgoing,
+            incoming_handoff=incoming,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=108.0,
+    )
+
+
 def test_interstitial_specialist_reuses_incoming_pipeline() -> None:
     refined = TemporalSplitDecision(
         kind=TemporalSplitKind.EXCLUSION,

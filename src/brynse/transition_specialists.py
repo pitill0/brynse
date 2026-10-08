@@ -555,6 +555,29 @@ class InterstitialSpecialist:
                 ),
             )
 
+        if (
+            semantic_roles is not None
+            and semantic_roles.outgoing_handoff is not None
+            and semantic_roles.incoming_handoff is not None
+            and semantic_roles.outgoing_handoff
+            is not semantic_roles.incoming_handoff
+            and observation.interstitial_assessment is not None
+        ):
+            recovered = self._recover_supported_exclusion(
+                selected_time_seconds=boundary,
+                hypotheses=observation.routing.hypotheses,
+                supported_handoffs=(
+                    observation.interstitial_assessment.supported_handoffs
+                ),
+                outgoing_handoff=semantic_roles.outgoing_handoff,
+                incoming_handoff=semantic_roles.incoming_handoff,
+            )
+
+            if recovered is not None:
+                return TransitionSpecialistResult(
+                    temporal=recovered,
+                )
+
         phase_refined = self._refine_dominant_incoming_basin(
             decision=refined,
             reference_time_seconds=(
