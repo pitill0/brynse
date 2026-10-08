@@ -1148,10 +1148,32 @@ class BoundedInsertSpecialist:
         region,
         *,
         reference_time_seconds=None,
+        semantic_roles=None,
     ):
         """Propose a phase-aware symmetric exclusion without applying it."""
         if reference_time_seconds is None:
             reference_time_seconds = region.reference_time_seconds
+
+        if (
+            semantic_roles is not None
+            and semantic_roles.inserted_region is region
+            and semantic_roles.outgoing_handoff is None
+            and semantic_roles.incoming_handoff is region.right
+            and region.structural_only_interior_count > 0
+        ):
+            left_geometry = region.left_edge.basin_geometry
+            right_geometry = region.right_edge.basin_geometry
+
+            if left_geometry is not None and right_geometry is not None:
+                outgoing = left_geometry.start_seconds
+                incoming = right_geometry.recovery_seconds
+
+                if outgoing < incoming:
+                    return TemporalSplitDecision(
+                        kind=TemporalSplitKind.EXCLUSION,
+                        outgoing_end_seconds=outgoing,
+                        incoming_start_seconds=incoming,
+                    )
 
         outgoing = region.left.time_seconds
 
@@ -1532,6 +1554,7 @@ class BoundedInsertSpecialist:
                 reference_time_seconds=(
                     observation.routing.reference_time_seconds
                 ),
+                semantic_roles=semantic_roles,
             )
 
             if proposal is not None:

@@ -5539,3 +5539,75 @@ def test_phase4j_terminal_handoff_requires_supported_basin() -> None:
         outgoing_end_seconds=101.5,
         incoming_start_seconds=101.5,
     )
+
+
+def test_bounded_insert_partial_roles_exclude_complete_edge_envelopes() -> None:
+    from dataclasses import replace
+
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_router import (
+        BoundedInsertOwnership,
+        TransitionSemanticRoles,
+    )
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    left = _phase2_supported_edge(
+        time_seconds=100.25,
+        basin_start_seconds=99.0,
+        basin_recovery_seconds=100.0,
+    )
+    interior_a = _phase2_structural_only(
+        time_seconds=104.0,
+    )
+    interior_b = _phase2_structural_only(
+        time_seconds=106.0,
+    )
+    right = _phase2_supported_edge(
+        time_seconds=110.25,
+        basin_start_seconds=110.0,
+        basin_recovery_seconds=112.0,
+    )
+
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=109.5,
+        left=left,
+        right=right,
+        interior_hypotheses=(
+            interior_a,
+            interior_b,
+        ),
+    )
+
+    base = _bounded_insert_specialist_observation(
+        regions=(region,),
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=109.5,
+            hypotheses=(
+                left,
+                interior_a,
+                interior_b,
+                right,
+            ),
+            bounded_insert_regions=(region,),
+        ),
+        bounded_insert_ownership=BoundedInsertOwnership.SYMMETRIC,
+        semantic_roles=TransitionSemanticRoles(
+            inserted_region=region,
+            incoming_handoff=right,
+        ),
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=99.0,
+        incoming_start_seconds=112.0,
+    )
