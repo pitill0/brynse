@@ -2318,6 +2318,202 @@ def test_bounded_insert_without_provenance_preserves_symmetric_legacy() -> None:
     )
 
 
+def test_bounded_insert_routed_symmetric_roles_prevent_predecessor_rediscovery() -> None:
+    from dataclasses import replace
+
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_router import (
+        BoundedInsertOwnership,
+        TransitionSemanticRoles,
+    )
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    predecessor = _phase2_supported_edge(
+        time_seconds=90.0,
+        basin_start_seconds=89.5,
+        basin_recovery_seconds=90.5,
+        structural_strength=0.9,
+    )
+    bridge = _phase2_structural_only(
+        time_seconds=95.0,
+    )
+    left = _phase2_supported_edge(
+        time_seconds=100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.3,
+    )
+    right = _phase2_supported_edge(
+        time_seconds=110.0,
+        basin_start_seconds=109.5,
+        basin_recovery_seconds=110.5,
+        structural_strength=0.2,
+    )
+
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=105.0,
+        left=left,
+        right=right,
+    )
+
+    base = _bounded_insert_specialist_observation(
+        regions=(region,),
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=105.0,
+            hypotheses=(predecessor, bridge, left, right),
+            bounded_insert_regions=(region,),
+        ),
+        bounded_insert_ownership=BoundedInsertOwnership.SYMMETRIC,
+        semantic_roles=TransitionSemanticRoles(
+            inserted_region=region,
+            incoming_handoff=right,
+        ),
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=110.0,
+    )
+
+
+def test_bounded_insert_routed_symmetric_roles_use_assigned_predecessor() -> None:
+    from dataclasses import replace
+
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_router import (
+        BoundedInsertOwnership,
+        TransitionSemanticRoles,
+    )
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    predecessor = _phase2_supported_edge(
+        time_seconds=90.0,
+        basin_start_seconds=89.5,
+        basin_recovery_seconds=90.5,
+        structural_strength=0.9,
+    )
+    bridge = _phase2_structural_only(
+        time_seconds=95.0,
+    )
+    left = _phase2_supported_edge(
+        time_seconds=100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.3,
+    )
+    right = _phase2_supported_edge(
+        time_seconds=110.0,
+        basin_start_seconds=109.5,
+        basin_recovery_seconds=110.5,
+        structural_strength=0.2,
+    )
+
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=105.0,
+        left=left,
+        right=right,
+    )
+
+    base = _bounded_insert_specialist_observation(
+        regions=(region,),
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=105.0,
+            hypotheses=(predecessor, bridge, left, right),
+            bounded_insert_regions=(region,),
+        ),
+        bounded_insert_ownership=BoundedInsertOwnership.SYMMETRIC,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=predecessor,
+            inserted_region=region,
+            incoming_handoff=right,
+        ),
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=90.0,
+        incoming_start_seconds=110.0,
+    )
+
+
+def test_bounded_insert_asymmetric_outer_extent_consumes_routed_roles() -> None:
+    from brynse.bounded_insert import (
+        BoundedInsertAsymmetricRegionEvidence,
+    )
+    from brynse.transition_router import TransitionSemanticRoles
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    predecessor = _phase2_supported_edge(
+        time_seconds=90.0,
+        basin_start_seconds=89.5,
+        basin_recovery_seconds=90.5,
+        structural_strength=0.5,
+    )
+    primary = _asymmetric_specialist_primary(
+        time_seconds=100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+    )
+    complementary = _asymmetric_structural_complement(
+        time_seconds=105.0,
+    )
+    outer_right = _phase2_supported_edge(
+        time_seconds=110.0,
+        basin_start_seconds=109.5,
+        basin_recovery_seconds=110.5,
+        structural_strength=0.2,
+    )
+
+    asymmetric = BoundedInsertAsymmetricRegionEvidence(
+        reference_time_seconds=105.0,
+        primary=primary,
+        complementary=complementary,
+    )
+
+    roles = TransitionSemanticRoles(
+        outgoing_handoff=predecessor,
+        inserted_region=asymmetric,
+        incoming_handoff=outer_right,
+    )
+
+    proposal = BoundedInsertSpecialist.propose_asymmetric_outer_extent(
+        asymmetric_region=asymmetric,
+        symmetric_regions=(),
+        hypotheses=(
+            predecessor,
+            primary,
+            complementary,
+            outer_right,
+        ),
+        semantic_roles=roles,
+    )
+
+    assert proposal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=90.0,
+        incoming_start_seconds=110.0,
+    )
+
+
 def test_bounded_insert_phase2_asymmetric_provenance_gets_outer_extent() -> None:
     from dataclasses import replace
 

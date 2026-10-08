@@ -2118,6 +2118,233 @@ def test_live_asymmetric_failures_receive_router_ownership(
     )
 
 
+def test_bounded_insert_roles_preserve_symmetric_region_and_outer_edges() -> None:
+    router = DefaultTransitionRouter()
+
+    predecessor = _bounded_insert_edge(
+        90.0,
+        basin_start_seconds=89.5,
+        basin_recovery_seconds=90.5,
+        structural_strength=1.0,
+    )
+    bridge = _structural_only_hypothesis(
+        95.0,
+        structural_strength=0.8,
+    )
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.3,
+    )
+    right = _bounded_insert_edge(
+        110.0,
+        basin_start_seconds=109.5,
+        basin_recovery_seconds=110.5,
+        structural_strength=0.2,
+    )
+
+    region = _bounded_insert_region(
+        reference_time_seconds=105.0,
+        left=left,
+        right=right,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=105.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(predecessor, bridge, left, right),
+        bounded_insert_regions=(region,),
+    )
+
+    provenance = router.assess_bounded_insert_routing(
+        context=context,
+    )
+
+    roles = router.assign_bounded_insert_roles(
+        context=context,
+        provenance=provenance,
+        fade=router.assess_fade(context=context),
+    )
+
+    assert provenance.ownership is BoundedInsertOwnership.SYMMETRIC
+    assert roles is not None
+    assert roles.inserted_region is region
+    assert roles.outgoing_handoff is predecessor
+    assert roles.incoming_handoff is right
+
+
+def test_bounded_insert_roles_allow_partial_symmetric_exterior_identity() -> None:
+    router = DefaultTransitionRouter()
+
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.3,
+    )
+    right = _bounded_insert_edge(
+        110.0,
+        basin_start_seconds=109.5,
+        basin_recovery_seconds=110.5,
+        structural_strength=0.2,
+    )
+    dominant = _bounded_insert_edge(
+        120.0,
+        basin_start_seconds=119.5,
+        basin_recovery_seconds=120.5,
+        structural_strength=1.0,
+    )
+
+    region = _bounded_insert_region(
+        reference_time_seconds=105.0,
+        left=left,
+        right=right,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=105.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(left, right, dominant),
+        bounded_insert_regions=(region,),
+    )
+
+    provenance = router.assess_bounded_insert_routing(
+        context=context,
+    )
+
+    roles = router.assign_bounded_insert_roles(
+        context=context,
+        provenance=provenance,
+        fade=router.assess_fade(context=context),
+    )
+
+    assert provenance.ownership is BoundedInsertOwnership.SYMMETRIC
+    assert roles is not None
+    assert roles.inserted_region is region
+    assert roles.outgoing_handoff is None
+    assert roles.incoming_handoff is right
+
+
+def test_bounded_insert_roles_assign_asymmetric_outer_identities() -> None:
+    from brynse.bounded_insert import (
+        BoundedInsertAsymmetricRegionEvidence,
+    )
+
+    router = DefaultTransitionRouter()
+
+    predecessor = _bounded_insert_edge(
+        90.0,
+        basin_start_seconds=89.5,
+        basin_recovery_seconds=90.5,
+        structural_strength=0.5,
+    )
+    primary = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=1.0,
+    )
+    complementary = _structural_only_hypothesis(
+        105.0,
+        structural_strength=0.3,
+    )
+    outer_right = _bounded_insert_edge(
+        110.0,
+        basin_start_seconds=109.5,
+        basin_recovery_seconds=110.5,
+        structural_strength=0.2,
+    )
+
+    asymmetric = BoundedInsertAsymmetricRegionEvidence(
+        reference_time_seconds=105.0,
+        primary=primary,
+        complementary=complementary,
+    )
+    outer = _bounded_insert_region(
+        reference_time_seconds=105.0,
+        left=primary,
+        right=outer_right,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=105.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(
+            predecessor,
+            primary,
+            complementary,
+            outer_right,
+        ),
+        bounded_insert_regions=(outer,),
+        bounded_insert_asymmetric_regions=(asymmetric,),
+    )
+
+    provenance = router.assess_bounded_insert_routing(
+        context=context,
+    )
+
+    roles = router.assign_bounded_insert_roles(
+        context=context,
+        provenance=provenance,
+        fade=router.assess_fade(context=context),
+    )
+
+    assert provenance.ownership is BoundedInsertOwnership.ASYMMETRIC
+    assert roles is not None
+    assert roles.inserted_region is asymmetric
+    assert roles.outgoing_handoff is predecessor
+    assert roles.incoming_handoff is outer_right
+
+
+def test_bounded_insert_route_carries_semantic_roles() -> None:
+    router = DefaultTransitionRouter()
+
+    predecessor = _bounded_insert_edge(
+        90.0,
+        basin_start_seconds=89.5,
+        basin_recovery_seconds=90.5,
+        structural_strength=1.0,
+    )
+    bridge = _structural_only_hypothesis(
+        95.0,
+        structural_strength=0.8,
+    )
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.3,
+    )
+    right = _bounded_insert_edge(
+        110.0,
+        basin_start_seconds=109.5,
+        basin_recovery_seconds=110.5,
+        structural_strength=0.2,
+    )
+
+    region = _bounded_insert_region(
+        reference_time_seconds=105.0,
+        left=left,
+        right=right,
+    )
+
+    route = router.route(
+        context=TransitionRoutingContext(
+            reference_time_seconds=105.0,
+            evidence=TransitionEvidenceState(),
+            hypotheses=(predecessor, bridge, left, right),
+            bounded_insert_regions=(region,),
+        ),
+    )
+
+    assert route.kind is TransitionKind.BOUNDED_INSERT
+    assert route.semantic_roles is not None
+    assert route.semantic_roles.inserted_region is region
+    assert route.semantic_roles.outgoing_handoff is predecessor
+    assert route.semantic_roles.incoming_handoff is right
+
+
 def test_bounded_insert_routing_provenance_preserves_symmetric_region() -> None:
     left = _bounded_insert_edge(
         100.0,

@@ -887,6 +887,173 @@ class DefaultTransitionRouter:
         )
 
     @staticmethod
+    def assign_bounded_insert_roles(
+        *,
+        context: TransitionRoutingContext,
+        provenance: BoundedInsertRoutingProvenance,
+        fade: FadeRoutingAssessment,
+    ) -> TransitionSemanticRoles | None:
+        """Assign bounded-insert evidence identities without choosing cuts.
+
+        The owned region identifies the inserted phenomenon itself.  Exterior
+        handoffs are published only when existing acoustic relationships make
+        their identity defensible.  Missing exterior identity remains unknown.
+        """
+
+        region = provenance.owned_region
+
+        if region is None:
+            return None
+
+        def proposal_sources(hypothesis):
+            return {
+                proposal.source
+                for proposal in hypothesis.proposals
+            }
+
+        def supported(hypothesis) -> bool:
+            sources = proposal_sources(hypothesis)
+
+            return (
+                BoundaryProposalSource.BASIN in sources
+                and BoundaryProposalSource.STRUCTURAL in sources
+                and hypothesis.basin_geometry is not None
+            )
+
+        def structural_only(hypothesis) -> bool:
+            return proposal_sources(hypothesis) == {
+                BoundaryProposalSource.STRUCTURAL
+            }
+
+        ordered = tuple(
+            sorted(
+                context.hypotheses,
+                key=lambda hypothesis: hypothesis.time_seconds,
+            )
+        )
+
+        if provenance.ownership is BoundedInsertOwnership.SYMMETRIC:
+            outgoing = None
+            incoming = region.right
+
+            association = fade.outgoing_association
+
+            if association is not None:
+                candidate = association.hypothesis
+
+                if candidate is region.left:
+                    outgoing = candidate
+
+                elif (
+                    candidate.time_seconds < region.left.time_seconds
+                    and supported(candidate)
+                ):
+                    intervening = tuple(
+                        hypothesis
+                        for hypothesis in ordered
+                        if (
+                            candidate.time_seconds
+                            < hypothesis.time_seconds
+                            < region.left.time_seconds
+                        )
+                    )
+
+                    if all(
+                        structural_only(hypothesis)
+                        for hypothesis in intervening
+                    ):
+                        outgoing = candidate
+
+            if outgoing is None:
+                previous_supported = tuple(
+                    hypothesis
+                    for hypothesis in ordered
+                    if (
+                        hypothesis.time_seconds < region.left.time_seconds
+                        and supported(hypothesis)
+                    )
+                )
+
+                if previous_supported:
+                    predecessor = previous_supported[-1]
+
+                    intervening = tuple(
+                        hypothesis
+                        for hypothesis in ordered
+                        if (
+                            predecessor.time_seconds
+                            < hypothesis.time_seconds
+                            < region.left.time_seconds
+                        )
+                    )
+
+                    if (
+                        intervening
+                        and all(
+                            structural_only(hypothesis)
+                            for hypothesis in intervening
+                        )
+                    ):
+                        outgoing = predecessor
+
+            return TransitionSemanticRoles(
+                outgoing_handoff=outgoing,
+                inserted_region=region,
+                incoming_handoff=incoming,
+            )
+
+        if provenance.ownership is BoundedInsertOwnership.ASYMMETRIC:
+            outgoing = None
+            incoming = None
+
+            previous_supported = tuple(
+                hypothesis
+                for hypothesis in ordered
+                if (
+                    hypothesis.time_seconds < region.primary.time_seconds
+                    and supported(hypothesis)
+                )
+            )
+
+            if previous_supported:
+                predecessor = previous_supported[-1]
+
+                intervening = tuple(
+                    hypothesis
+                    for hypothesis in ordered
+                    if (
+                        predecessor.time_seconds
+                        < hypothesis.time_seconds
+                        < region.primary.time_seconds
+                    )
+                )
+
+                if all(
+                    structural_only(hypothesis)
+                    for hypothesis in intervening
+                ):
+                    outgoing = predecessor
+
+            matching_outer = tuple(
+                candidate
+                for candidate in context.bounded_insert_regions
+                if candidate.left is region.primary
+            )
+
+            if len(matching_outer) == 1:
+                incoming = matching_outer[0].right
+
+            return TransitionSemanticRoles(
+                outgoing_handoff=outgoing,
+                inserted_region=region,
+                incoming_handoff=incoming,
+            )
+
+        return TransitionSemanticRoles(
+            inserted_region=region,
+        )
+
+    @staticmethod
     def assign_interstitial_roles(
         *,
         fade: FadeRoutingAssessment,
@@ -1093,6 +1260,11 @@ class DefaultTransitionRouter:
                 bounded_insert=bounded_insert,
                 fade_assessment=fade_assessment,
                 interstitial_assessment=interstitial_assessment,
+                semantic_roles=self.assign_bounded_insert_roles(
+                    context=context,
+                    provenance=bounded_insert,
+                    fade=fade_assessment,
+                ),
             )
 
         fade_like = fade_assessment.legacy_candidate

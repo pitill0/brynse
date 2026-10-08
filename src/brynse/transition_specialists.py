@@ -1076,26 +1076,41 @@ class BoundedInsertSpecialist:
         *,
         region,
         hypotheses,
+        semantic_roles=None,
     ):
-        """Recover one supported predecessor through structural-only interior."""
+        """Resolve symmetric outer geometry inside already assigned roles."""
         anchor = region.left
 
-        previous_supported = tuple(
-            hypothesis
-            for hypothesis in hypotheses
-            if (
-                hypothesis.time_seconds < anchor.time_seconds
-                and cls._is_supported_edge(hypothesis)
+        if semantic_roles is not None:
+            predecessor = semantic_roles.outgoing_handoff
+            incoming_handoff = semantic_roles.incoming_handoff
+
+            if predecessor is None or incoming_handoff is None:
+                return None
+
+            if semantic_roles.inserted_region is not region:
+                return None
+        else:
+            previous_supported = tuple(
+                hypothesis
+                for hypothesis in hypotheses
+                if (
+                    hypothesis.time_seconds < anchor.time_seconds
+                    and cls._is_supported_edge(hypothesis)
+                )
             )
-        )
 
-        if not previous_supported:
+            if not previous_supported:
+                return None
+
+            predecessor = max(
+                previous_supported,
+                key=lambda hypothesis: hypothesis.time_seconds,
+            )
+            incoming_handoff = region.right
+
+        if predecessor.time_seconds >= anchor.time_seconds:
             return None
-
-        predecessor = max(
-            previous_supported,
-            key=lambda hypothesis: hypothesis.time_seconds,
-        )
 
         interior = tuple(
             hypothesis
@@ -1117,7 +1132,7 @@ class BoundedInsertSpecialist:
             return None
 
         outgoing = predecessor.time_seconds
-        incoming = region.right.time_seconds
+        incoming = incoming_handoff.time_seconds
 
         if outgoing >= incoming:
             return None
@@ -1186,6 +1201,7 @@ class BoundedInsertSpecialist:
         decision: TemporalSplitDecision,
         region,
         observation: TransitionSpecialistInput,
+        semantic_roles=None,
     ) -> TemporalSplitDecision | None:
         """Recover a terminal outgoing fade before a symmetric insert.
 
@@ -1287,21 +1303,33 @@ class BoundedInsertSpecialist:
         if left_peak or right_peak:
             return None
 
-        ordered_before_left = tuple(
-            hypothesis
-            for hypothesis in sorted(
-                observation.routing.hypotheses,
-                key=lambda hypothesis: hypothesis.time_seconds,
+        if semantic_roles is not None:
+            if semantic_roles.inserted_region is not region:
+                return None
+
+            predecessor = semantic_roles.outgoing_handoff
+
+            if predecessor is None:
+                return None
+        else:
+            ordered_before_left = tuple(
+                hypothesis
+                for hypothesis in sorted(
+                    observation.routing.hypotheses,
+                    key=lambda hypothesis: hypothesis.time_seconds,
+                )
+                if hypothesis.time_seconds < region.left.time_seconds
             )
-            if hypothesis.time_seconds < region.left.time_seconds
-        )
 
-        if not ordered_before_left:
-            return None
+            if not ordered_before_left:
+                return None
 
-        predecessor = ordered_before_left[-1]
+            predecessor = ordered_before_left[-1]
 
         if not cls._is_supported_edge(predecessor):
+            return None
+
+        if predecessor.time_seconds >= region.left.time_seconds:
             return None
 
         predecessor_geometry = predecessor.basin_geometry
@@ -1356,14 +1384,9 @@ class BoundedInsertSpecialist:
         asymmetric_region,
         symmetric_regions,
         hypotheses,
+        semantic_roles=None,
     ):
-        """Propose the exterior extent around one asymmetric anchor.
-
-        The asymmetric primary remains the ownership anchor.  A preceding
-        supported edge may extend the left side only when all intervening
-        hypotheses are structural-only.  A symmetric region beginning at the
-        anchor may provide the exterior right edge.
-        """
+        """Resolve asymmetric exterior geometry inside assigned roles."""
         anchor = asymmetric_region.primary
 
         ordered = tuple(
@@ -1373,22 +1396,46 @@ class BoundedInsertSpecialist:
             )
         )
 
-        previous_supported = tuple(
-            hypothesis
-            for hypothesis in ordered
-            if (
-                hypothesis.time_seconds < anchor.time_seconds
-                and cls._is_supported_edge(hypothesis)
+        if semantic_roles is not None:
+            if semantic_roles.inserted_region is not asymmetric_region:
+                return None
+
+            predecessor = semantic_roles.outgoing_handoff
+            incoming_handoff = semantic_roles.incoming_handoff
+
+            if predecessor is None or incoming_handoff is None:
+                return None
+        else:
+            previous_supported = tuple(
+                hypothesis
+                for hypothesis in ordered
+                if (
+                    hypothesis.time_seconds < anchor.time_seconds
+                    and cls._is_supported_edge(hypothesis)
+                )
             )
-        )
 
-        if not previous_supported:
+            if not previous_supported:
+                return None
+
+            predecessor = max(
+                previous_supported,
+                key=lambda hypothesis: hypothesis.time_seconds,
+            )
+
+            matching_symmetric = tuple(
+                region
+                for region in symmetric_regions
+                if region.left.time_seconds == anchor.time_seconds
+            )
+
+            if len(matching_symmetric) != 1:
+                return None
+
+            incoming_handoff = matching_symmetric[0].right
+
+        if predecessor.time_seconds >= anchor.time_seconds:
             return None
-
-        predecessor = max(
-            previous_supported,
-            key=lambda hypothesis: hypothesis.time_seconds,
-        )
 
         interior = tuple(
             hypothesis
@@ -1406,19 +1453,8 @@ class BoundedInsertSpecialist:
         ):
             return None
 
-        matching_symmetric = tuple(
-            region
-            for region in symmetric_regions
-            if region.left.time_seconds == anchor.time_seconds
-        )
-
-        if len(matching_symmetric) != 1:
-            return None
-
-        outer = matching_symmetric[0]
-
         outgoing = predecessor.time_seconds
-        incoming = outer.right.time_seconds
+        incoming = incoming_handoff.time_seconds
 
         if outgoing >= incoming:
             return None
@@ -1441,6 +1477,7 @@ class BoundedInsertSpecialist:
         )
         ownership = observation.bounded_insert_ownership
         provenance = observation.bounded_insert_assessment
+        semantic_roles = observation.semantic_roles
 
         if provenance is not None:
             ownership = provenance.ownership
@@ -1461,6 +1498,14 @@ class BoundedInsertSpecialist:
 
                 region = symmetric[0]
 
+            if (
+                semantic_roles is not None
+                and semantic_roles.inserted_region is not region
+            ):
+                return TransitionSpecialistResult(
+                    temporal=None,
+                )
+
             proposal = self.propose_structural_bridge_cut(
                 region,
             )
@@ -1474,6 +1519,7 @@ class BoundedInsertSpecialist:
                 proposal = self.propose_symmetric_outer_extent(
                     region=region,
                     hypotheses=observation.routing.hypotheses,
+                    semantic_roles=semantic_roles,
                 )
 
                 if proposal is not None:
@@ -1494,6 +1540,7 @@ class BoundedInsertSpecialist:
                         decision=proposal,
                         region=region,
                         observation=observation,
+                        semantic_roles=semantic_roles,
                     )
                 )
 
@@ -1525,6 +1572,14 @@ class BoundedInsertSpecialist:
 
                 region = asymmetric[0]
 
+            if (
+                semantic_roles is not None
+                and semantic_roles.inserted_region is not region
+            ):
+                return TransitionSpecialistResult(
+                    temporal=None,
+                )
+
             proposal = None
 
             if observation.routing.fade.rise is None:
@@ -1532,6 +1587,7 @@ class BoundedInsertSpecialist:
                     asymmetric_region=region,
                     symmetric_regions=symmetric,
                     hypotheses=observation.routing.hypotheses,
+                    semantic_roles=semantic_roles,
                 )
 
             if proposal is not None:
