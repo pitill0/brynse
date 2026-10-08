@@ -40,6 +40,249 @@ def test_hard_cut_specialist_owns_both_edges() -> None:
     )
 
 
+def test_interstitial_shared_handoff_uses_routed_fade_hard_cut_geometry() -> None:
+    from dataclasses import replace
+
+    from brynse.boundaries import (
+        BoundaryEvidence,
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.transition_evidence import (
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        OutgoingFadeRoutingAssociation,
+        TransitionSemanticRoles,
+    )
+
+    basin = BoundaryProposal(
+        time_seconds=100.2,
+        source=BoundaryProposalSource.BASIN,
+    )
+    structural = BoundaryProposal(
+        time_seconds=100.3,
+        source=BoundaryProposalSource.STRUCTURAL,
+    )
+    shared = BoundaryHypothesis(
+        time_seconds=100.25,
+        proposals=(basin, structural),
+        evidence=(
+            BoundaryEvidence(
+                proposal=basin,
+                basin_start_seconds=99.5,
+                basin_recovery_seconds=101.0,
+            ),
+        ),
+    )
+
+    fade_assessment = FadeRoutingAssessment(
+        rise_present=False,
+        basin_count=1,
+        geometry_count=0,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=OutgoingFadeEvidence(
+                start_time_seconds=96.0,
+                floor_time_seconds=100.0,
+                rise_time_seconds=None,
+                start_rms=1000.0,
+                floor_rms=100.0,
+                descent_ratio=10.0,
+                descent_consistency=0.9,
+            ),
+            hypothesis=shared,
+            support_distance_seconds=0.25,
+        ),
+        incoming_association=IncomingFadeRoutingAssociation(
+            fade=IncomingFadeEvidence(
+                start_time_seconds=100.0,
+                established_time_seconds=101.5,
+                start_rms=100.0,
+                established_rms=900.0,
+                ascent_ratio=9.0,
+                ascent_consistency=0.9,
+                persistence_ratio=3.0,
+            ),
+            hypothesis=shared,
+            support_distance_seconds=0.25,
+        ),
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            raise AssertionError(
+                "shared routed handoff must resolve before rediscovery"
+            )
+
+    base = _observation(boundary=95.0)
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            hypotheses=(shared,),
+        ),
+        fade_assessment=fade_assessment,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=shared,
+            incoming_handoff=shared,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=100.0,
+    )
+
+
+def test_interstitial_shared_handoff_uses_routed_fade_crossfade_geometry() -> None:
+    from dataclasses import replace
+
+    from brynse.boundaries import (
+        BoundaryEvidence,
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.transition_evidence import (
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        OutgoingFadeRoutingAssociation,
+        TransitionSemanticRoles,
+    )
+
+    basin = BoundaryProposal(
+        time_seconds=100.2,
+        source=BoundaryProposalSource.BASIN,
+    )
+    structural = BoundaryProposal(
+        time_seconds=100.3,
+        source=BoundaryProposalSource.STRUCTURAL,
+    )
+    shared = BoundaryHypothesis(
+        time_seconds=100.25,
+        proposals=(basin, structural),
+        evidence=(
+            BoundaryEvidence(
+                proposal=basin,
+                basin_start_seconds=99.5,
+                basin_recovery_seconds=101.0,
+            ),
+        ),
+    )
+
+    fade_assessment = FadeRoutingAssessment(
+        rise_present=False,
+        basin_count=1,
+        geometry_count=0,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=OutgoingFadeEvidence(
+                start_time_seconds=96.0,
+                floor_time_seconds=100.3,
+                rise_time_seconds=None,
+                start_rms=1000.0,
+                floor_rms=100.0,
+                descent_ratio=10.0,
+                descent_consistency=0.9,
+            ),
+            hypothesis=shared,
+            support_distance_seconds=0.05,
+        ),
+        incoming_association=IncomingFadeRoutingAssociation(
+            fade=IncomingFadeEvidence(
+                start_time_seconds=99.8,
+                established_time_seconds=101.5,
+                start_rms=100.0,
+                established_rms=900.0,
+                ascent_ratio=9.0,
+                ascent_consistency=0.9,
+                persistence_ratio=3.0,
+            ),
+            hypothesis=shared,
+            support_distance_seconds=0.45,
+        ),
+    )
+
+    base = _observation(boundary=95.0)
+    observation = replace(
+        base,
+        fade_assessment=fade_assessment,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=shared,
+            incoming_handoff=shared,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=object(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.CROSSFADE,
+        outgoing_end_seconds=100.3,
+        incoming_start_seconds=99.8,
+    )
+
+
+def test_interstitial_distinct_roles_preserve_existing_pipeline() -> None:
+    from dataclasses import replace
+
+    from brynse.transition_router import TransitionSemanticRoles
+
+    outgoing = object()
+    incoming = object()
+
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=108.0,
+    )
+
+    class IncomingPipeline:
+        def __init__(self):
+            self.calls = 0
+
+        def refine(self, **kwargs):
+            self.calls += 1
+            return refined
+
+    pipeline = IncomingPipeline()
+
+    base = _observation(boundary=100.0)
+    observation = replace(
+        base,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=outgoing,
+            incoming_handoff=incoming,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=pipeline,
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal is refined
+    assert pipeline.calls == 1
+
+
 def test_interstitial_specialist_reuses_incoming_pipeline() -> None:
     refined = TemporalSplitDecision(
         kind=TemporalSplitKind.EXCLUSION,

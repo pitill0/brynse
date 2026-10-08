@@ -459,6 +459,48 @@ class InterstitialSpecialist:
     ) -> TransitionSpecialistResult:
         boundary = observation.selected.time_seconds
 
+        semantic_roles = observation.semantic_roles
+        fade_assessment = observation.fade_assessment
+
+        if (
+            semantic_roles is not None
+            and semantic_roles.outgoing_handoff is not None
+            and semantic_roles.outgoing_handoff
+            is semantic_roles.incoming_handoff
+            and fade_assessment is not None
+            and fade_assessment.outgoing_association is not None
+            and fade_assessment.incoming_association is not None
+        ):
+            shared = semantic_roles.outgoing_handoff
+            outgoing_association = fade_assessment.outgoing_association
+            incoming_association = fade_assessment.incoming_association
+
+            if (
+                outgoing_association.hypothesis is shared
+                and incoming_association.hypothesis is shared
+            ):
+                outgoing = (
+                    outgoing_association.fade.floor_time_seconds
+                )
+                incoming = (
+                    incoming_association.fade.start_time_seconds
+                )
+
+                if incoming == outgoing:
+                    kind = TemporalSplitKind.HARD_CUT
+                elif incoming < outgoing:
+                    kind = TemporalSplitKind.CROSSFADE
+                else:
+                    kind = TemporalSplitKind.EXCLUSION
+
+                return TransitionSpecialistResult(
+                    temporal=TemporalSplitDecision(
+                        kind=kind,
+                        outgoing_end_seconds=outgoing,
+                        incoming_start_seconds=incoming,
+                    ),
+                )
+
         initial = TemporalSplitDecision(
             kind=TemporalSplitKind.HARD_CUT,
             incoming_start_seconds=boundary,
