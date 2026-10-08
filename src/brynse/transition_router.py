@@ -345,12 +345,6 @@ class DefaultTransitionRouter:
             and not right_peak
         )
 
-        basin_entry_with_internal_structure = (
-            reference_precedes_left
-            and region.structural_only_interior_count > 0
-            and not right_peak
-        )
-
         interior_source_sets = tuple(
             {
                 proposal.source
@@ -394,7 +388,6 @@ class DefaultTransitionRouter:
                 not mixed_interior_families
                 and (
                     structurally_non_dominant_region
-                    or basin_entry_with_internal_structure
                     or terminal_single_insert
                 )
             ),
@@ -1095,9 +1088,10 @@ class DefaultTransitionRouter:
         than being inferred from temporal proximity.
 
         When routing context is available, an already-known outgoing handoff
-        may complete the incoming identity through exactly one observed
-        bounded-region relationship whose right edge is independently owned by
-        the interstitial supported-handoff set.  The region supplies semantic
+        may complete the incoming identity only when the context contains one
+        unique observed bounded-region relationship, whose left edge is that
+        outgoing handoff and whose right edge is independently owned by the
+        interstitial supported-handoff set.  The region supplies semantic
         relationship only; it does not transfer bounded-insert ownership or
         choose temporal geometry.
         """
@@ -1125,18 +1119,15 @@ class DefaultTransitionRouter:
             outgoing is not None
             and incoming is None
             and context is not None
+            and len(context.bounded_insert_regions) == 1
         ):
-            matching_regions = tuple(
-                region
-                for region in context.bounded_insert_regions
-                if (
-                    region.left is outgoing
-                    and region.right in supported
-                )
-            )
+            region = context.bounded_insert_regions[0]
 
-            if len(matching_regions) == 1:
-                incoming = matching_regions[0].right
+            if (
+                region.left is outgoing
+                and region.right in supported
+            ):
+                incoming = region.right
 
         if outgoing is None and incoming is None:
             return None
