@@ -954,6 +954,44 @@ class DefaultTransitionRouter:
 
         return TransitionKind.INTERSTITIAL
 
+    @staticmethod
+    def assign_hard_cut_roles(
+        *,
+        fade: FadeRoutingAssessment,
+        hard_cut: HardCutRoutingAssessment,
+    ) -> TransitionSemanticRoles | None:
+        """Return a shared handoff only when both acoustic sides agree.
+
+        A genuine HARD_CUT has one semantic event shared by outgoing and
+        incoming material.  Local-discontinuity availability and a lone
+        supported hypothesis are not sufficient proof.
+
+        The Router therefore requires both independently correlated fade sides
+        to identify the same unique supported handoff.  No temporal geometry
+        inside that hypothesis is selected here.
+        """
+        if len(hard_cut.supported_handoffs) != 1:
+            return None
+
+        shared = hard_cut.supported_handoffs[0]
+
+        outgoing = fade.outgoing_association
+        incoming = fade.incoming_association
+
+        if outgoing is None or incoming is None:
+            return None
+
+        if outgoing.hypothesis is not shared:
+            return None
+
+        if incoming.hypothesis is not shared:
+            return None
+
+        return TransitionSemanticRoles(
+            outgoing_handoff=shared,
+            incoming_handoff=shared,
+        )
+
     def assess_hard_cut(
         self,
         *,
@@ -1104,16 +1142,26 @@ class DefaultTransitionRouter:
             context=context,
         )
 
-        if hard_cut.fallback_eligible:
+        hard_cut_roles = self.assign_hard_cut_roles(
+            fade=fade_assessment,
+            hard_cut=hard_cut,
+        )
+
+        if (
+            hard_cut.fallback_eligible
+            and hard_cut_roles is not None
+        ):
             return TransitionRoute(
                 kind=TransitionKind.HARD_CUT,
                 hard_cut=hard_cut,
                 fade_assessment=fade_assessment,
                 interstitial_assessment=interstitial_assessment,
+                semantic_roles=hard_cut_roles,
             )
 
         return TransitionRoute(
             kind=TransitionKind.AMBIGUOUS,
+            hard_cut=hard_cut,
             fade_assessment=fade_assessment,
             interstitial_assessment=interstitial_assessment,
         )

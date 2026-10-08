@@ -1032,6 +1032,270 @@ def _complete_local_evidence() -> TransitionEvidenceState:
     )
 
 
+def test_hard_cut_roles_require_same_unique_supported_handoff() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        HardCutRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    shared = _interstitial_hypothesis(
+        basin_time=100.0,
+        structural_time=100.2,
+        basin_start=99.5,
+        basin_recovery=100.5,
+    )
+
+    fade = FadeRoutingAssessment(
+        rise_present=False,
+        basin_count=0,
+        geometry_count=0,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=SimpleNamespace(),
+            hypothesis=shared,
+            support_distance_seconds=0.0,
+        ),
+        incoming_association=IncomingFadeRoutingAssociation(
+            fade=SimpleNamespace(),
+            hypothesis=shared,
+            support_distance_seconds=0.0,
+        ),
+    )
+
+    hard_cut = HardCutRoutingAssessment(
+        local_discontinuity_complete=True,
+        fade_rise_present=False,
+        supported_handoffs=(shared,),
+    )
+
+    roles = DefaultTransitionRouter.assign_hard_cut_roles(
+        fade=fade,
+        hard_cut=hard_cut,
+    )
+
+    assert roles is not None
+    assert roles.outgoing_handoff is shared
+    assert roles.incoming_handoff is shared
+    assert roles.outgoing_handoff is roles.incoming_handoff
+
+
+def test_hard_cut_roles_reject_different_semantic_handoffs() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        HardCutRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    outgoing = _interstitial_hypothesis(
+        basin_time=100.0,
+        structural_time=100.2,
+        basin_start=99.5,
+        basin_recovery=100.5,
+    )
+    incoming = _interstitial_hypothesis(
+        basin_time=108.0,
+        structural_time=108.2,
+        basin_start=107.5,
+        basin_recovery=108.5,
+    )
+
+    hard_cut = HardCutRoutingAssessment(
+        local_discontinuity_complete=True,
+        fade_rise_present=False,
+        supported_handoffs=(outgoing,),
+    )
+
+    fade = FadeRoutingAssessment(
+        rise_present=False,
+        basin_count=0,
+        geometry_count=0,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=SimpleNamespace(),
+            hypothesis=outgoing,
+            support_distance_seconds=0.0,
+        ),
+        incoming_association=IncomingFadeRoutingAssociation(
+            fade=SimpleNamespace(),
+            hypothesis=incoming,
+            support_distance_seconds=0.0,
+        ),
+    )
+
+    assert (
+        DefaultTransitionRouter.assign_hard_cut_roles(
+            fade=fade,
+            hard_cut=hard_cut,
+        )
+        is None
+    )
+
+
+def test_hard_cut_roles_reject_incomplete_semantic_evidence() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        HardCutRoutingAssessment,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    shared = _interstitial_hypothesis(
+        basin_time=100.0,
+        structural_time=100.2,
+        basin_start=99.5,
+        basin_recovery=100.5,
+    )
+
+    hard_cut = HardCutRoutingAssessment(
+        local_discontinuity_complete=True,
+        fade_rise_present=False,
+        supported_handoffs=(shared,),
+    )
+
+    fade = FadeRoutingAssessment(
+        rise_present=False,
+        basin_count=0,
+        geometry_count=0,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=SimpleNamespace(),
+            hypothesis=shared,
+            support_distance_seconds=0.0,
+        ),
+    )
+
+    assert (
+        DefaultTransitionRouter.assign_hard_cut_roles(
+            fade=fade,
+            hard_cut=hard_cut,
+        )
+        is None
+    )
+
+
+def test_hard_cut_roles_reject_multiple_supported_handoffs() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        HardCutRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    first = _interstitial_hypothesis(
+        basin_time=100.0,
+        structural_time=100.2,
+        basin_start=99.5,
+        basin_recovery=100.5,
+    )
+    second = _interstitial_hypothesis(
+        basin_time=108.0,
+        structural_time=108.2,
+        basin_start=107.5,
+        basin_recovery=108.5,
+    )
+
+    fade = FadeRoutingAssessment(
+        rise_present=False,
+        basin_count=0,
+        geometry_count=0,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=SimpleNamespace(),
+            hypothesis=first,
+            support_distance_seconds=0.0,
+        ),
+        incoming_association=IncomingFadeRoutingAssociation(
+            fade=SimpleNamespace(),
+            hypothesis=first,
+            support_distance_seconds=0.0,
+        ),
+    )
+
+    hard_cut = HardCutRoutingAssessment(
+        local_discontinuity_complete=True,
+        fade_rise_present=False,
+        supported_handoffs=(first, second),
+    )
+
+    assert (
+        DefaultTransitionRouter.assign_hard_cut_roles(
+            fade=fade,
+            hard_cut=hard_cut,
+        )
+        is None
+    )
+
+
+def test_hard_cut_route_requires_positive_shared_handoff_proof() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        HardCutRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        InterstitialRoutingAssessment,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    shared = _interstitial_hypothesis(
+        basin_time=100.0,
+        structural_time=100.2,
+        basin_start=99.5,
+        basin_recovery=100.5,
+    )
+
+    fade = FadeRoutingAssessment(
+        rise_present=False,
+        basin_count=0,
+        geometry_count=0,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=SimpleNamespace(),
+            hypothesis=shared,
+            support_distance_seconds=0.0,
+        ),
+        incoming_association=IncomingFadeRoutingAssociation(
+            fade=SimpleNamespace(),
+            hypothesis=shared,
+            support_distance_seconds=0.0,
+        ),
+    )
+
+    hard_cut = HardCutRoutingAssessment(
+        local_discontinuity_complete=True,
+        fade_rise_present=False,
+        supported_handoffs=(shared,),
+    )
+
+    class Router(DefaultTransitionRouter):
+        def assess_fade(self, *, context):
+            return fade
+
+        def assess_interstitial(self, *, context):
+            return InterstitialRoutingAssessment()
+
+        def assess_hard_cut(self, *, context):
+            return hard_cut
+
+    route = Router().route(
+        context=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=TransitionEvidenceState(),
+        ),
+    )
+
+    assert route.kind is TransitionKind.HARD_CUT
+    assert route.hard_cut is hard_cut
+    assert route.semantic_roles is not None
+    assert route.semantic_roles.outgoing_handoff is shared
+    assert route.semantic_roles.incoming_handoff is shared
+
+
 def test_hard_cut_assessment_preserves_descriptive_fallback_evidence() -> None:
     router = DefaultTransitionRouter()
 
@@ -1069,7 +1333,7 @@ def test_hard_cut_assessment_does_not_invent_strength_threshold() -> None:
     assert assessment.fallback_eligible is True
 
 
-def test_hard_cut_route_carries_assessment_provenance() -> None:
+def test_ambiguous_route_carries_hard_cut_assessment_provenance() -> None:
     router = DefaultTransitionRouter()
 
     route = router.route(
@@ -1079,14 +1343,14 @@ def test_hard_cut_route_carries_assessment_provenance() -> None:
         )
     )
 
-    assert route.kind is TransitionKind.HARD_CUT
+    assert route.kind is TransitionKind.AMBIGUOUS
     assert route.hard_cut is not None
     assert route.hard_cut.local_discontinuity_complete is True
     assert route.hard_cut.fade_rise_present is False
     assert route.hard_cut.fallback_eligible is True
 
 
-def test_default_transition_router_routes_complete_local_boundary_as_hard_cut() -> None:
+def test_default_router_keeps_complete_local_boundary_ambiguous_without_direct_proof() -> None:
     from brynse.transition_router import DefaultTransitionRouter
 
     result = DefaultTransitionRouter().classify(
@@ -1096,7 +1360,7 @@ def test_default_transition_router_routes_complete_local_boundary_as_hard_cut() 
         )
     )
 
-    assert result is TransitionKind.HARD_CUT
+    assert result is TransitionKind.AMBIGUOUS
 
 
 def test_default_transition_router_keeps_incomplete_local_boundary_ambiguous() -> None:
