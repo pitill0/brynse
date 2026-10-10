@@ -706,6 +706,32 @@ def test_fade_route_rejects_completed_geometry_from_earlier_transition() -> None
     assert route.fade_assessment.ownership_candidate is False
 
 
+def test_fade_assessment_distinguishes_two_sided_support_from_reconciled_geometry() -> None:
+    from dataclasses import replace
+
+    from brynse.transition_router import FadeRoutingAssessment
+
+    assessment = FadeRoutingAssessment(
+        rise_present=True,
+        basin_count=1,
+        geometry_count=2,
+        outgoing_association=object(),
+        incoming_association=object(),
+        reconciled_geometry_count=0,
+    )
+
+    assert assessment.has_two_sided_support is True
+    assert assessment.has_reconciled_geometry is False
+
+    reconciled = replace(
+        assessment,
+        reconciled_geometry_count=1,
+    )
+
+    assert reconciled.has_two_sided_support is True
+    assert reconciled.has_reconciled_geometry is True
+
+
 def test_default_transition_router_routes_clear_fade() -> None:
     from brynse.transition_router import DefaultTransitionRouter
 

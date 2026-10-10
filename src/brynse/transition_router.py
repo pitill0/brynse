@@ -86,6 +86,7 @@ class FadeRoutingAssessment:
     outgoing_association: OutgoingFadeRoutingAssociation | None = None
     incoming_association: IncomingFadeRoutingAssociation | None = None
     stale_completed_geometry: bool = False
+    reconciled_geometry_count: int = 0
 
     @property
     def legacy_candidate(self) -> bool:
@@ -103,6 +104,11 @@ class FadeRoutingAssessment:
         the later transition.
         """
         return self.legacy_candidate and not self.stale_completed_geometry
+
+    @property
+    def has_reconciled_geometry(self) -> bool:
+        """Return whether both selected fade sides form one exact geometry."""
+        return self.reconciled_geometry_count == 1
 
     @property
     def has_two_sided_support(self) -> bool:
@@ -731,6 +737,21 @@ class DefaultTransitionRouter:
                 if coherent_outgoing_association is not None:
                     outgoing_association = coherent_outgoing_association
 
+        reconciled_geometry_count = 0
+
+        if (
+            outgoing_association is not None
+            and incoming_association is not None
+        ):
+            reconciled_geometry_count = sum(
+                1
+                for geometry in context.fade.geometries
+                if (
+                    geometry.outgoing is outgoing_association.fade
+                    and geometry.incoming is incoming_association.fade
+                )
+            )
+
         stale_completed_geometry = False
 
         if (
@@ -759,6 +780,7 @@ class DefaultTransitionRouter:
             outgoing_association=outgoing_association,
             incoming_association=incoming_association,
             stale_completed_geometry=stale_completed_geometry,
+            reconciled_geometry_count=reconciled_geometry_count,
         )
 
     @staticmethod
@@ -1346,10 +1368,18 @@ class DefaultTransitionRouter:
         interstitial_like = interstitial_assessment.legacy_candidate
 
         if fade_like and interstitial_like:
-            conflict_kind = self.resolve_fade_interstitial_conflict(
-                fade=fade_assessment,
-                interstitial=interstitial_assessment,
-            )
+            # Independent support on both fade sides is not sufficient to
+            # prove that Fade owns the whole transition.  If Router cannot
+            # correlate those selected sides through exactly one shared
+            # FadeGeometryEvidence, the richer interstitial phenomenon owns
+            # the conflict instead of letting Fade compose unrelated edges.
+            if not fade_assessment.has_reconciled_geometry:
+                conflict_kind = TransitionKind.INTERSTITIAL
+            else:
+                conflict_kind = self.resolve_fade_interstitial_conflict(
+                    fade=fade_assessment,
+                    interstitial=interstitial_assessment,
+                )
 
             semantic_roles = (
                 self.assign_interstitial_roles(

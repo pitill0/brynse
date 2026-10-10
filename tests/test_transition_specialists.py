@@ -638,223 +638,18 @@ def test_interstitial_specialist_does_not_move_outgoing_past_incoming() -> None:
     assert result.temporal is refined
 
 
-def test_ambiguous_fallback_preserves_existing_temporal_path() -> None:
-    original = TemporalSplitDecision(
-        kind=TemporalSplitKind.HARD_CUT,
-        outgoing_end_seconds=100.0,
-        incoming_start_seconds=100.0,
-    )
+def test_ambiguous_fallback_preserves_semantic_reference() -> None:
+    observation = _observation(boundary=100.0)
 
-    refined = TemporalSplitDecision(
-        kind=TemporalSplitKind.EXCLUSION,
-        outgoing_end_seconds=100.0,
-        incoming_start_seconds=102.5,
-    )
-
-    class TemporalResolver:
-        def __init__(self):
-            self.calls = []
-
-        def resolve(self, **kwargs):
-            self.calls.append(kwargs)
-            return original
-
-    class IncomingPipeline:
-        def __init__(self):
-            self.calls = []
-
-        def refine(self, **kwargs):
-            self.calls.append(kwargs)
-            return refined
-
-    temporal = TemporalResolver()
-    incoming = IncomingPipeline()
-    observation = _observation()
-
-    result = LegacyAmbiguousSpecialist(
-        temporal_resolver=temporal,
-        incoming_pipeline=incoming,
-    ).resolve(
-        observation=observation,
-    )
-
-    assert result.temporal is refined
-
-    assert temporal.calls == [
-        {
-            "selected": observation.selected,
-            "profile": observation.profile,
-            "window": observation.window,
-            "semantic_time_seconds": 102.0,
-        }
-    ]
-
-    assert incoming.calls[0]["decision"] is original
-    assert incoming.calls[0]["hypotheses"] is (
-        observation.routing.hypotheses
-    )
-
-
-
-def test_phase4_ambiguous_uses_recovery_of_spanning_structural_basin() -> None:
-    from dataclasses import replace
-    from types import SimpleNamespace
-
-    from brynse.boundaries import BoundaryProposalSource
-
-    original = TemporalSplitDecision(
-        kind=TemporalSplitKind.HARD_CUT,
-        outgoing_end_seconds=1519.23,
-        incoming_start_seconds=1519.23,
-    )
-
-    refined = TemporalSplitDecision(
-        kind=TemporalSplitKind.EXCLUSION,
-        outgoing_end_seconds=1519.23,
-        incoming_start_seconds=1523.87306122297,
-    )
-
-    hypothesis = SimpleNamespace(
-        proposals=(
-            SimpleNamespace(
-                source=BoundaryProposalSource.STRUCTURAL,
-                time_seconds=1513.9730612229698,
-            ),
-            SimpleNamespace(
-                source=BoundaryProposalSource.BASIN,
-                time_seconds=1516.62306122297,
-            ),
-            SimpleNamespace(
-                source=BoundaryProposalSource.STRUCTURAL,
-                time_seconds=1516.9730612229698,
-            ),
-        ),
-        basin_geometry=SimpleNamespace(
-            start_seconds=1509.4730612229698,
-            minimum_seconds=1516.62306122297,
-            recovery_seconds=1519.0730612229697,
-        ),
-    )
-
-    class TemporalResolver:
-        def resolve(self, **kwargs):
-            return original
-
-    class IncomingPipeline:
-        def refine(self, **kwargs):
-            return refined
-
-    base = _observation(
-        boundary=1519.23,
-    )
-
-    observation = replace(
-        base,
-        routing=replace(
-            base.routing,
-            reference_time_seconds=1520.9795918351758,
-            hypotheses=(hypothesis,),
-        ),
-    )
-
-    result = LegacyAmbiguousSpecialist(
-        temporal_resolver=TemporalResolver(),
-        incoming_pipeline=IncomingPipeline(),
-    ).resolve(
+    result = LegacyAmbiguousSpecialist().resolve(
         observation=observation,
     )
 
     assert result.temporal == TemporalSplitDecision(
-        kind=TemporalSplitKind.EXCLUSION,
-        outgoing_end_seconds=1519.0730612229697,
-        incoming_start_seconds=1523.87306122297,
-    )
-
-
-def test_phase4_ambiguous_keeps_outgoing_without_structure_after_minimum() -> None:
-    from dataclasses import replace
-    from types import SimpleNamespace
-
-    from brynse.boundaries import BoundaryProposalSource
-
-    original = TemporalSplitDecision(
         kind=TemporalSplitKind.HARD_CUT,
-        outgoing_end_seconds=447.676,
-        incoming_start_seconds=447.676,
+        outgoing_end_seconds=102.0,
+        incoming_start_seconds=102.0,
     )
-
-    refined = TemporalSplitDecision(
-        kind=TemporalSplitKind.EXCLUSION,
-        outgoing_end_seconds=447.676,
-        incoming_start_seconds=448.59398,
-    )
-
-    hypothesis = SimpleNamespace(
-        proposals=(
-            SimpleNamespace(
-                source=BoundaryProposalSource.STRUCTURAL,
-                time_seconds=436.6689795918642,
-            ),
-            SimpleNamespace(
-                source=BoundaryProposalSource.BASIN,
-                time_seconds=439.0189795918642,
-            ),
-            SimpleNamespace(
-                source=BoundaryProposalSource.STRUCTURAL,
-                time_seconds=439.6689795918642,
-            ),
-        ),
-        basin_geometry=SimpleNamespace(
-            start_seconds=438.6689795918642,
-            minimum_seconds=439.0189795918642,
-            recovery_seconds=439.1689795918642,
-        ),
-    )
-
-    class TemporalResolver:
-        def resolve(self, **kwargs):
-            return original
-
-    class IncomingPipeline:
-        def refine(self, **kwargs):
-            return refined
-
-    base = _observation(
-        boundary=447.676,
-    )
-
-    observation = replace(
-        base,
-        routing=replace(
-            base.routing,
-            reference_time_seconds=449.175510,
-            hypotheses=(hypothesis,),
-        ),
-    )
-
-    result = LegacyAmbiguousSpecialist(
-        temporal_resolver=TemporalResolver(),
-        incoming_pipeline=IncomingPipeline(),
-    ).resolve(
-        observation=observation,
-    )
-
-    assert result.temporal is refined
-
-
-
-def test_ambiguous_fallback_preserves_none() -> None:
-    class TemporalResolver:
-        def resolve(self, **kwargs):
-            return None
-
-    result = LegacyAmbiguousSpecialist(
-        temporal_resolver=TemporalResolver(),
-    ).resolve(
-        observation=_observation(),
-    )
-
-    assert result.temporal is None
 
 
 def _phase6_fade_hypothesis(*, time: float):
@@ -5256,34 +5051,19 @@ def test_phase4g_interstitial_failed_hard_cut_uses_supported_right_basin() -> No
     )
 
 
-def test_phase4g_ambiguous_failed_hard_cut_uses_supported_right_basin() -> None:
-    from brynse.transition_specialists import LegacyAmbiguousSpecialist
-
-    class TemporalResolver:
-        def resolve(self, **kwargs):
-            return TemporalSplitDecision(
-                kind=TemporalSplitKind.HARD_CUT,
-                outgoing_end_seconds=100.0,
-                incoming_start_seconds=100.0,
-            )
-
-    class IncomingPipeline:
-        def refine(self, **kwargs):
-            return kwargs["decision"]
-
+def test_phase4g_ambiguous_preserves_reference_without_basin_recovery() -> None:
     observation = _phase4g_right_basin_observation()
 
-    result = LegacyAmbiguousSpecialist(
-        temporal_resolver=TemporalResolver(),
-        incoming_pipeline=IncomingPipeline(),
-    ).resolve(
+    result = LegacyAmbiguousSpecialist().resolve(
         observation=observation,
     )
 
+    reference = observation.routing.reference_time_seconds
+
     assert result.temporal == TemporalSplitDecision(
         kind=TemporalSplitKind.HARD_CUT,
-        outgoing_end_seconds=102.0,
-        incoming_start_seconds=102.0,
+        outgoing_end_seconds=reference,
+        incoming_start_seconds=reference,
     )
 
 

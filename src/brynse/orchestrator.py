@@ -284,10 +284,7 @@ class MultiSignalAcousticCandidateResolver:
                 incoming_pipeline=self._incoming_refiner,
             ),
             bounded_insert=BoundedInsertSpecialist(),
-            ambiguous=LegacyAmbiguousSpecialist(
-                temporal_resolver=self._temporal_resolver,
-                incoming_pipeline=self._incoming_refiner,
-            ),
+            ambiguous=LegacyAmbiguousSpecialist(),
         )
         self._on_routing_context = on_routing_context
         self._on_routing_observation = on_routing_observation

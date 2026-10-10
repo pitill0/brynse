@@ -1836,153 +1836,27 @@ class BoundedInsertSpecialist:
 
 
 class LegacyAmbiguousSpecialist:
-    """Preserve the current safe resolver while ownership is ambiguous.
+    """Preserve the semantic anchor while transition ownership is ambiguous.
 
-    AMBIGUOUS is deliberately not another acoustic specialist.  It is a
-    compatibility fallback used while the router cannot assign ownership.
+    AMBIGUOUS deliberately has no acoustic ownership.  It must therefore not
+    call the legacy temporal resolver, incoming refinement, or any later
+    geometry recovery path.  Until Router can assign one phenomenon owner,
+    the semantic reference remains the neutral compatibility boundary.
     """
-
-    def __init__(
-        self,
-        *,
-        temporal_resolver,
-        incoming_pipeline=None,
-    ) -> None:
-        self._temporal_resolver = temporal_resolver
-        self._incoming_pipeline = incoming_pipeline
 
     def resolve(
         self,
         *,
         observation: TransitionSpecialistInput,
     ) -> TransitionSpecialistResult:
-        decision = self._temporal_resolver.resolve(
-            selected=observation.selected,
-            profile=observation.profile,
-            window=observation.window,
-            semantic_time_seconds=(
-                observation.routing.reference_time_seconds
-            ),
-        )
-
-        if decision is None:
-            return TransitionSpecialistResult(
-                temporal=None,
-            )
-
-        if self._incoming_pipeline is None:
-            return TransitionSpecialistResult(
-                temporal=decision,
-            )
-
-        refined = self._incoming_pipeline.refine(
-            decision=decision,
-            window=observation.window,
-            pcm8=observation.pcm8,
-            pcm16=observation.pcm16,
-            hypotheses=observation.routing.hypotheses,
-        )
-
-        refined = self._refine_preceding_multistructural_basin(
-            decision=refined,
-            observation=observation,
-        )
-
-        refined = _recover_later_reference_basin_hard_cut(
-            decision=refined,
-            observation=observation,
-        )
+        reference = observation.routing.reference_time_seconds
 
         return TransitionSpecialistResult(
-            temporal=refined,
-        )
-
-    @staticmethod
-    def _refine_preceding_multistructural_basin(
-        *,
-        decision: TemporalSplitDecision,
-        observation: TransitionSpecialistInput,
-    ) -> TemporalSplitDecision:
-        if decision.kind is not TemporalSplitKind.EXCLUSION:
-            return decision
-
-        reference = observation.routing.reference_time_seconds
-        outgoing = decision.outgoing_end_seconds
-        incoming = decision.incoming_start_seconds
-
-        candidates = []
-
-        for hypothesis in observation.routing.hypotheses:
-            geometry = getattr(
-                hypothesis,
-                "basin_geometry",
-                None,
-            )
-
-            if geometry is None:
-                continue
-
-            if not (
-                geometry.recovery_seconds
-                < outgoing
-                < reference
-            ):
-                continue
-
-            if geometry.recovery_seconds >= incoming:
-                continue
-
-            proposals = getattr(
-                hypothesis,
-                "proposals",
-                (),
-            )
-
-            basin_proposals = tuple(
-                proposal
-                for proposal in proposals
-                if proposal.source
-                is BoundaryProposalSource.BASIN
-            )
-
-            if len(basin_proposals) != 1:
-                continue
-
-            structural_times = tuple(
-                proposal.time_seconds
-                for proposal in proposals
-                if proposal.source
-                is BoundaryProposalSource.STRUCTURAL
-            )
-
-            has_pre_minimum_structure = any(
-                time_seconds < geometry.minimum_seconds
-                for time_seconds in structural_times
-            )
-            has_post_minimum_structure = any(
-                geometry.minimum_seconds
-                < time_seconds
-                < geometry.recovery_seconds
-                for time_seconds in structural_times
-            )
-
-            if not (
-                has_pre_minimum_structure
-                and has_post_minimum_structure
-            ):
-                continue
-
-            candidates.append(geometry)
-
-        if len(candidates) != 1:
-            return decision
-
-        geometry = candidates[0]
-
-        return TemporalSplitDecision(
-            kind=TemporalSplitKind.EXCLUSION,
-            outgoing_end_seconds=geometry.recovery_seconds,
-            incoming_start_seconds=incoming,
+            temporal=TemporalSplitDecision(
+                kind=TemporalSplitKind.HARD_CUT,
+                outgoing_end_seconds=reference,
+                incoming_start_seconds=reference,
+            ),
         )
 
 
