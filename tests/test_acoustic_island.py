@@ -4,7 +4,11 @@ import pytest
 
 from brynse.acoustic_island import AcousticIslandDetector, AcousticIslandEvidence
 from brynse.boundaries import BoundaryProposalSource
-from brynse.transition_evidence import FadeRoutingEvidence, IncomingFadeEvidence, OutgoingFadeEvidence
+from brynse.transition_evidence import (
+    FadeRoutingEvidence,
+    IncomingFadeEvidence,
+    OutgoingFadeEvidence,
+)
 
 
 def _proposal(source):
@@ -26,7 +30,14 @@ def _supported_handoff(*, time_seconds: float, basin_start: float, basin_recover
     )
 
 
-def _region(*, reference: float, left, right, inside_left: bool = False, inside_right: bool = False):
+def _region(
+    *,
+    reference: float,
+    left,
+    right,
+    inside_left: bool = False,
+    inside_right: bool = False,
+):
     return SimpleNamespace(
         reference_time_seconds=reference,
         left=left,
@@ -100,7 +111,12 @@ def test_detector_observes_unique_bracketing_region() -> None:
 def test_detector_observes_terminal_reset_without_region() -> None:
     right = _supported_handoff(time_seconds=1105.279, basin_start=1105.0, basin_recovery=1105.8)
     outgoing = _outgoing(start=1093.0, floor=1098.879)
-    reset = _incoming(start=1098.879, established=1099.379, ascent_ratio=22.0, persistence_ratio=14.0)
+    reset = _incoming(
+        start=1098.879,
+        established=1099.379,
+        ascent_ratio=22.0,
+        persistence_ratio=14.0,
+    )
     result = AcousticIslandDetector().observe(
         reference_time_seconds=1104.536,
         fade=FadeRoutingEvidence(outgoing_fades=(outgoing,), incoming_fades=(reset,)),
@@ -119,7 +135,12 @@ def test_detector_refines_region_with_earlier_terminal_reset() -> None:
     right = _supported_handoff(time_seconds=2171.378, basin_start=2170.8, basin_recovery=2172.0)
     region = _region(reference=2155.860, left=left, right=right)
     outgoing = _outgoing(start=2147.253, floor=2155.303)
-    reset = _incoming(start=2151.453, established=2151.953, ascent_ratio=12.798, persistence_ratio=5.411)
+    reset = _incoming(
+        start=2151.453,
+        established=2151.953,
+        ascent_ratio=12.798,
+        persistence_ratio=5.411,
+    )
     result = AcousticIslandDetector().observe(
         reference_time_seconds=2155.860,
         fade=FadeRoutingEvidence(outgoing_fades=(outgoing,), incoming_fades=(reset,)),
@@ -140,7 +161,14 @@ def test_detector_does_not_promote_weak_reset() -> None:
         reference_time_seconds=108.0,
         fade=FadeRoutingEvidence(
             outgoing_fades=(_outgoing(start=100.0, floor=106.0),),
-            incoming_fades=(_incoming(start=105.0, established=105.5, ascent_ratio=3.0, persistence_ratio=8.0),),
+            incoming_fades=(
+                _incoming(
+                    start=105.0,
+                    established=105.5,
+                    ascent_ratio=3.0,
+                    persistence_ratio=8.0,
+                ),
+            ),
         ),
         hypotheses=(right,),
     )
@@ -151,11 +179,19 @@ def test_detector_rejects_early_reset_when_later_owned_reset_explains_handoff() 
     owner = _supported_handoff(time_seconds=105.0, basin_start=104.5, basin_recovery=105.5)
     right = _supported_handoff(time_seconds=112.0, basin_start=111.5, basin_recovery=112.5)
     outgoing = _outgoing(start=100.0, floor=106.0)
-    early_unowned = _incoming(start=103.0, established=103.5, ascent_ratio=5.0, persistence_ratio=5.0)
+    early_unowned = _incoming(
+        start=103.0,
+        established=103.5,
+        ascent_ratio=5.0,
+        persistence_ratio=5.0,
+    )
     later_owned = _incoming(start=105.0, established=105.4, ascent_ratio=6.0, persistence_ratio=6.0)
     result = AcousticIslandDetector().observe(
         reference_time_seconds=108.0,
-        fade=FadeRoutingEvidence(outgoing_fades=(outgoing,), incoming_fades=(early_unowned, later_owned)),
+        fade=FadeRoutingEvidence(
+            outgoing_fades=(outgoing,),
+            incoming_fades=(early_unowned, later_owned),
+        ),
         hypotheses=(owner, right),
     )
     assert result == ()

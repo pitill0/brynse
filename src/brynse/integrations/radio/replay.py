@@ -27,7 +27,6 @@ from brynse.integrations.radio.runner import (
 )
 from brynse.source import BinaryIOStreamSource, StreamSource
 
-
 _SCHEMA_VERSION = 1
 
 

@@ -5851,11 +5851,11 @@ def test_interstitial_acoustic_island_refines_owned_region_left_edge() -> None:
 def test_bounded_insert_acoustic_island_refines_owned_left_edge() -> None:
     from types import SimpleNamespace
 
-    from brynse.transition_specialists import BoundedInsertSpecialist
     from brynse.transition_router import (
         BoundedInsertOwnership,
         TransitionSemanticRoles,
     )
+    from brynse.transition_specialists import BoundedInsertSpecialist
 
     left = SimpleNamespace(
         time_seconds=2154.703,

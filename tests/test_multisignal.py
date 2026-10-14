@@ -800,7 +800,6 @@ def test_multisignal_acoustic_candidate_resolver_composes_product_pipeline() -> 
 
     globals_pcm8 = pcm8
     globals_pcm16 = pcm16
-    globals_profile = profile
 
     resolver = MultiSignalAcousticCandidateResolver(
         window_extractor=FakeWindowExtractor(),

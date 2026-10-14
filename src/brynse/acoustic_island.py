@@ -21,7 +21,6 @@ from brynse.transition_evidence import (
     OutgoingFadeEvidence,
 )
 
-
 DEFAULT_SEARCH_HORIZON_SECONDS = 8.0
 DEFAULT_MINIMUM_RESET_RATIO = 10.0 ** (12.0 / 20.0)
 

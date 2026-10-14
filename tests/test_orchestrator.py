@@ -615,16 +615,15 @@ def test_multisignal_resolver_observes_routing_context_without_changing_decision
 
 def test_orchestrator_wires_pcm_authority_into_owned_specialists() -> None:
     from brynse.fade_specialist import FadeSpecialist
+    from brynse.orchestrator import (
+        MultiSignalAcousticCandidateResolver,
+    )
     from brynse.pcm_temporal_edge import PcmTemporalEdgeVerifier
     from brynse.transition_router import TransitionKind
     from brynse.transition_specialists import (
         BoundedInsertSpecialist,
         HardCutSpecialist,
         InterstitialSpecialist,
-    )
-
-    from brynse.orchestrator import (
-        MultiSignalAcousticCandidateResolver,
     )
 
     orchestrator = MultiSignalAcousticCandidateResolver()

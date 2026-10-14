@@ -16,7 +16,6 @@ from pathlib import Path
 
 from brynse.integrations.radio.models import TimedMetadataEvent
 
-
 _SCHEMA_VERSION = 1
 
 
