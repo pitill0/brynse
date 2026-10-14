@@ -11,6 +11,7 @@ from typing import Any, Protocol
 
 from brynse.boundaries import BoundaryConfidence, BoundaryProposalSource
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
+from brynse.pcm_temporal_edge import PcmTemporalSearchBounds
 from brynse.transition_router import (
     BoundedInsertOwnership,
     BoundedInsertRoutingProvenance,
@@ -49,6 +50,333 @@ class TransitionSpecialistResult:
 
     temporal: TemporalSplitDecision | None
     diagnostics: Any = None
+
+
+def _append_pcm_handoff_times(
+    times: list[float],
+    handoff,
+) -> None:
+    if handoff is None:
+        return
+
+    time_seconds = getattr(
+        handoff,
+        "time_seconds",
+        None,
+    )
+
+    if isinstance(time_seconds, (int, float)):
+        times.append(float(time_seconds))
+
+    for proposal in getattr(
+        handoff,
+        "proposals",
+        (),
+    ):
+        value = getattr(
+            proposal,
+            "time_seconds",
+            None,
+        )
+
+        if isinstance(value, (int, float)):
+            times.append(float(value))
+
+    geometry = getattr(
+        handoff,
+        "basin_geometry",
+        None,
+    )
+
+    if geometry is None:
+        return
+
+    for name in (
+        "start_seconds",
+        "minimum_seconds",
+        "recovery_seconds",
+    ):
+        value = getattr(
+            geometry,
+            name,
+            None,
+        )
+
+        if isinstance(value, (int, float)):
+            times.append(float(value))
+
+
+def _append_pcm_fade_times(
+    times: list[float],
+    fade,
+) -> None:
+    if fade is None:
+        return
+
+    for name in (
+        "start_time_seconds",
+        "floor_time_seconds",
+        "established_time_seconds",
+    ):
+        value = getattr(
+            fade,
+            name,
+            None,
+        )
+
+        if isinstance(value, (int, float)):
+            times.append(float(value))
+
+
+def _owned_pcm_edge_times(
+    *,
+    observation: TransitionSpecialistInput,
+    edge: str,
+) -> list[float]:
+    """Collect semantic evidence that bounds one owned temporal edge."""
+
+    times: list[float] = []
+    roles = observation.semantic_roles
+
+    if roles is not None:
+        handoff = (
+            roles.outgoing_handoff
+            if edge == "outgoing"
+            else roles.incoming_handoff
+        )
+
+        _append_pcm_handoff_times(
+            times,
+            handoff,
+        )
+
+        edge_fade = (
+            roles.outgoing_edge_fade
+            if edge == "outgoing"
+            else roles.incoming_edge_fade
+        )
+
+        _append_pcm_fade_times(
+            times,
+            edge_fade,
+        )
+
+        region = roles.inserted_region
+
+        if region is not None:
+            if edge == "outgoing":
+                region_edge = getattr(
+                    region,
+                    "left",
+                    None,
+                )
+
+                if region_edge is None:
+                    region_edge = getattr(
+                        region,
+                        "primary",
+                        None,
+                    )
+            else:
+                region_edge = getattr(
+                    region,
+                    "right",
+                    None,
+                )
+
+                if region_edge is None:
+                    region_edge = getattr(
+                        region,
+                        "complementary",
+                        None,
+                    )
+
+            _append_pcm_handoff_times(
+                times,
+                region_edge,
+            )
+
+        island = roles.acoustic_island
+
+        if island is not None:
+            if edge == "outgoing":
+                _append_pcm_fade_times(
+                    times,
+                    island.terminal_decay,
+                )
+                _append_pcm_fade_times(
+                    times,
+                    island.source_reset,
+                )
+            else:
+                _append_pcm_handoff_times(
+                    times,
+                    island.incoming_handoff,
+                )
+
+    # AcousticIsland may coexist with a different Router ownership.
+    # It contributes bounds only; it never changes TransitionKind.
+    for island in observation.routing.acoustic_islands:
+        if edge == "outgoing":
+            _append_pcm_fade_times(
+                times,
+                island.terminal_decay,
+            )
+            _append_pcm_fade_times(
+                times,
+                island.source_reset,
+            )
+        else:
+            _append_pcm_handoff_times(
+                times,
+                island.incoming_handoff,
+            )
+
+    return times
+
+
+def _pcm_bounds(
+    times: list[float],
+) -> PcmTemporalSearchBounds | None:
+    if not times:
+        return None
+
+    return PcmTemporalSearchBounds(
+        start_time_seconds=min(times),
+        end_time_seconds=max(times),
+    )
+
+
+def _verify_owned_temporal_decision(
+    *,
+    verifier,
+    observation: TransitionSpecialistInput,
+    decision: TemporalSplitDecision,
+    outgoing_extra_times=(),
+    incoming_extra_times=(),
+) -> TemporalSplitDecision:
+    """Let PCM choose final timestamps without changing semantic kind."""
+
+    if verifier is None:
+        return decision
+
+    absolute_start = observation.window.start_time_seconds
+
+    outgoing_times = _owned_pcm_edge_times(
+        observation=observation,
+        edge="outgoing",
+    )
+    incoming_times = _owned_pcm_edge_times(
+        observation=observation,
+        edge="incoming",
+    )
+
+    outgoing_times.extend(
+        float(value)
+        for value in outgoing_extra_times
+        if isinstance(value, (int, float))
+    )
+    incoming_times.extend(
+        float(value)
+        for value in incoming_extra_times
+        if isinstance(value, (int, float))
+    )
+
+    def verify_edge(
+        *,
+        provisional: float,
+        times: list[float],
+    ):
+        bounds = _pcm_bounds(times)
+        kwargs = {}
+
+        if bounds is not None:
+            kwargs["search_bounds"] = bounds
+
+        return verifier.verify(
+            pcm=observation.pcm16,
+            absolute_start_time_seconds=absolute_start,
+            provisional_time_seconds=provisional,
+            **kwargs,
+        )
+
+    if decision.kind is TemporalSplitKind.HARD_CUT:
+        shared_times = [
+            *outgoing_times,
+            *incoming_times,
+        ]
+
+        if not shared_times:
+            shared_times.extend(
+                (
+                    observation.selected.time_seconds,
+                    observation.routing.reference_time_seconds,
+                )
+            )
+
+        verified = verify_edge(
+            provisional=decision.outgoing_end_seconds,
+            times=shared_times,
+        )
+
+        if verified is None:
+            return decision
+
+        boundary = verified.verified_time_seconds
+
+        if (
+            boundary == decision.outgoing_end_seconds
+            and boundary == decision.incoming_start_seconds
+        ):
+            return decision
+
+        return replace(
+            decision,
+            outgoing_end_seconds=boundary,
+            incoming_start_seconds=boundary,
+        )
+
+    outgoing_verified = verify_edge(
+        provisional=decision.outgoing_end_seconds,
+        times=outgoing_times,
+    )
+    incoming_verified = verify_edge(
+        provisional=decision.incoming_start_seconds,
+        times=incoming_times,
+    )
+
+    outgoing = (
+        outgoing_verified.verified_time_seconds
+        if outgoing_verified is not None
+        else decision.outgoing_end_seconds
+    )
+    incoming = (
+        incoming_verified.verified_time_seconds
+        if incoming_verified is not None
+        else decision.incoming_start_seconds
+    )
+
+    if decision.kind is TemporalSplitKind.CROSSFADE:
+        valid = incoming < outgoing
+    elif decision.kind is TemporalSplitKind.EXCLUSION:
+        valid = outgoing < incoming
+    else:
+        valid = False
+
+    if not valid:
+        return decision
+
+    if (
+        outgoing == decision.outgoing_end_seconds
+        and incoming == decision.incoming_start_seconds
+    ):
+        return decision
+
+    return replace(
+        decision,
+        outgoing_end_seconds=outgoing,
+        incoming_start_seconds=incoming,
+    )
 
 
 class TransitionSpecialist(Protocol):
@@ -124,7 +452,73 @@ def _recover_later_reference_basin_hard_cut(
 class HardCutSpecialist:
     """Resolve the acoustic boundary of a genuine abrupt transition."""
 
+    def __init__(
+        self,
+        *,
+        temporal_edge_verifier=None,
+    ) -> None:
+        self._temporal_edge_verifier = temporal_edge_verifier
+
     def resolve(
+        self,
+        *,
+        observation: TransitionSpecialistInput,
+    ) -> TransitionSpecialistResult:
+        result = self._resolve_geometry(
+            observation=observation,
+        )
+
+        if result.temporal is None:
+            return result
+
+        extra_times = [
+            observation.selected.time_seconds,
+            observation.routing.reference_time_seconds,
+        ]
+
+        for hypothesis in observation.routing.hypotheses:
+            geometry = hypothesis.basin_geometry
+
+            if geometry is None:
+                continue
+
+            selected_inside = (
+                geometry.start_seconds
+                <= observation.selected.time_seconds
+                <= geometry.recovery_seconds
+            )
+            reference_inside = (
+                geometry.start_seconds
+                <= observation.routing.reference_time_seconds
+                <= geometry.recovery_seconds
+            )
+
+            if selected_inside or reference_inside:
+                extra_times.extend(
+                    (
+                        geometry.start_seconds,
+                        geometry.minimum_seconds,
+                        geometry.recovery_seconds,
+                    )
+                )
+
+        verified = _verify_owned_temporal_decision(
+            verifier=self._temporal_edge_verifier,
+            observation=observation,
+            decision=result.temporal,
+            outgoing_extra_times=extra_times,
+            incoming_extra_times=extra_times,
+        )
+
+        if verified is result.temporal:
+            return result
+
+        return replace(
+            result,
+            temporal=verified,
+        )
+
+    def _resolve_geometry(
         self,
         *,
         observation: TransitionSpecialistInput,
@@ -441,6 +835,51 @@ class HardCutSpecialist:
         )
 
 
+def _refine_acoustic_island_left_edge(
+    *,
+    decision: TemporalSplitDecision,
+    island,
+    region,
+) -> TemporalSplitDecision | None:
+    """Retract one owned insert left edge from acoustic-island evidence.
+
+    The owning specialist has already established a valid exclusion.
+    Acoustic-island evidence may only move its outgoing edge earlier when
+    an independently observed source reset interrupts, or immediately
+    follows, the outgoing terminal decay.
+
+    Ownership and the incoming edge remain unchanged.
+    """
+    if decision.kind is not TemporalSplitKind.EXCLUSION:
+        return None
+
+    if island.observed_region is not region:
+        return None
+
+    terminal_decay = island.terminal_decay
+    source_reset = island.source_reset
+
+    if terminal_decay is None or source_reset is None:
+        return None
+
+    outgoing = min(
+        terminal_decay.floor_time_seconds,
+        source_reset.start_time_seconds,
+    )
+
+    if outgoing >= decision.outgoing_end_seconds:
+        return None
+
+    if outgoing >= decision.incoming_start_seconds:
+        return None
+
+    return replace(
+        decision,
+        outgoing_end_seconds=outgoing,
+    )
+
+
+
 class InterstitialSpecialist:
     """Resolve track -> interstitial -> incoming-track geometry.
 
@@ -449,10 +888,81 @@ class InterstitialSpecialist:
     hypotheses to refine its left edge.
     """
 
-    def __init__(self, *, incoming_pipeline) -> None:
+    def __init__(
+        self,
+        *,
+        incoming_pipeline,
+        temporal_edge_verifier=None,
+    ) -> None:
         self._incoming_pipeline = incoming_pipeline
+        self._temporal_edge_verifier = temporal_edge_verifier
+
+    def _verify_pcm_exclusion(
+        self,
+        *,
+        decision: TemporalSplitDecision,
+        observation: TransitionSpecialistInput,
+    ) -> TemporalSplitDecision:
+        """Compatibility hook; final PCM authority is applied by resolve()."""
+
+        return decision
 
     def resolve(
+        self,
+        *,
+        observation: TransitionSpecialistInput,
+    ) -> TransitionSpecialistResult:
+        result = self._resolve_geometry(
+            observation=observation,
+        )
+
+        if result.temporal is None:
+            return result
+
+        outgoing_extra_times = ()
+        incoming_extra_times = ()
+
+        semantic_roles = observation.semantic_roles
+
+        if (
+            result.temporal.kind is TemporalSplitKind.EXCLUSION
+            and semantic_roles is not None
+            and semantic_roles.acoustic_island is not None
+        ):
+            island = semantic_roles.acoustic_island
+            region = island.observed_region
+
+            if (
+                region is not None
+                and semantic_roles.inserted_region is region
+                and semantic_roles.outgoing_handoff is region.left
+                and semantic_roles.incoming_handoff
+                is island.incoming_handoff
+            ):
+                reference = (
+                    observation.routing.reference_time_seconds
+                )
+
+                outgoing_extra_times = (reference,)
+                incoming_extra_times = (reference,)
+
+        verified = _verify_owned_temporal_decision(
+            verifier=self._temporal_edge_verifier,
+            observation=observation,
+            decision=result.temporal,
+            outgoing_extra_times=outgoing_extra_times,
+            incoming_extra_times=incoming_extra_times,
+        )
+
+        if verified is result.temporal:
+            return result
+
+        return replace(
+            result,
+            temporal=verified,
+        )
+
+    def _resolve_geometry(
         self,
         *,
         observation: TransitionSpecialistInput,
@@ -461,6 +971,126 @@ class InterstitialSpecialist:
 
         semantic_roles = observation.semantic_roles
         fade_assessment = observation.fade_assessment
+
+        if (
+            semantic_roles is not None
+            and semantic_roles.acoustic_island is not None
+        ):
+            island = semantic_roles.acoustic_island
+            region = island.observed_region
+
+            if (
+                region is None
+                and island.terminal_decay is not None
+                and island.source_reset is not None
+                and semantic_roles.incoming_handoff
+                is island.incoming_handoff
+            ):
+                outgoing = min(
+                    island.terminal_decay.floor_time_seconds,
+                    island.source_reset.start_time_seconds,
+                )
+                incoming = island.incoming_handoff.time_seconds
+
+                if outgoing < incoming:
+                    reset_pair_decision = TemporalSplitDecision(
+                        kind=TemporalSplitKind.EXCLUSION,
+                        outgoing_end_seconds=outgoing,
+                        incoming_start_seconds=incoming,
+                    )
+
+                    return TransitionSpecialistResult(
+                        temporal=self._verify_pcm_exclusion(
+                            decision=reset_pair_decision,
+                            observation=observation,
+                        ),
+                    )
+
+            if (
+                region is not None
+                and island.terminal_decay is not None
+                and island.source_reset is not None
+                and semantic_roles.inserted_region is region
+                and semantic_roles.outgoing_handoff is region.left
+                and semantic_roles.incoming_handoff
+                is island.incoming_handoff
+            ):
+                initial_island = TemporalSplitDecision(
+                    kind=TemporalSplitKind.EXCLUSION,
+                    outgoing_end_seconds=region.left.time_seconds,
+                    incoming_start_seconds=(
+                        island.incoming_handoff.time_seconds
+                    ),
+                )
+
+                refined_island = _refine_acoustic_island_left_edge(
+                    decision=initial_island,
+                    island=island,
+                    region=region,
+                )
+
+                if refined_island is not None:
+                    return TransitionSpecialistResult(
+                        temporal=refined_island,
+                    )
+
+        if (
+            semantic_roles is not None
+            and semantic_roles.outgoing_edge_fade is not None
+            and semantic_roles.incoming_edge_fade is not None
+        ):
+            outgoing = (
+                semantic_roles.outgoing_edge_fade.floor_time_seconds
+            )
+            incoming = (
+                semantic_roles.incoming_edge_fade.start_time_seconds
+            )
+
+            if incoming == outgoing:
+                kind = TemporalSplitKind.HARD_CUT
+            elif incoming < outgoing:
+                kind = TemporalSplitKind.CROSSFADE
+            else:
+                kind = TemporalSplitKind.EXCLUSION
+
+            return TransitionSpecialistResult(
+                temporal=TemporalSplitDecision(
+                    kind=kind,
+                    outgoing_end_seconds=outgoing,
+                    incoming_start_seconds=incoming,
+                ),
+            )
+
+        if (
+            semantic_roles is not None
+            and semantic_roles.outgoing_edge_fade is not None
+            and semantic_roles.incoming_edge_fade is None
+            and semantic_roles.incoming_handoff is not None
+            and observation.interstitial_assessment is not None
+            and semantic_roles.incoming_handoff
+            in observation.interstitial_assessment.supported_handoffs
+        ):
+            incoming_handoff = semantic_roles.incoming_handoff
+            incoming_geometry = incoming_handoff.basin_geometry
+
+            if incoming_geometry is not None:
+                outgoing = (
+                    semantic_roles.outgoing_edge_fade
+                    .floor_time_seconds
+                )
+                incoming = max(
+                    incoming_handoff.time_seconds,
+                    incoming_geometry.recovery_seconds,
+                )
+
+                if outgoing < incoming:
+                    return TransitionSpecialistResult(
+                        temporal=TemporalSplitDecision(
+                            kind=TemporalSplitKind.EXCLUSION,
+                            outgoing_end_seconds=outgoing,
+                            incoming_start_seconds=incoming,
+                        ),
+                    )
 
         if (
             semantic_roles is not None
@@ -545,12 +1175,20 @@ class InterstitialSpecialist:
 
             if recovered is not None:
                 return TransitionSpecialistResult(
-                    temporal=recovered,
+                    temporal=self._verify_pcm_exclusion(
+                        decision=recovered,
+                        observation=observation,
+                    ),
                 )
 
+            recovered_direct = _recover_later_reference_basin_hard_cut(
+                decision=refined,
+                observation=observation,
+            )
+
             return TransitionSpecialistResult(
-                temporal=_recover_later_reference_basin_hard_cut(
-                    decision=refined,
+                temporal=self._verify_pcm_exclusion(
+                    decision=recovered_direct,
                     observation=observation,
                 ),
             )
@@ -575,7 +1213,10 @@ class InterstitialSpecialist:
 
             if recovered is not None:
                 return TransitionSpecialistResult(
-                    temporal=recovered,
+                    temporal=self._verify_pcm_exclusion(
+                        decision=recovered,
+                        observation=observation,
+                    ),
                 )
 
         phase_refined = self._refine_dominant_incoming_basin(
@@ -588,7 +1229,10 @@ class InterstitialSpecialist:
 
         if phase_refined is not None:
             return TransitionSpecialistResult(
-                temporal=phase_refined,
+                temporal=self._verify_pcm_exclusion(
+                    decision=phase_refined,
+                    observation=observation,
+                ),
             )
 
         analyze_hypotheses = getattr(
@@ -598,7 +1242,10 @@ class InterstitialSpecialist:
         )
         if analyze_hypotheses is None:
             return TransitionSpecialistResult(
-                temporal=refined,
+                temporal=self._verify_pcm_exclusion(
+                    decision=refined,
+                    observation=observation,
+                ),
             )
 
         analyses = analyze_hypotheses(
@@ -624,20 +1271,30 @@ class InterstitialSpecialist:
                 observation=observation,
             )
 
+            terminal_decision = (
+                terminal_refined
+                if terminal_refined is not None
+                else refined
+            )
+
             return TransitionSpecialistResult(
-                temporal=(
-                    terminal_refined
-                    if terminal_refined is not None
-                    else refined
+                temporal=self._verify_pcm_exclusion(
+                    decision=terminal_decision,
+                    observation=observation,
                 ),
             )
 
+        final = TemporalSplitDecision(
+            kind=TemporalSplitKind.EXCLUSION,
+            outgoing_end_seconds=outgoing,
+            incoming_start_seconds=refined.incoming_start_seconds,
+        )
+
         return TransitionSpecialistResult(
-            temporal=TemporalSplitDecision(
-                kind=TemporalSplitKind.EXCLUSION,
-                outgoing_end_seconds=outgoing,
-                incoming_start_seconds=refined.incoming_start_seconds,
-            )
+            temporal=self._verify_pcm_exclusion(
+                decision=final,
+                observation=observation,
+            ),
         )
 
     @staticmethod
@@ -1065,6 +1722,13 @@ class InterstitialSpecialist:
 
 class BoundedInsertSpecialist:
     """Resolve temporal geometry for acoustically bounded inserted material."""
+
+    def __init__(
+        self,
+        *,
+        temporal_edge_verifier=None,
+    ) -> None:
+        self._temporal_edge_verifier = temporal_edge_verifier
 
     @staticmethod
     def _proposal_sources(hypothesis):
@@ -1557,7 +2221,33 @@ class BoundedInsertSpecialist:
         *,
         observation: TransitionSpecialistInput,
     ) -> TransitionSpecialistResult:
-        """Resolve the complete bounded-insert temporal geometry."""
+        result = self._resolve_geometry(
+            observation=observation,
+        )
+
+        if result.temporal is None:
+            return result
+
+        verified = _verify_owned_temporal_decision(
+            verifier=self._temporal_edge_verifier,
+            observation=observation,
+            decision=result.temporal,
+        )
+
+        if verified is result.temporal:
+            return result
+
+        return replace(
+            result,
+            temporal=verified,
+        )
+
+    def _resolve_geometry(
+        self,
+        *,
+        observation: TransitionSpecialistInput,
+    ) -> TransitionSpecialistResult:
+        """Resolve the complete bounded-insert provisional geometry."""
         symmetric = observation.routing.bounded_insert_regions
         asymmetric = (
             observation.routing.bounded_insert_asymmetric_regions
@@ -1593,14 +2283,33 @@ class BoundedInsertSpecialist:
                     temporal=None,
                 )
 
+            def finalize_symmetric(
+                decision: TemporalSplitDecision,
+            ) -> TransitionSpecialistResult:
+                islands = observation.routing.acoustic_islands
+
+                if len(islands) == 1:
+                    refined = _refine_acoustic_island_left_edge(
+                        decision=decision,
+                        island=islands[0],
+                        region=region,
+                    )
+
+                    if refined is not None:
+                        return TransitionSpecialistResult(
+                            temporal=refined,
+                        )
+
+                return TransitionSpecialistResult(
+                    temporal=decision,
+                )
+
             proposal = self.propose_structural_bridge_cut(
                 region,
             )
 
             if proposal is not None:
-                return TransitionSpecialistResult(
-                    temporal=proposal,
-                )
+                return finalize_symmetric(proposal)
 
             if observation.routing.fade.rise is None:
                 proposal = self.propose_symmetric_outer_extent(
@@ -1610,9 +2319,7 @@ class BoundedInsertSpecialist:
                 )
 
                 if proposal is not None:
-                    return TransitionSpecialistResult(
-                        temporal=proposal,
-                    )
+                    return finalize_symmetric(proposal)
 
             proposal = self.propose_symmetric_phase_aware(
                 region,
@@ -1632,16 +2339,23 @@ class BoundedInsertSpecialist:
                     )
                 )
 
-                return TransitionSpecialistResult(
-                    temporal=(
-                        terminal_refined
-                        if terminal_refined is not None
-                        else proposal
-                    ),
+                resolved = (
+                    terminal_refined
+                    if terminal_refined is not None
+                    else proposal
                 )
 
-            return self._resolve_symmetric_fallback(
+                return finalize_symmetric(resolved)
+
+            fallback = self._resolve_symmetric_fallback(
                 region
+            )
+
+            if fallback.temporal is None:
+                return fallback
+
+            return finalize_symmetric(
+                fallback.temporal,
             )
 
         if ownership is BoundedInsertOwnership.ASYMMETRIC:
@@ -1836,27 +2550,52 @@ class BoundedInsertSpecialist:
 
 
 class LegacyAmbiguousSpecialist:
-    """Preserve the semantic anchor while transition ownership is ambiguous.
+    """Preserve neutral ownership while verifying one shared temporal edge.
 
-    AMBIGUOUS deliberately has no acoustic ownership.  It must therefore not
-    call the legacy temporal resolver, incoming refinement, or any later
-    geometry recovery path.  Until Router can assign one phenomenon owner,
-    the semantic reference remains the neutral compatibility boundary.
+    AMBIGUOUS deliberately has no acoustic phenomenon ownership.  It therefore
+    does not call legacy temporal resolution, incoming refinement, or geometry
+    recovery.
+
+    The semantic reference is only a provisional compatibility anchor.  When
+    a shared-edge PCM verifier is available, this specialist may retract that
+    anchor to an earlier locally verified shared edge without changing
+    transition ownership or temporal kind.
     """
+
+    def __init__(
+        self,
+        *,
+        shared_edge_verifier=None,
+    ) -> None:
+        self._shared_edge_verifier = shared_edge_verifier
 
     def resolve(
         self,
         *,
         observation: TransitionSpecialistInput,
     ) -> TransitionSpecialistResult:
-        reference = observation.routing.reference_time_seconds
+        boundary = observation.routing.reference_time_seconds
+        verified = None
+
+        if self._shared_edge_verifier is not None:
+            verified = self._shared_edge_verifier.verify(
+                pcm=observation.pcm16,
+                absolute_start_time_seconds=(
+                    observation.window.start_time_seconds
+                ),
+                provisional_time_seconds=boundary,
+            )
+
+            if verified is not None:
+                boundary = verified.verified_time_seconds
 
         return TransitionSpecialistResult(
             temporal=TemporalSplitDecision(
                 kind=TemporalSplitKind.HARD_CUT,
-                outgoing_end_seconds=reference,
-                incoming_start_seconds=reference,
+                outgoing_end_seconds=boundary,
+                incoming_start_seconds=boundary,
             ),
+            diagnostics=verified,
         )
 
 

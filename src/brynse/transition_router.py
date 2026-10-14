@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
 
+from brynse.acoustic_island import AcousticIslandEvidence
 from brynse.boundaries import (
     BoundaryConfidence,
     BoundaryHypothesis,
@@ -49,6 +50,7 @@ class TransitionRoutingContext:
     hypotheses: tuple[BoundaryHypothesis, ...] = ()
     fade: FadeRoutingEvidence = field(default_factory=FadeRoutingEvidence)
     bounded_insert_regions: tuple[BoundedInsertRegionEvidence, ...] = ()
+    acoustic_islands: tuple[AcousticIslandEvidence, ...] = ()
     bounded_insert_asymmetric_regions: tuple[
         BoundedInsertAsymmetricRegionEvidence, ...
     ] = ()
@@ -183,6 +185,9 @@ class TransitionSemanticRoles:
 
     outgoing_handoff: BoundaryHypothesis | None = None
     incoming_handoff: BoundaryHypothesis | None = None
+    outgoing_edge_fade: OutgoingFadeEvidence | None = None
+    incoming_edge_fade: IncomingFadeEvidence | None = None
+    acoustic_island: AcousticIslandEvidence | None = None
     inserted_region: (
         BoundedInsertRegionEvidence
         | BoundedInsertAsymmetricRegionEvidence
@@ -402,9 +407,41 @@ class DefaultTransitionRouter:
             and single_structural_only_interior
         )
 
+        left_geometry = getattr(
+            region,
+            "left_geometry",
+            None,
+        )
+
+        left_basin_shared_handoff = (
+            region.reference_inside_left_basin
+            and left_geometry is not None
+            and any(
+                (
+                    geometry.outgoing.floor_time_seconds
+                    == geometry.incoming.start_time_seconds
+                )
+                and (
+                    context.reference_time_seconds
+                    <= geometry.outgoing.floor_time_seconds
+                )
+                and (
+                    left_geometry.start_seconds
+                    <= geometry.outgoing.floor_time_seconds
+                    <= left_geometry.recovery_seconds
+                )
+                and (
+                    geometry.outgoing.floor_time_seconds
+                    < region.right.time_seconds
+                )
+                for geometry in context.fade.geometries
+            )
+        )
+
         return BoundedInsertRoutingAssessment(
             candidate=(
                 not mixed_interior_families
+                and not left_basin_shared_handoff
                 and (
                     structurally_non_dominant_region
                     or terminal_single_insert
@@ -1134,64 +1171,307 @@ class DefaultTransitionRouter:
         interstitial: InterstitialRoutingAssessment,
         context: TransitionRoutingContext | None = None,
     ) -> TransitionSemanticRoles | None:
-        """Assign interstitial evidence roles without choosing temporal cuts.
+        """Assign Interstitial-owned semantic topology.
 
-        Fade associations already identify which reconciled hypothesis is
-        acoustically associated with each semantic side.  An association is
-        promoted to an interstitial role only when the same hypothesis is also
-        independently owned by the interstitial supported-handoff set.
+        Interstitial ownership and Interstitial topology are deliberately
+        separate from Fade ownership.
 
-        Partial roles are intentional: missing support remains unknown rather
-        than being inferred from temporal proximity.
+        With routing context available, Router derives topology only from
+        Interstitial-owned identity:
 
-        When routing context is available, an already-known outgoing handoff
-        may complete the incoming identity only when the context contains one
-        unique observed bounded-region relationship, whose left edge is that
-        outgoing handoff and whose right edge is independently owned by the
-        interstitial supported-handoff set.  The region supplies semantic
-        relationship only; it does not transfer bounded-insert ownership or
-        choose temporal geometry.
+        * two distinct reconciled fade geometries may provide descriptive edge
+          evidence only when each edge is uniquely owned by a different
+          Interstitial supported handoff;
+        * otherwise exactly two Interstitial routing handoffs may establish
+          two identities;
+        * a bounded relationship may complete one missing side only from an
+          already-established outgoing identity.  A region alone never
+          manufactures both Interstitial identities.
+
+        Selected Fade associations may corroborate one missing side, but they
+        must never manufacture both Interstitial roles.  In particular, two
+        associations landing on the same late hypothesis cannot collapse a
+        richer Interstitial transition into a false shared handoff.
+
+        Calls without routing context remain conservative: only topology
+        already owned by Interstitial routing handoffs may be published.
+        Fade associations never manufacture Interstitial identities.
         """
         supported = interstitial.supported_handoffs
 
-        outgoing = (
-            fade.outgoing_association.hypothesis
-            if (
-                fade.outgoing_association is not None
-                and fade.outgoing_association.hypothesis in supported
+        if context is not None:
+            reference = context.reference_time_seconds
+            regions = context.bounded_insert_regions
+
+            if len(regions) == 1:
+                region = regions[0]
+
+                if (
+                    region.left in supported
+                    and region.right in supported
+                    and not region.reference_inside_left_basin
+                    and not region.reference_inside_right_basin
+                    and region.left.time_seconds < reference
+                    and reference < region.right.time_seconds
+                ):
+                    return TransitionSemanticRoles(
+                        outgoing_handoff=region.left,
+                        incoming_handoff=region.right,
+                        inserted_region=region,
+                    )
+
+            geometries = tuple(context.fade.geometries)
+
+            def unique_supported_owner(time_seconds: float):
+                owners = tuple(
+                    hypothesis
+                    for hypothesis in supported
+                    if (
+                        hypothesis.basin_geometry is not None
+                        and (
+                            hypothesis.basin_geometry.start_seconds
+                            <= time_seconds
+                            <= hypothesis.basin_geometry.recovery_seconds
+                        )
+                    )
+                )
+
+                if len(owners) != 1:
+                    return None
+
+                return owners[0]
+
+            completed_geometries = tuple(
+                (
+                    geometry,
+                    unique_supported_owner(
+                        geometry.outgoing.floor_time_seconds
+                    ),
+                )
+                for geometry in geometries
+                if (
+                    geometry.incoming.established_time_seconds
+                    < reference
+                )
             )
-            else None
-        )
-
-        incoming = (
-            fade.incoming_association.hypothesis
-            if (
-                fade.incoming_association is not None
-                and fade.incoming_association.hypothesis in supported
+            completed_geometries = tuple(
+                item
+                for item in completed_geometries
+                if item[1] is not None
             )
-            else None
-        )
 
-        if (
-            outgoing is not None
-            and incoming is None
-            and context is not None
-            and len(context.bounded_insert_regions) == 1
-        ):
-            region = context.bounded_insert_regions[0]
+            upcoming_geometries = tuple(
+                (
+                    geometry,
+                    unique_supported_owner(
+                        geometry.incoming.start_time_seconds
+                    ),
+                )
+                for geometry in geometries
+                if geometry.incoming.start_time_seconds >= reference
+            )
+            upcoming_geometries = tuple(
+                item
+                for item in upcoming_geometries
+                if item[1] is not None
+            )
 
-            if (
-                region.left is outgoing
-                and region.right in supported
-            ):
-                incoming = region.right
+            if completed_geometries and upcoming_geometries:
+                outgoing_geometry, outgoing_owner = max(
+                    completed_geometries,
+                    key=lambda item: (
+                        item[0].incoming.established_time_seconds,
+                        item[0].outgoing.floor_time_seconds,
+                    ),
+                )
+                incoming_geometry, incoming_owner = min(
+                    upcoming_geometries,
+                    key=lambda item: (
+                        item[0].incoming.start_time_seconds,
+                        item[0].outgoing.floor_time_seconds,
+                    ),
+                )
 
-        if outgoing is None and incoming is None:
+                if (
+                    outgoing_geometry is not incoming_geometry
+                    and outgoing_owner is not incoming_owner
+                ):
+                    return TransitionSemanticRoles(
+                        outgoing_handoff=outgoing_owner,
+                        incoming_handoff=incoming_owner,
+                        outgoing_edge_fade=outgoing_geometry.outgoing,
+                        incoming_edge_fade=incoming_geometry.incoming,
+                    )
+
+            if not context.bounded_insert_regions:
+                structural_only = tuple(
+                    hypothesis
+                    for hypothesis in getattr(
+                        context,
+                        "hypotheses",
+                        (),
+                    )
+                    if {
+                        proposal.source
+                        for proposal in hypothesis.proposals
+                    } == {
+                        BoundaryProposalSource.STRUCTURAL
+                    }
+                )
+
+                mixed_left = []
+
+                for geometry in geometries:
+                    incoming = geometry.incoming
+                    outgoing = geometry.outgoing
+
+                    if (
+                        incoming.established_time_seconds
+                        >= reference
+                    ):
+                        continue
+
+                    witnesses = tuple(
+                        hypothesis
+                        for hypothesis in structural_only
+                        if (
+                            max(
+                                incoming.start_time_seconds,
+                                outgoing.floor_time_seconds,
+                            )
+                            <= hypothesis.time_seconds
+                            <= incoming.established_time_seconds
+                        )
+                    )
+
+                    if len(witnesses) == 1:
+                        mixed_left.append(geometry)
+
+                mixed_right_owners = []
+
+                for geometry in geometries:
+                    incoming_start = (
+                        geometry.incoming.start_time_seconds
+                    )
+
+                    if incoming_start < reference:
+                        continue
+
+                    owners = tuple(
+                        hypothesis
+                        for hypothesis in supported
+                        if (
+                            hypothesis.basin_geometry is not None
+                            and hypothesis.basin_geometry.start_seconds
+                            <= incoming_start
+                            <= hypothesis.basin_geometry.recovery_seconds
+                        )
+                    )
+
+                    if len(owners) != 1:
+                        continue
+
+                    owner = owners[0]
+
+                    if not any(
+                        owner is existing
+                        for existing in mixed_right_owners
+                    ):
+                        mixed_right_owners.append(owner)
+
+                if (
+                    len(mixed_left) == 1
+                    and len(mixed_right_owners) == 1
+                ):
+                    return TransitionSemanticRoles(
+                        outgoing_edge_fade=(
+                            mixed_left[0].outgoing
+                        ),
+                        incoming_handoff=(
+                            mixed_right_owners[0]
+                        ),
+                    )
+
+            routing_handoffs = interstitial.routing_handoffs
+
+            if len(routing_handoffs) == 2:
+                return TransitionSemanticRoles(
+                    outgoing_handoff=routing_handoffs[0],
+                    incoming_handoff=routing_handoffs[1],
+                )
+
+            outgoing = (
+                fade.outgoing_association.hypothesis
+                if (
+                    fade.outgoing_association is not None
+                    and fade.outgoing_association.hypothesis in supported
+                )
+                else None
+            )
+            incoming = (
+                fade.incoming_association.hypothesis
+                if (
+                    fade.incoming_association is not None
+                    and fade.incoming_association.hypothesis in supported
+                )
+                else None
+            )
+
+            if outgoing is not None and incoming is None:
+                if len(context.bounded_insert_regions) == 1:
+                    region = context.bounded_insert_regions[0]
+
+                    if (
+                        region.left is outgoing
+                        and region.right in supported
+                    ):
+                        return TransitionSemanticRoles(
+                            outgoing_handoff=outgoing,
+                            incoming_handoff=region.right,
+                        )
+
+                return TransitionSemanticRoles(
+                    outgoing_handoff=outgoing,
+                )
+
+            if incoming is not None and outgoing is None:
+                return TransitionSemanticRoles(
+                    incoming_handoff=incoming,
+                )
+
+            return None
+
+        routing_handoffs = interstitial.routing_handoffs
+
+        if len(routing_handoffs) != 2:
             return None
 
         return TransitionSemanticRoles(
-            outgoing_handoff=outgoing,
-            incoming_handoff=incoming,
+            outgoing_handoff=routing_handoffs[0],
+            incoming_handoff=routing_handoffs[1],
+        )
+
+    @staticmethod
+    def assign_acoustic_island_roles(
+        *,
+        context: TransitionRoutingContext,
+    ) -> TransitionSemanticRoles | None:
+        """Publish uniquely observed acoustic-island topology without cutting."""
+        if len(context.acoustic_islands) != 1:
+            return None
+
+        island = context.acoustic_islands[0]
+        region = island.observed_region
+
+        return TransitionSemanticRoles(
+            outgoing_handoff=(
+                None
+                if region is None
+                else region.left
+            ),
+            incoming_handoff=island.incoming_handoff,
+            acoustic_island=island,
+            inserted_region=region,
         )
 
     @staticmethod
@@ -1362,6 +1642,18 @@ class DefaultTransitionRouter:
                     provenance=bounded_insert,
                     fade=fade_assessment,
                 ),
+            )
+
+        acoustic_island_roles = self.assign_acoustic_island_roles(
+            context=context,
+        )
+
+        if acoustic_island_roles is not None:
+            return TransitionRoute(
+                kind=TransitionKind.INTERSTITIAL,
+                fade_assessment=fade_assessment,
+                interstitial_assessment=interstitial_assessment,
+                semantic_roles=acoustic_island_roles,
             )
 
         fade_like = fade_assessment.ownership_candidate

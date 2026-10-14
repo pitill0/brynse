@@ -13,7 +13,10 @@ from brynse.transition_router import (
     IncomingFadeRoutingAssociation,
     OutgoingFadeRoutingAssociation,
 )
-from brynse.transition_specialists import TransitionSpecialistResult
+from brynse.transition_specialists import (
+    TransitionSpecialistResult,
+    _verify_owned_temporal_decision,
+)
 
 OutgoingFadeSelection = OutgoingFadeRoutingAssociation
 IncomingFadeSelection = IncomingFadeRoutingAssociation
@@ -30,8 +33,96 @@ class FadeSpecialistDiagnostics:
 class FadeSpecialist:
     """Understand fade transition geometry and resolve fade boundaries."""
 
-    @classmethod
+    def __init__(
+        self,
+        *,
+        temporal_edge_verifier=None,
+    ) -> None:
+        self._temporal_edge_verifier = temporal_edge_verifier
+
     def resolve(
+        self=None,
+        *,
+        observation,
+    ) -> TransitionSpecialistResult:
+        """Resolve one fade transition, then verify owned edges against PCM."""
+
+        cls = (
+            type(self)
+            if isinstance(self, FadeSpecialist)
+            else FadeSpecialist
+        )
+
+        result = cls._resolve_geometry(
+            observation=observation,
+        )
+
+        verifier = (
+            self._temporal_edge_verifier
+            if isinstance(self, FadeSpecialist)
+            else None
+        )
+
+        if result.temporal is None or verifier is None:
+            return result
+
+        outgoing_extra = []
+        incoming_extra = []
+
+        diagnostics = result.diagnostics
+
+        if diagnostics is not None:
+            outgoing_selection = diagnostics.outgoing_selection
+            incoming_selection = diagnostics.incoming_selection
+
+            if outgoing_selection is not None:
+                fade = outgoing_selection.fade
+
+                outgoing_extra.extend(
+                    (
+                        fade.start_time_seconds,
+                        fade.floor_time_seconds,
+                        outgoing_selection.hypothesis.time_seconds,
+                    )
+                )
+
+            if incoming_selection is not None:
+                fade = incoming_selection.fade
+
+                incoming_extra.extend(
+                    (
+                        fade.start_time_seconds,
+                        fade.established_time_seconds,
+                        incoming_selection.hypothesis.time_seconds,
+                    )
+                )
+
+        if not outgoing_extra and not incoming_extra:
+            shared = (
+                observation.selected.time_seconds,
+                observation.routing.reference_time_seconds,
+            )
+            outgoing_extra.extend(shared)
+            incoming_extra.extend(shared)
+
+        verified = _verify_owned_temporal_decision(
+            verifier=verifier,
+            observation=observation,
+            decision=result.temporal,
+            outgoing_extra_times=outgoing_extra,
+            incoming_extra_times=incoming_extra,
+        )
+
+        if verified is result.temporal:
+            return result
+
+        return TransitionSpecialistResult(
+            temporal=verified,
+            diagnostics=result.diagnostics,
+        )
+
+    @classmethod
+    def _resolve_geometry(
         cls,
         *,
         observation,

@@ -5699,3 +5699,1056 @@ def test_bounded_insert_partial_roles_exclude_complete_edge_envelopes() -> None:
         outgoing_end_seconds=99.0,
         incoming_start_seconds=112.0,
     )
+
+
+
+def test_interstitial_routed_edge_geometry_precedes_legacy_rediscovery() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.transition_router import TransitionSemanticRoles
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            raise AssertionError(
+                "routed Interstitial edge geometry must resolve "
+                "before legacy rediscovery"
+            )
+
+    base = _observation(boundary=121.5)
+    observation = replace(
+        base,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_edge_fade=SimpleNamespace(
+                floor_time_seconds=105.7,
+            ),
+            incoming_edge_fade=SimpleNamespace(
+                start_time_seconds=123.5,
+            ),
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=105.7,
+        incoming_start_seconds=123.5,
+    )
+
+
+
+def test_interstitial_mixed_roles_resolve_routed_extents() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.transition_router import (
+        InterstitialRoutingAssessment,
+        TransitionSemanticRoles,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            raise AssertionError(
+                "mixed routed Interstitial topology must resolve "
+                "before legacy rediscovery"
+            )
+
+    incoming_handoff = SimpleNamespace(
+        time_seconds=123.2,
+        basin_geometry=SimpleNamespace(
+            start_seconds=123.0,
+            minimum_seconds=123.3,
+            recovery_seconds=124.5,
+        ),
+    )
+
+    base = _observation(boundary=121.5)
+
+    observation = replace(
+        base,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_edge_fade=SimpleNamespace(
+                floor_time_seconds=105.7,
+            ),
+            incoming_handoff=incoming_handoff,
+        ),
+        interstitial_assessment=InterstitialRoutingAssessment(
+            supported_handoffs=(incoming_handoff,),
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=105.7,
+        incoming_start_seconds=124.5,
+    )
+
+
+def test_interstitial_acoustic_island_refines_owned_region_left_edge() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.transition_router import TransitionSemanticRoles
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            raise AssertionError(
+                "owned Acoustic Island must resolve before legacy rediscovery"
+            )
+
+    region = SimpleNamespace(
+        left=SimpleNamespace(time_seconds=586.803),
+        right=SimpleNamespace(time_seconds=592.078),
+    )
+
+    island = SimpleNamespace(
+        incoming_handoff=region.right,
+        terminal_decay=SimpleNamespace(
+            floor_time_seconds=583.378,
+        ),
+        source_reset=SimpleNamespace(
+            start_time_seconds=584.328,
+        ),
+        observed_region=region,
+    )
+
+    base = _observation(boundary=588.434)
+
+    observation = replace(
+        base,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=region.left,
+            incoming_handoff=region.right,
+            acoustic_island=island,
+            inserted_region=region,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=583.378,
+        incoming_start_seconds=592.078,
+    )
+
+
+def test_bounded_insert_acoustic_island_refines_owned_left_edge() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_specialists import BoundedInsertSpecialist
+    from brynse.transition_router import (
+        BoundedInsertOwnership,
+        TransitionSemanticRoles,
+    )
+
+    left = SimpleNamespace(
+        time_seconds=2154.703,
+        proposals=(),
+        evidence=(),
+        basin_geometry=None,
+    )
+    right = SimpleNamespace(
+        time_seconds=2171.378,
+        proposals=(),
+        evidence=(),
+        basin_geometry=None,
+    )
+
+    region = SimpleNamespace(
+        reference_time_seconds=2155.860,
+        left=left,
+        right=right,
+        left_edge=left,
+        right_edge=right,
+        interior_hypotheses=(),
+        structural_only_interior_count=0,
+        reference_inside_left_basin=False,
+        reference_inside_right_basin=False,
+    )
+
+    island = SimpleNamespace(
+        incoming_handoff=right,
+        terminal_decay=SimpleNamespace(
+            floor_time_seconds=2155.303,
+        ),
+        source_reset=SimpleNamespace(
+            start_time_seconds=2151.453,
+        ),
+        observed_region=region,
+    )
+
+    routing = SimpleNamespace(
+        bounded_insert_regions=(region,),
+        bounded_insert_asymmetric_regions=(),
+        acoustic_islands=(island,),
+        hypotheses=(),
+        reference_time_seconds=2155.860,
+        fade=SimpleNamespace(
+            rise=object(),
+        ),
+    )
+
+    observation = TransitionSpecialistInput(
+        routing=routing,
+        selected=SimpleNamespace(
+            time_seconds=2155.860,
+        ),
+        profile=None,
+        window=None,
+        pcm8=None,
+        pcm16=None,
+        bounded_insert_ownership=(
+            BoundedInsertOwnership.SYMMETRIC
+        ),
+        semantic_roles=TransitionSemanticRoles(
+            inserted_region=region,
+            incoming_handoff=right,
+        ),
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=2151.453,
+        incoming_start_seconds=2171.378,
+    )
+
+
+def test_acoustic_island_left_edge_requires_observed_region() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_specialists import (
+        _refine_acoustic_island_left_edge,
+    )
+
+    decision = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=1100.0,
+        incoming_start_seconds=1105.0,
+    )
+
+    island = SimpleNamespace(
+        terminal_decay=SimpleNamespace(
+            floor_time_seconds=1101.0,
+        ),
+        source_reset=SimpleNamespace(
+            start_time_seconds=1098.879,
+        ),
+        observed_region=None,
+    )
+
+    result = _refine_acoustic_island_left_edge(
+        decision=decision,
+        island=island,
+        region=SimpleNamespace(),
+    )
+
+    assert result is None
+
+
+def test_acoustic_island_left_edge_does_not_replace_better_existing_edge() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_specialists import (
+        _refine_acoustic_island_left_edge,
+    )
+
+    region = SimpleNamespace()
+
+    decision = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=1098.536,
+        incoming_start_seconds=1105.279,
+    )
+
+    island = SimpleNamespace(
+        terminal_decay=SimpleNamespace(
+            floor_time_seconds=1105.229,
+        ),
+        source_reset=SimpleNamespace(
+            start_time_seconds=1098.879,
+        ),
+        observed_region=region,
+    )
+
+    result = _refine_acoustic_island_left_edge(
+        decision=decision,
+        island=island,
+        region=region,
+    )
+
+    assert result is None
+
+
+
+def test_ambiguous_specialist_pcm_verifies_earlier_shared_edge() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    pcm16 = object()
+
+    class SharedEdgeVerifier:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def verify(self, **kwargs):
+            self.calls.append(kwargs)
+            return SimpleNamespace(
+                verified_time_seconds=99.8,
+            )
+
+    verifier = SharedEdgeVerifier()
+    base = _observation(boundary=100.0)
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=100.0,
+        ),
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=pcm16,
+    )
+
+    result = LegacyAmbiguousSpecialist(
+        shared_edge_verifier=verifier,
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=99.8,
+        incoming_start_seconds=99.8,
+    )
+
+    assert len(verifier.calls) == 1
+    assert verifier.calls[0] == {
+        "pcm": pcm16,
+        "absolute_start_time_seconds": 90.0,
+        "provisional_time_seconds": 100.0,
+    }
+
+
+def test_ambiguous_specialist_preserves_reference_when_pcm_abstains() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    class SharedEdgeVerifier:
+        def verify(self, **kwargs):
+            return None
+
+    base = _observation(boundary=100.0)
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=100.0,
+        ),
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+    )
+
+    result = LegacyAmbiguousSpecialist(
+        shared_edge_verifier=SharedEdgeVerifier(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=100.0,
+    )
+
+
+
+def test_interstitial_pcm_verifies_exclusion_edges_independently() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return TemporalSplitDecision(
+                kind=TemporalSplitKind.EXCLUSION,
+                outgoing_end_seconds=100.0,
+                incoming_start_seconds=105.0,
+            )
+
+        analyze_hypotheses = None
+
+    class TemporalEdgeVerifier:
+        def __init__(self):
+            self.calls = []
+
+        def verify(self, **kwargs):
+            self.calls.append(kwargs)
+
+            provisional = kwargs["provisional_time_seconds"]
+
+            if provisional == 100.0:
+                return SimpleNamespace(
+                    verified_time_seconds=100.6,
+                )
+
+            if provisional == 105.0:
+                return SimpleNamespace(
+                    verified_time_seconds=103.2,
+                )
+
+            raise AssertionError(provisional)
+
+    verifier = TemporalEdgeVerifier()
+    base = _observation(boundary=102.0)
+
+    observation = replace(
+        base,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+        temporal_edge_verifier=verifier,
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.6,
+        incoming_start_seconds=103.2,
+    )
+
+    assert [
+        call["provisional_time_seconds"]
+        for call in verifier.calls
+    ] == [100.0, 105.0]
+
+
+def test_interstitial_pcm_preserves_exclusion_when_verified_edges_cross() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return TemporalSplitDecision(
+                kind=TemporalSplitKind.EXCLUSION,
+                outgoing_end_seconds=100.0,
+                incoming_start_seconds=105.0,
+            )
+
+        analyze_hypotheses = None
+
+    class TemporalEdgeVerifier:
+        def verify(self, **kwargs):
+            provisional = kwargs["provisional_time_seconds"]
+
+            return SimpleNamespace(
+                verified_time_seconds=(
+                    104.0
+                    if provisional == 100.0
+                    else 103.0
+                ),
+            )
+
+    base = _observation(boundary=102.0)
+
+    observation = replace(
+        base,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+        temporal_edge_verifier=TemporalEdgeVerifier(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=105.0,
+    )
+
+
+def test_interstitial_pcm_abstention_preserves_existing_exclusion() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return TemporalSplitDecision(
+                kind=TemporalSplitKind.EXCLUSION,
+                outgoing_end_seconds=100.0,
+                incoming_start_seconds=105.0,
+            )
+
+        analyze_hypotheses = None
+
+    class TemporalEdgeVerifier:
+        def verify(self, **kwargs):
+            return None
+
+    base = _observation(boundary=102.0)
+
+    observation = replace(
+        base,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+        temporal_edge_verifier=TemporalEdgeVerifier(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=105.0,
+    )
+
+
+
+def test_interstitial_reset_pair_only_acoustic_island_becomes_pcm_verified_exclusion() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    incoming_handoff = SimpleNamespace(
+        time_seconds=110.0,
+    )
+
+    island = SimpleNamespace(
+        observed_region=None,
+        terminal_decay=SimpleNamespace(
+            floor_time_seconds=100.0,
+        ),
+        source_reset=SimpleNamespace(
+            start_time_seconds=100.0,
+        ),
+        incoming_handoff=incoming_handoff,
+    )
+
+    semantic_roles = SimpleNamespace(
+        acoustic_island=island,
+        inserted_region=None,
+        outgoing_handoff=None,
+        incoming_handoff=incoming_handoff,
+        outgoing_edge_fade=None,
+        incoming_edge_fade=None,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            raise AssertionError(
+                "reset-pair-only Acoustic Island must resolve "
+                "before legacy incoming rediscovery"
+            )
+
+    class TemporalEdgeVerifier:
+        def __init__(self):
+            self.calls = []
+
+        def verify(self, **kwargs):
+            self.calls.append(kwargs)
+            provisional = kwargs["provisional_time_seconds"]
+
+            if provisional == 100.0:
+                return SimpleNamespace(
+                    verified_time_seconds=100.4,
+                )
+
+            if provisional == 110.0:
+                return SimpleNamespace(
+                    verified_time_seconds=108.8,
+                )
+
+            raise AssertionError(provisional)
+
+    verifier = TemporalEdgeVerifier()
+    base = _observation(boundary=105.0)
+
+    observation = replace(
+        base,
+        semantic_roles=semantic_roles,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+        temporal_edge_verifier=verifier,
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.4,
+        incoming_start_seconds=108.8,
+    )
+
+    assert [
+        call["provisional_time_seconds"]
+        for call in verifier.calls
+    ] == [100.0, 110.0]
+
+
+def test_interstitial_region_backed_acoustic_island_does_not_use_reset_pair_only_path() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    incoming_handoff = SimpleNamespace(
+        time_seconds=110.0,
+    )
+
+    region = SimpleNamespace(
+        left=SimpleNamespace(
+            time_seconds=101.0,
+        ),
+        right=SimpleNamespace(
+            time_seconds=110.0,
+        ),
+    )
+
+    island = SimpleNamespace(
+        observed_region=region,
+        terminal_decay=SimpleNamespace(
+            floor_time_seconds=100.0,
+        ),
+        source_reset=SimpleNamespace(
+            start_time_seconds=100.0,
+        ),
+        incoming_handoff=incoming_handoff,
+    )
+
+    semantic_roles = SimpleNamespace(
+        acoustic_island=island,
+        inserted_region=region,
+        outgoing_handoff=region.left,
+        incoming_handoff=incoming_handoff,
+        outgoing_edge_fade=None,
+        incoming_edge_fade=None,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            raise AssertionError(
+                "region-backed Acoustic Island must preserve "
+                "its existing specialist path"
+            )
+
+    base = _observation(boundary=105.0)
+
+    observation = replace(
+        base,
+        semantic_roles=semantic_roles,
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal is not None
+    assert result.temporal.kind is TemporalSplitKind.EXCLUSION
+
+
+
+def test_hard_cut_pcm_authority_uses_explicit_bounds() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    class Verifier:
+        def __init__(self):
+            self.calls = []
+
+        def verify(self, **kwargs):
+            self.calls.append(kwargs)
+
+            return SimpleNamespace(
+                verified_time_seconds=104.25,
+            )
+
+    verifier = Verifier()
+    base = _observation(boundary=100.0)
+
+    observation = replace(
+        base,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    result = HardCutSpecialist(
+        temporal_edge_verifier=verifier,
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal is not None
+    assert result.temporal.kind is TemporalSplitKind.HARD_CUT
+    assert result.temporal.outgoing_end_seconds == 104.25
+    assert result.temporal.incoming_start_seconds == 104.25
+
+    assert len(verifier.calls) == 1
+    assert "search_bounds" in verifier.calls[0]
+
+
+def test_interstitial_pcm_authority_runs_once_per_final_edge() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return TemporalSplitDecision(
+                kind=TemporalSplitKind.EXCLUSION,
+                outgoing_end_seconds=100.0,
+                incoming_start_seconds=110.0,
+            )
+
+        analyze_hypotheses = None
+
+    class Verifier:
+        def __init__(self):
+            self.calls = []
+
+        def verify(self, **kwargs):
+            self.calls.append(kwargs)
+
+            provisional = kwargs[
+                "provisional_time_seconds"
+            ]
+
+            return SimpleNamespace(
+                verified_time_seconds=(
+                    96.0
+                    if provisional == 100.0
+                    else 116.0
+                ),
+            )
+
+    verifier = Verifier()
+    base = _observation(boundary=105.0)
+
+    observation = replace(
+        base,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+        temporal_edge_verifier=verifier,
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=96.0,
+        incoming_start_seconds=116.0,
+    )
+
+    assert len(verifier.calls) == 2
+
+
+def test_bounded_insert_pcm_authority_preserves_exclusion_contract() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.transition_specialists import (
+        _verify_owned_temporal_decision,
+    )
+
+    class Verifier:
+        def verify(self, **kwargs):
+            provisional = kwargs[
+                "provisional_time_seconds"
+            ]
+
+            return SimpleNamespace(
+                verified_time_seconds=(
+                    112.0
+                    if provisional == 100.0
+                    else 108.0
+                ),
+            )
+
+    base = _observation(boundary=105.0)
+
+    observation = replace(
+        base,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    provisional = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=110.0,
+    )
+
+    result = _verify_owned_temporal_decision(
+        verifier=Verifier(),
+        observation=observation,
+        decision=provisional,
+    )
+
+    # PCM proposed an invalid EXCLUSION ordering:
+    # outgoing=112, incoming=108.
+    # Specialist semantics remain authoritative over kind.
+    assert result == provisional
+
+
+def test_crossfade_pcm_authority_preserves_crossfade_contract() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.transition_specialists import (
+        _verify_owned_temporal_decision,
+    )
+
+    class Verifier:
+        def verify(self, **kwargs):
+            provisional = kwargs[
+                "provisional_time_seconds"
+            ]
+
+            return SimpleNamespace(
+                verified_time_seconds=(
+                    101.0
+                    if provisional == 110.0
+                    else 112.0
+                ),
+            )
+
+    base = _observation(boundary=105.0)
+
+    observation = replace(
+        base,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    provisional = TemporalSplitDecision(
+        kind=TemporalSplitKind.CROSSFADE,
+        outgoing_end_seconds=110.0,
+        incoming_start_seconds=100.0,
+    )
+
+    result = _verify_owned_temporal_decision(
+        verifier=Verifier(),
+        observation=observation,
+        decision=provisional,
+    )
+
+    # PCM would invert CROSSFADE ordering:
+    # incoming=112 > outgoing=101.
+    assert result == provisional
+
+
+def test_pcm_owned_handoff_bounds_include_constituent_proposals() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_specialists import (
+        _owned_pcm_edge_times,
+    )
+
+    handoff = SimpleNamespace(
+        time_seconds=100.0,
+        proposals=(
+            SimpleNamespace(time_seconds=98.5),
+            SimpleNamespace(time_seconds=101.25),
+        ),
+        basin_geometry=SimpleNamespace(
+            start_seconds=99.75,
+            minimum_seconds=100.0,
+            recovery_seconds=100.25,
+        ),
+    )
+
+    observation = TransitionSpecialistInput(
+        routing=SimpleNamespace(
+            acoustic_islands=(),
+        ),
+        selected=SimpleNamespace(
+            time_seconds=100.0,
+        ),
+        profile=None,
+        window=None,
+        pcm8=None,
+        pcm16=None,
+        semantic_roles=SimpleNamespace(
+            outgoing_handoff=handoff,
+            incoming_handoff=None,
+            outgoing_edge_fade=None,
+            incoming_edge_fade=None,
+            inserted_region=None,
+            acoustic_island=None,
+        ),
+    )
+
+    times = _owned_pcm_edge_times(
+        observation=observation,
+        edge="outgoing",
+    )
+
+    assert min(times) == 98.5
+    assert max(times) == 101.25
+
+
+def test_interstitial_region_backed_pcm_partitions_edges_at_reference() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    region = SimpleNamespace(
+        left=SimpleNamespace(
+            time_seconds=100.0,
+            proposals=(),
+            basin_geometry=SimpleNamespace(
+                start_seconds=99.5,
+                minimum_seconds=100.0,
+                recovery_seconds=100.5,
+            ),
+        ),
+        right=SimpleNamespace(
+            time_seconds=110.0,
+            proposals=(),
+            basin_geometry=SimpleNamespace(
+                start_seconds=109.5,
+                minimum_seconds=110.0,
+                recovery_seconds=110.5,
+            ),
+        ),
+    )
+
+    island = SimpleNamespace(
+        observed_region=region,
+        terminal_decay=SimpleNamespace(
+            start_time_seconds=98.75,
+            floor_time_seconds=99.0,
+        ),
+        source_reset=SimpleNamespace(
+            start_time_seconds=99.25,
+            established_time_seconds=99.5,
+        ),
+        incoming_handoff=region.right,
+    )
+
+    roles = SimpleNamespace(
+        acoustic_island=island,
+        inserted_region=region,
+        outgoing_handoff=region.left,
+        incoming_handoff=region.right,
+        outgoing_edge_fade=None,
+        incoming_edge_fade=None,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            raise AssertionError(
+                "region-backed Acoustic Island must resolve "
+                "before legacy incoming rediscovery"
+            )
+
+        analyze_hypotheses = None
+
+    class Verifier:
+        def __init__(self):
+            self.calls = []
+
+        def verify(self, **kwargs):
+            self.calls.append(kwargs)
+
+            return SimpleNamespace(
+                verified_time_seconds=(
+                    kwargs["provisional_time_seconds"]
+                ),
+            )
+
+    verifier = Verifier()
+    base = _observation(boundary=105.0)
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=105.0,
+            acoustic_islands=(island,),
+        ),
+        semantic_roles=roles,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+        temporal_edge_verifier=verifier,
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal is not None
+    assert result.temporal.kind is TemporalSplitKind.EXCLUSION
+
+    assert len(verifier.calls) == 2
+
+    outgoing_bounds = verifier.calls[0]["search_bounds"]
+    incoming_bounds = verifier.calls[1]["search_bounds"]
+
+    assert outgoing_bounds.end_time_seconds == 105.0
+    assert incoming_bounds.start_time_seconds == 105.0
+
+    assert (
+        outgoing_bounds.start_time_seconds
+        < outgoing_bounds.end_time_seconds
+    )
+    assert (
+        incoming_bounds.start_time_seconds
+        < incoming_bounds.end_time_seconds
+    )

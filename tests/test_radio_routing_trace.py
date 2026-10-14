@@ -134,6 +134,8 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
     assert record == {
         "reference_time_seconds": 100.0,
         "router_kind": "hard_cut",
+        "acoustic_island_count": 0,
+        "acoustic_island_detail": [],
         "semantic_outgoing_handoff_seconds": None,
         "semantic_incoming_handoff_seconds": None,
         "semantic_inserted_region_kind": None,
@@ -156,6 +158,8 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
         "temporal_kind": "exclusion",
         "incoming_start_seconds": 102.0,
         "outgoing_end_seconds": 100.0,
+        "pcm_boundary_scan_count": 0,
+        "pcm_boundary_scan_detail": [],
         "fade_rise": False,
         "fade_rise_time_seconds": None,
         "fade_rise_jump_ratio": None,
@@ -470,6 +474,7 @@ def test_run_stream_writes_routing_trace(monkeypatch, tmp_path) -> None:
         transient_exclusion=True,
         autonomous_boundaries=False,
         routing_trace=trace_path,
+        session_capture=None,
     )
 
     assert cli._run_stream(args) == 0
@@ -478,3 +483,46 @@ def test_run_stream_writes_routing_trace(monkeypatch, tmp_path) -> None:
     assert len(lines) == 1
 
     assert json.loads(lines[0]) == cli._routing_trace_record(observation)
+
+
+
+def test_routing_trace_record_exposes_acoustic_island_evidence() -> None:
+    from brynse.acoustic_island import AcousticIslandEvidence
+
+    base = _observation()
+    hypothesis = base.context.hypotheses[0]
+    outgoing = base.context.fade.outgoing_fades[0]
+    incoming = base.context.fade.incoming_fades[0]
+
+    island = AcousticIslandEvidence(
+        incoming_handoff=hypothesis,
+        terminal_decay=outgoing,
+        source_reset=incoming,
+    )
+
+    context = replace(
+        base.context,
+        acoustic_islands=(island,),
+    )
+
+    record = cli._routing_trace_record(
+        replace(
+            base,
+            context=context,
+        )
+    )
+
+    assert record["acoustic_island_count"] == 1
+    assert record["acoustic_island_detail"] == [
+        {
+            "incoming_handoff_seconds": hypothesis.time_seconds,
+            "terminal_decay_start_seconds": outgoing.start_time_seconds,
+            "terminal_decay_floor_seconds": outgoing.floor_time_seconds,
+            "source_reset_start_seconds": incoming.start_time_seconds,
+            "source_reset_established_seconds": (
+                incoming.established_time_seconds
+            ),
+            "observed_region_left_seconds": None,
+            "observed_region_right_seconds": None,
+        }
+    ]

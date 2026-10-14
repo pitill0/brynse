@@ -465,7 +465,11 @@ def test_multisignal_resolver_observes_routing_context_without_changing_decision
     )
 
     fade = FadeRoutingEvidence()
-    hypothesis = SimpleNamespace(time_seconds=102.0)
+    hypothesis = SimpleNamespace(
+        time_seconds=102.0,
+        proposals=(),
+        basin_geometry=None,
+    )
     hypotheses = (hypothesis,)
 
     class WindowExtractor:
@@ -585,6 +589,7 @@ def test_multisignal_resolver_observes_routing_context_without_changing_decision
     }
     assert context.fade is fade
     assert context.hypotheses is hypotheses
+    assert context.acoustic_islands == ()
 
     assert temporal_resolver.fade_calls == [
         {
@@ -605,3 +610,65 @@ def test_multisignal_resolver_observes_routing_context_without_changing_decision
     refine_call = incoming_refiner.refine_calls[0]
     assert refine_call["hypotheses"] is hypotheses
     assert refine_call["decision"] == original
+
+
+
+def test_orchestrator_wires_pcm_authority_into_owned_specialists() -> None:
+    from brynse.fade_specialist import FadeSpecialist
+    from brynse.pcm_temporal_edge import PcmTemporalEdgeVerifier
+    from brynse.transition_router import TransitionKind
+    from brynse.transition_specialists import (
+        BoundedInsertSpecialist,
+        HardCutSpecialist,
+        InterstitialSpecialist,
+    )
+
+    from brynse.orchestrator import (
+        MultiSignalAcousticCandidateResolver,
+    )
+
+    orchestrator = MultiSignalAcousticCandidateResolver()
+
+    resolver = orchestrator._routed_transition_resolver
+    specialists = resolver._specialists
+
+    hard_cut = specialists[TransitionKind.HARD_CUT]
+    fade = specialists[TransitionKind.FADE]
+    interstitial = specialists[TransitionKind.INTERSTITIAL]
+    bounded_insert = specialists[TransitionKind.BOUNDED_INSERT]
+
+    assert isinstance(
+        hard_cut,
+        HardCutSpecialist,
+    )
+    assert isinstance(
+        hard_cut._temporal_edge_verifier,
+        PcmTemporalEdgeVerifier,
+    )
+
+    assert isinstance(
+        fade,
+        FadeSpecialist,
+    )
+    assert isinstance(
+        fade._temporal_edge_verifier,
+        PcmTemporalEdgeVerifier,
+    )
+
+    assert isinstance(
+        interstitial,
+        InterstitialSpecialist,
+    )
+    assert isinstance(
+        interstitial._temporal_edge_verifier,
+        PcmTemporalEdgeVerifier,
+    )
+
+    assert isinstance(
+        bounded_insert,
+        BoundedInsertSpecialist,
+    )
+    assert isinstance(
+        bounded_insert._temporal_edge_verifier,
+        PcmTemporalEdgeVerifier,
+    )

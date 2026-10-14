@@ -823,7 +823,7 @@ def test_interstitial_assessment_keeps_single_handoff_non_candidate() -> None:
     assert assessment.legacy_candidate is False
 
 
-def test_interstitial_roles_reuse_supported_fade_associations() -> None:
+def test_interstitial_roles_use_owned_routing_handoffs() -> None:
     from brynse.transition_evidence import (
         IncomingFadeEvidence,
         OutgoingFadeEvidence,
@@ -936,9 +936,7 @@ def test_interstitial_roles_allow_partial_supported_association() -> None:
         interstitial=interstitial,
     )
 
-    assert roles is not None
-    assert roles.outgoing_handoff is outgoing
-    assert roles.incoming_handoff is None
+    assert roles is None
 
 
 def test_interstitial_roles_complete_incoming_from_unique_observed_region() -> None:
@@ -1194,7 +1192,7 @@ def test_interstitial_roles_keep_incoming_unknown_when_region_is_ambiguous() -> 
     assert roles.incoming_handoff is None
 
 
-def test_interstitial_roles_allow_same_supported_handoff_on_both_sides() -> None:
+def test_interstitial_roles_do_not_invent_shared_handoff_from_fade() -> None:
     from brynse.transition_evidence import (
         IncomingFadeEvidence,
         OutgoingFadeEvidence,
@@ -1253,9 +1251,7 @@ def test_interstitial_roles_allow_same_supported_handoff_on_both_sides() -> None
         interstitial=interstitial,
     )
 
-    assert roles is not None
-    assert roles.outgoing_handoff is shared
-    assert roles.incoming_handoff is shared
+    assert roles is None
 
 
 def test_interstitial_roles_ignore_fade_association_without_interstitial_support() -> None:
@@ -2289,6 +2285,196 @@ def test_bounded_insert_shadow_accepts_unique_non_dominant_region() -> None:
     assert result.related_region_count == 1
     assert result.left_is_context_structural_peak is False
     assert result.right_is_context_structural_peak is False
+
+
+def test_bounded_insert_rejects_left_basin_shared_handoff() -> None:
+    from types import SimpleNamespace
+
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.0,
+        basin_recovery_seconds=102.0,
+        structural_strength=0.2,
+    )
+    right = _bounded_insert_edge(
+        112.0,
+        basin_start_seconds=111.5,
+        basin_recovery_seconds=112.5,
+        structural_strength=0.3,
+    )
+    interior = _structural_only_hypothesis(
+        106.0,
+        structural_strength=0.25,
+    )
+    dominant = _bounded_insert_edge(
+        120.0,
+        basin_start_seconds=119.5,
+        basin_recovery_seconds=120.5,
+        structural_strength=0.9,
+    )
+
+    region = _bounded_insert_region(
+        reference_time_seconds=100.2,
+        left=left,
+        right=right,
+        interior_hypotheses=(interior,),
+    )
+
+    shared_outgoing = SimpleNamespace(
+        floor_time_seconds=100.4,
+    )
+    shared_incoming = SimpleNamespace(
+        start_time_seconds=100.4,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=100.2,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(left, interior, right, dominant),
+        fade=SimpleNamespace(
+            geometries=(
+                SimpleNamespace(
+                    outgoing=shared_outgoing,
+                    incoming=shared_incoming,
+                ),
+            ),
+        ),
+        bounded_insert_regions=(region,),
+    )
+
+    assessment = DefaultTransitionRouter().assess_bounded_insert(
+        context=context,
+    )
+
+    assert region.reference_inside_left_basin is True
+    assert assessment.candidate is False
+    assert assessment.unique_region is True
+
+
+def test_bounded_insert_preserves_region_when_shared_handoff_precedes_reference() -> None:
+    from types import SimpleNamespace
+
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.0,
+        basin_recovery_seconds=102.0,
+        structural_strength=0.2,
+    )
+    right = _bounded_insert_edge(
+        112.0,
+        basin_start_seconds=111.5,
+        basin_recovery_seconds=112.5,
+        structural_strength=0.3,
+    )
+    interior = _structural_only_hypothesis(
+        106.0,
+        structural_strength=0.25,
+    )
+    dominant = _bounded_insert_edge(
+        120.0,
+        basin_start_seconds=119.5,
+        basin_recovery_seconds=120.5,
+        structural_strength=0.9,
+    )
+
+    region = _bounded_insert_region(
+        reference_time_seconds=100.2,
+        left=left,
+        right=right,
+        interior_hypotheses=(interior,),
+    )
+
+    earlier_outgoing = SimpleNamespace(
+        floor_time_seconds=99.9,
+    )
+    earlier_incoming = SimpleNamespace(
+        start_time_seconds=99.9,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=100.2,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(left, interior, right, dominant),
+        fade=SimpleNamespace(
+            geometries=(
+                SimpleNamespace(
+                    outgoing=earlier_outgoing,
+                    incoming=earlier_incoming,
+                ),
+            ),
+        ),
+        bounded_insert_regions=(region,),
+    )
+
+    assessment = DefaultTransitionRouter().assess_bounded_insert(
+        context=context,
+    )
+
+    assert region.reference_inside_left_basin is True
+    assert assessment.candidate is True
+
+
+def test_bounded_insert_preserves_region_without_shared_left_handoff() -> None:
+    from types import SimpleNamespace
+
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.0,
+        basin_recovery_seconds=102.0,
+        structural_strength=0.2,
+    )
+    right = _bounded_insert_edge(
+        112.0,
+        basin_start_seconds=111.5,
+        basin_recovery_seconds=112.5,
+        structural_strength=0.3,
+    )
+    interior = _structural_only_hypothesis(
+        106.0,
+        structural_strength=0.25,
+    )
+    dominant = _bounded_insert_edge(
+        120.0,
+        basin_start_seconds=119.5,
+        basin_recovery_seconds=120.5,
+        structural_strength=0.9,
+    )
+
+    region = _bounded_insert_region(
+        reference_time_seconds=100.2,
+        left=left,
+        right=right,
+        interior_hypotheses=(interior,),
+    )
+
+    outgoing = SimpleNamespace(
+        floor_time_seconds=100.4,
+    )
+    incoming = SimpleNamespace(
+        start_time_seconds=100.6,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=100.2,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(left, interior, right, dominant),
+        fade=SimpleNamespace(
+            geometries=(
+                SimpleNamespace(
+                    outgoing=outgoing,
+                    incoming=incoming,
+                ),
+            ),
+        ),
+        bounded_insert_regions=(region,),
+    )
+
+    assessment = DefaultTransitionRouter().assess_bounded_insert(
+        context=context,
+    )
+
+    assert region.reference_inside_left_basin is True
+    assert assessment.candidate is True
 
 
 def test_bounded_insert_shadow_abstains_with_multiple_regions() -> None:
@@ -3429,3 +3615,602 @@ def test_phase4_symmetric_accepts_structural_only_interior() -> None:
     )
 
     assert result.candidate is True
+
+
+
+def test_interstitial_roles_use_bracketing_reconciled_edge_geometry() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_router import (
+        DefaultTransitionRouter,
+        FadeRoutingAssessment,
+        InterstitialRoutingAssessment,
+    )
+
+    outgoing_handoff = _interstitial_hypothesis(
+        basin_time=105.7,
+        structural_time=105.8,
+        basin_start=105.2,
+        basin_recovery=106.2,
+    )
+    later_handoff = _interstitial_hypothesis(
+        basin_time=123.5,
+        structural_time=123.6,
+        basin_start=123.0,
+        basin_recovery=124.0,
+    )
+
+    left_outgoing = SimpleNamespace(
+        floor_time_seconds=105.7,
+    )
+    left_incoming = SimpleNamespace(
+        start_time_seconds=105.7,
+        established_time_seconds=110.8,
+    )
+    right_outgoing = SimpleNamespace(
+        floor_time_seconds=124.2,
+    )
+    right_incoming = SimpleNamespace(
+        start_time_seconds=123.5,
+        established_time_seconds=124.0,
+    )
+
+    context = SimpleNamespace(
+        reference_time_seconds=121.5,
+        bounded_insert_regions=(),
+        fade=SimpleNamespace(
+            geometries=(
+                SimpleNamespace(
+                    outgoing=left_outgoing,
+                    incoming=left_incoming,
+                ),
+                SimpleNamespace(
+                    outgoing=right_outgoing,
+                    incoming=right_incoming,
+                ),
+            ),
+        ),
+    )
+
+    roles = DefaultTransitionRouter.assign_interstitial_roles(
+        fade=FadeRoutingAssessment(
+            rise_present=False,
+            basin_count=0,
+            geometry_count=2,
+        ),
+        interstitial=InterstitialRoutingAssessment(
+            routing_handoffs=(
+                outgoing_handoff,
+                later_handoff,
+            ),
+            supported_handoffs=(
+                outgoing_handoff,
+                later_handoff,
+            ),
+        ),
+        context=context,
+    )
+
+    assert roles is not None
+    assert roles.outgoing_handoff is outgoing_handoff
+    assert roles.incoming_handoff is later_handoff
+    assert roles.outgoing_edge_fade is left_outgoing
+    assert roles.incoming_edge_fade is right_incoming
+
+
+
+def test_interstitial_roles_reject_unowned_bracketing_fade_geometry() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_router import (
+        DefaultTransitionRouter,
+        FadeRoutingAssessment,
+        InterstitialRoutingAssessment,
+    )
+
+    outgoing_handoff = _interstitial_hypothesis(
+        basin_time=1030.6,
+        structural_time=1030.7,
+        basin_start=1030.1,
+        basin_recovery=1031.1,
+    )
+    unrelated_handoff = _interstitial_hypothesis(
+        basin_time=1045.0,
+        structural_time=1045.1,
+        basin_start=1044.5,
+        basin_recovery=1045.5,
+    )
+
+    owned_outgoing = SimpleNamespace(
+        floor_time_seconds=1030.6,
+    )
+    owned_incoming = SimpleNamespace(
+        start_time_seconds=1030.6,
+        established_time_seconds=1030.9,
+    )
+
+    unowned_outgoing = SimpleNamespace(
+        floor_time_seconds=1039.4,
+    )
+    unowned_incoming = SimpleNamespace(
+        start_time_seconds=1039.0,
+        established_time_seconds=1039.5,
+    )
+
+    context = SimpleNamespace(
+        reference_time_seconds=1030.8,
+        bounded_insert_regions=(),
+        fade=SimpleNamespace(
+            geometries=(
+                SimpleNamespace(
+                    outgoing=owned_outgoing,
+                    incoming=owned_incoming,
+                ),
+                SimpleNamespace(
+                    outgoing=unowned_outgoing,
+                    incoming=unowned_incoming,
+                ),
+            ),
+        ),
+    )
+
+    roles = DefaultTransitionRouter.assign_interstitial_roles(
+        fade=FadeRoutingAssessment(
+            rise_present=False,
+            basin_count=0,
+            geometry_count=2,
+        ),
+        interstitial=InterstitialRoutingAssessment(
+            routing_handoffs=(
+                outgoing_handoff,
+                unrelated_handoff,
+            ),
+            supported_handoffs=(
+                outgoing_handoff,
+                unrelated_handoff,
+            ),
+        ),
+        context=context,
+    )
+
+    # Temporal bracketing alone must not promote the unowned 1039s Fade edge.
+    # With no proven two-sided edge topology, Router falls back only to
+    # Interstitial-owned routing evidence.
+    assert roles is not None
+    assert roles.outgoing_handoff is outgoing_handoff
+    assert roles.incoming_handoff is unrelated_handoff
+    assert roles.outgoing_edge_fade is None
+    assert roles.incoming_edge_fade is None
+
+
+
+def test_interstitial_roles_use_unique_region_bracketing_reference() -> None:
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_evidence import TransitionEvidenceState
+    from brynse.transition_router import (
+        DefaultTransitionRouter,
+        FadeRoutingAssessment,
+        InterstitialRoutingAssessment,
+        TransitionRoutingContext,
+    )
+
+    outgoing = _interstitial_hypothesis(
+        basin_time=100.0,
+        structural_time=100.2,
+        basin_start=99.5,
+        basin_recovery=100.5,
+    )
+    incoming = _interstitial_hypothesis(
+        basin_time=108.0,
+        structural_time=108.2,
+        basin_start=107.5,
+        basin_recovery=108.5,
+    )
+
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=104.0,
+        left=outgoing,
+        right=incoming,
+    )
+
+    roles = DefaultTransitionRouter.assign_interstitial_roles(
+        fade=FadeRoutingAssessment(
+            rise_present=False,
+            basin_count=0,
+            geometry_count=0,
+        ),
+        interstitial=InterstitialRoutingAssessment(
+            routing_handoffs=(
+                outgoing,
+                incoming,
+                _interstitial_hypothesis(
+                    basin_time=112.0,
+                    structural_time=112.2,
+                    basin_start=111.5,
+                    basin_recovery=112.5,
+                ),
+            ),
+            supported_handoffs=(
+                outgoing,
+                incoming,
+            ),
+        ),
+        context=TransitionRoutingContext(
+            reference_time_seconds=104.0,
+            evidence=TransitionEvidenceState(),
+            hypotheses=(outgoing, incoming),
+            bounded_insert_regions=(region,),
+        ),
+    )
+
+    assert roles is not None
+    assert roles.outgoing_handoff is outgoing
+    assert roles.incoming_handoff is incoming
+    assert roles.inserted_region is region
+
+
+
+def test_interstitial_roles_reject_region_after_reference() -> None:
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_evidence import TransitionEvidenceState
+    from brynse.transition_router import (
+        DefaultTransitionRouter,
+        FadeRoutingAssessment,
+        InterstitialRoutingAssessment,
+        TransitionRoutingContext,
+    )
+
+    outgoing = _interstitial_hypothesis(
+        basin_time=1031.8,
+        structural_time=1032.0,
+        basin_start=1030.6,
+        basin_recovery=1034.5,
+    )
+    incoming = _interstitial_hypothesis(
+        basin_time=1038.5,
+        structural_time=1038.8,
+        basin_start=1036.9,
+        basin_recovery=1039.5,
+    )
+
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=1030.8,
+        left=outgoing,
+        right=incoming,
+    )
+
+    roles = DefaultTransitionRouter.assign_interstitial_roles(
+        fade=FadeRoutingAssessment(
+            rise_present=False,
+            basin_count=0,
+            geometry_count=0,
+        ),
+        interstitial=InterstitialRoutingAssessment(
+            routing_handoffs=(),
+            supported_handoffs=(
+                outgoing,
+                incoming,
+            ),
+        ),
+        context=TransitionRoutingContext(
+            reference_time_seconds=1030.8,
+            evidence=TransitionEvidenceState(),
+            hypotheses=(outgoing, incoming),
+            bounded_insert_regions=(region,),
+        ),
+    )
+
+    assert roles is None
+
+
+
+def test_interstitial_roles_use_mixed_completed_fade_and_handoff() -> None:
+    from types import SimpleNamespace
+
+    from brynse.boundaries import BoundaryProposalSource
+    from brynse.transition_router import (
+        DefaultTransitionRouter,
+        FadeRoutingAssessment,
+        InterstitialRoutingAssessment,
+    )
+
+    incoming_handoff = _interstitial_hypothesis(
+        basin_time=123.2,
+        structural_time=123.3,
+        basin_start=123.0,
+        basin_recovery=124.5,
+    )
+    later_handoff = _interstitial_hypothesis(
+        basin_time=127.0,
+        structural_time=127.2,
+        basin_start=126.5,
+        basin_recovery=127.5,
+    )
+
+    structural_witness = SimpleNamespace(
+        time_seconds=108.5,
+        proposals=(
+            SimpleNamespace(
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+        basin_geometry=None,
+    )
+
+    left_outgoing = SimpleNamespace(
+        floor_time_seconds=105.7,
+    )
+    left_incoming = SimpleNamespace(
+        start_time_seconds=105.7,
+        established_time_seconds=110.8,
+    )
+
+    right_outgoing_1 = SimpleNamespace(
+        floor_time_seconds=124.2,
+    )
+    right_incoming_1 = SimpleNamespace(
+        start_time_seconds=123.5,
+        established_time_seconds=124.0,
+    )
+
+    right_outgoing_2 = SimpleNamespace(
+        floor_time_seconds=145.5,
+    )
+    right_incoming_2 = SimpleNamespace(
+        start_time_seconds=124.2,
+        established_time_seconds=125.0,
+    )
+
+    context = SimpleNamespace(
+        reference_time_seconds=121.5,
+        hypotheses=(
+            structural_witness,
+            incoming_handoff,
+            later_handoff,
+        ),
+        bounded_insert_regions=(),
+        fade=SimpleNamespace(
+            geometries=(
+                SimpleNamespace(
+                    outgoing=left_outgoing,
+                    incoming=left_incoming,
+                ),
+                SimpleNamespace(
+                    outgoing=right_outgoing_1,
+                    incoming=right_incoming_1,
+                ),
+                SimpleNamespace(
+                    outgoing=right_outgoing_2,
+                    incoming=right_incoming_2,
+                ),
+            ),
+        ),
+    )
+
+    roles = DefaultTransitionRouter.assign_interstitial_roles(
+        fade=FadeRoutingAssessment(
+            rise_present=False,
+            basin_count=0,
+            geometry_count=3,
+        ),
+        interstitial=InterstitialRoutingAssessment(
+            routing_handoffs=(
+                incoming_handoff,
+                later_handoff,
+            ),
+            supported_handoffs=(
+                incoming_handoff,
+                later_handoff,
+            ),
+        ),
+        context=context,
+    )
+
+    assert roles is not None
+    assert roles.outgoing_edge_fade is left_outgoing
+    assert roles.incoming_edge_fade is None
+    assert roles.outgoing_handoff is None
+    assert roles.incoming_handoff is incoming_handoff
+
+
+
+def test_interstitial_mixed_topology_yields_to_observed_region() -> None:
+    from types import SimpleNamespace
+
+    from brynse.boundaries import BoundaryProposalSource
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_router import (
+        DefaultTransitionRouter,
+        FadeRoutingAssessment,
+        InterstitialRoutingAssessment,
+    )
+
+    left = _interstitial_hypothesis(
+        basin_time=100.0,
+        structural_time=100.1,
+        basin_start=99.0,
+        basin_recovery=101.0,
+    )
+    right = _interstitial_hypothesis(
+        basin_time=105.0,
+        structural_time=105.1,
+        basin_start=104.5,
+        basin_recovery=105.5,
+    )
+
+    structural_witness = SimpleNamespace(
+        time_seconds=82.0,
+        proposals=(
+            SimpleNamespace(
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+        basin_geometry=None,
+    )
+
+    old_outgoing = SimpleNamespace(
+        floor_time_seconds=80.0,
+    )
+    old_incoming = SimpleNamespace(
+        start_time_seconds=80.0,
+        established_time_seconds=83.0,
+    )
+
+    upcoming_outgoing = SimpleNamespace(
+        floor_time_seconds=100.5,
+    )
+    upcoming_incoming = SimpleNamespace(
+        start_time_seconds=100.0,
+        established_time_seconds=100.5,
+    )
+
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=100.0,
+        left=left,
+        right=right,
+    )
+
+    context = SimpleNamespace(
+        reference_time_seconds=100.0,
+        hypotheses=(
+            structural_witness,
+            left,
+            right,
+        ),
+        bounded_insert_regions=(region,),
+        fade=SimpleNamespace(
+            geometries=(
+                SimpleNamespace(
+                    outgoing=old_outgoing,
+                    incoming=old_incoming,
+                ),
+                SimpleNamespace(
+                    outgoing=upcoming_outgoing,
+                    incoming=upcoming_incoming,
+                ),
+            ),
+        ),
+    )
+
+    roles = DefaultTransitionRouter.assign_interstitial_roles(
+        fade=FadeRoutingAssessment(
+            rise_present=False,
+            basin_count=0,
+            geometry_count=2,
+        ),
+        interstitial=InterstitialRoutingAssessment(
+            routing_handoffs=(
+                left,
+                right,
+            ),
+            supported_handoffs=(
+                left,
+                right,
+            ),
+        ),
+        context=context,
+    )
+
+    assert roles is not None
+    assert roles.outgoing_edge_fade is None
+
+
+
+def test_transition_routing_context_preserves_acoustic_island_evidence() -> None:
+    from types import SimpleNamespace
+
+    from brynse.acoustic_island import AcousticIslandEvidence
+    from brynse.transition_evidence import TransitionEvidenceState
+    from brynse.transition_router import TransitionRoutingContext
+
+    outgoing = SimpleNamespace(time_seconds=98.0)
+    incoming = SimpleNamespace(time_seconds=108.0)
+    region = SimpleNamespace(
+        left=outgoing,
+        right=incoming,
+    )
+
+    island = AcousticIslandEvidence(
+        incoming_handoff=incoming,
+        observed_region=region,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=103.0,
+        evidence=TransitionEvidenceState(),
+        acoustic_islands=(island,),
+    )
+
+    assert context.acoustic_islands == (island,)
+    assert context.acoustic_islands[0] is island
+    assert not hasattr(context, "incoming_start_seconds")
+    assert not hasattr(context, "outgoing_end_seconds")
+
+
+def test_acoustic_island_owns_richer_topology_before_fade() -> None:
+    from types import SimpleNamespace
+
+    from brynse.acoustic_island import AcousticIslandEvidence
+    from brynse.transition_evidence import (
+        CrossfadeBasinEvidence,
+        CrossfadeRiseEvidence,
+        FadeRoutingEvidence,
+        TransitionEvidenceState,
+    )
+    from brynse.transition_router import (
+        DefaultTransitionRouter,
+        TransitionKind,
+        TransitionRoutingContext,
+    )
+
+    outgoing = SimpleNamespace(time_seconds=98.0)
+    incoming = SimpleNamespace(time_seconds=108.0)
+    region = SimpleNamespace(
+        left=outgoing,
+        right=incoming,
+    )
+
+    island = AcousticIslandEvidence(
+        incoming_handoff=incoming,
+        observed_region=region,
+    )
+
+    fade = FadeRoutingEvidence(
+        rise=CrossfadeRiseEvidence(
+            time_seconds=104.0,
+            jump_ratio=3.5,
+            persistence_ratio=4.0,
+            after_global_ratio=3.0,
+        ),
+        basins=(
+            CrossfadeBasinEvidence(
+                center_time_seconds=102.0,
+                lead_seconds=0.8,
+                width_seconds=0.7,
+                prominence=1.5,
+                quietness=1.8,
+            ),
+        ),
+    )
+
+    route = DefaultTransitionRouter().route(
+        context=TransitionRoutingContext(
+            reference_time_seconds=103.0,
+            evidence=TransitionEvidenceState(),
+            fade=fade,
+            acoustic_islands=(island,),
+        )
+    )
+
+    assert route.kind is TransitionKind.INTERSTITIAL
+    assert route.fade_assessment is not None
+    assert route.fade_assessment.ownership_candidate is True
+
+    assert route.semantic_roles is not None
+    assert route.semantic_roles.acoustic_island is island
+    assert route.semantic_roles.outgoing_handoff is outgoing
+    assert route.semantic_roles.incoming_handoff is incoming
+    assert route.semantic_roles.inserted_region is region
+
+    assert not hasattr(route.semantic_roles, "incoming_start_seconds")
+    assert not hasattr(route.semantic_roles, "outgoing_end_seconds")
