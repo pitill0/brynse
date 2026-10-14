@@ -16,6 +16,7 @@ from brynse.bounded_insert import (
     BoundedInsertAsymmetricRegionEvidence,
     BoundedInsertRegionEvidence,
 )
+from brynse.fade_to_floor import FadeToFloorEvidence
 from brynse.transition_evidence import (
     FadeRoutingEvidence,
     IncomingFadeEvidence,
@@ -51,6 +52,7 @@ class TransitionRoutingContext:
     fade: FadeRoutingEvidence = field(default_factory=FadeRoutingEvidence)
     bounded_insert_regions: tuple[BoundedInsertRegionEvidence, ...] = ()
     acoustic_islands: tuple[AcousticIslandEvidence, ...] = ()
+    fade_to_floor: tuple[FadeToFloorEvidence, ...] = ()
     bounded_insert_asymmetric_regions: tuple[
         BoundedInsertAsymmetricRegionEvidence, ...
     ] = ()
@@ -188,6 +190,7 @@ class TransitionSemanticRoles:
     outgoing_edge_fade: OutgoingFadeEvidence | None = None
     incoming_edge_fade: IncomingFadeEvidence | None = None
     acoustic_island: AcousticIslandEvidence | None = None
+    fade_to_floor: FadeToFloorEvidence | None = None
     inserted_region: (
         BoundedInsertRegionEvidence
         | BoundedInsertAsymmetricRegionEvidence
@@ -1475,6 +1478,24 @@ class DefaultTransitionRouter:
         )
 
     @staticmethod
+    def assign_fade_to_floor_roles(
+        *,
+        context: TransitionRoutingContext,
+    ) -> TransitionSemanticRoles | None:
+        """Publish one direct fade-to-floor topology without choosing cuts."""
+
+        if len(context.fade_to_floor) != 1:
+            return None
+
+        evidence = context.fade_to_floor[0]
+
+        return TransitionSemanticRoles(
+            incoming_handoff=evidence.incoming_handoff,
+            outgoing_edge_fade=evidence.outgoing,
+            fade_to_floor=evidence,
+        )
+
+    @staticmethod
     def resolve_fade_interstitial_conflict(
         *,
         fade: FadeRoutingAssessment,
@@ -1642,6 +1663,18 @@ class DefaultTransitionRouter:
                     provenance=bounded_insert,
                     fade=fade_assessment,
                 ),
+            )
+
+        fade_to_floor_roles = self.assign_fade_to_floor_roles(
+            context=context,
+        )
+
+        if fade_to_floor_roles is not None:
+            return TransitionRoute(
+                kind=TransitionKind.FADE,
+                fade_assessment=fade_assessment,
+                interstitial_assessment=interstitial_assessment,
+                semantic_roles=fade_to_floor_roles,
             )
 
         acoustic_island_roles = self.assign_acoustic_island_roles(

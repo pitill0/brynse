@@ -159,6 +159,59 @@ class FadeSpecialist:
             incoming_selection=incoming_selection,
         )
 
+        semantic_roles = getattr(
+            observation,
+            "semantic_roles",
+            None,
+        )
+
+        fade_to_floor = (
+            None
+            if semantic_roles is None
+            else getattr(
+                semantic_roles,
+                "fade_to_floor",
+                None,
+            )
+        )
+
+        if fade_to_floor is not None:
+            outgoing_fade = fade_to_floor.outgoing
+            incoming_handoff = fade_to_floor.incoming_handoff
+
+            specialist_outgoing = (
+                outgoing_fade.floor_time_seconds
+            )
+            specialist_incoming = (
+                incoming_handoff.time_seconds
+            )
+
+            if specialist_outgoing < specialist_incoming:
+                diagnostics = FadeSpecialistDiagnostics(
+                    outgoing_selection=OutgoingFadeSelection(
+                        fade=outgoing_fade,
+                        hypothesis=incoming_handoff,
+                        support_distance_seconds=abs(
+                            specialist_outgoing
+                            - specialist_incoming
+                        ),
+                    ),
+                    incoming_selection=None,
+                )
+
+                return TransitionSpecialistResult(
+                    temporal=TemporalSplitDecision(
+                        kind=TemporalSplitKind.EXCLUSION,
+                        outgoing_end_seconds=(
+                            specialist_outgoing
+                        ),
+                        incoming_start_seconds=(
+                            specialist_incoming
+                        ),
+                    ),
+                    diagnostics=diagnostics,
+                )
+
         if (
             fade_assessment is not None
             and outgoing_selection is not None

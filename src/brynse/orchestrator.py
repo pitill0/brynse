@@ -21,6 +21,7 @@ from brynse.fade_specialist import (
     IncomingFadeSelection,
     OutgoingFadeSelection,
 )
+from brynse.fade_to_floor import FadeToFloorDetector
 from brynse.frames import IncrementalFrameTimeline
 from brynse.hybrid import HybridAcousticSplitResolver
 from brynse.matching import (
@@ -38,15 +39,17 @@ from brynse.models import (
     TemporalSplitKind,
 )
 from brynse.mp3_refinement import Mp3BoundaryRefiner
-from brynse.pcm_boundary import (
-    PcmBoundaryObservation,
-    PcmBoundaryVerifier,
-)
 from brynse.multisignal import (
     AcousticMultiSignalCandidateBuilder,
     MultiSignalCandidateResolver,
     MultiSignalTemporalResolver,
 )
+from brynse.pcm_boundary import (
+    PcmBoundaryObservation,
+    PcmBoundaryVerifier,
+)
+from brynse.pcm_shared_edge import PcmSharedEdgeVerifier
+from brynse.pcm_temporal_edge import PcmTemporalEdgeVerifier
 from brynse.transition_evidence import (
     FadeRoutingEvidence,
     TransitionEvidenceExtractor,
@@ -63,8 +66,6 @@ from brynse.transition_router import (
     TransitionRouter,
     TransitionRoutingContext,
 )
-from brynse.pcm_shared_edge import PcmSharedEdgeVerifier
-from brynse.pcm_temporal_edge import PcmTemporalEdgeVerifier
 from brynse.transition_specialists import (
     BoundedInsertSpecialist,
     HardCutSpecialist,
@@ -370,6 +371,12 @@ class MultiSignalAcousticCandidateResolver:
             else ()
         )
 
+        fade_to_floor = FadeToFloorDetector().observe(
+            reference_time_seconds=candidate.time_seconds,
+            fade=fade,
+            hypotheses=routing_hypotheses,
+        )
+
         bounded_insert_discovery = BoundedInsertRegionDiscovery()
 
         bounded_insert_regions = bounded_insert_discovery.discover(
@@ -400,6 +407,7 @@ class MultiSignalAcousticCandidateResolver:
             fade=fade,
             bounded_insert_regions=bounded_insert_regions,
             acoustic_islands=acoustic_islands,
+            fade_to_floor=fade_to_floor,
             bounded_insert_asymmetric_regions=(
                 bounded_insert_asymmetric_regions
             ),

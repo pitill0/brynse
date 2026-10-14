@@ -214,6 +214,21 @@ def _owned_pcm_edge_times(
                     island.incoming_handoff,
                 )
 
+    # A Router-owned FadeToFloor is a complete direct-transition topology.
+    # An independently observed AcousticIsland may still remain available as
+    # descriptive context, but it must not expand this specialist's PCM
+    # ownership back into unrelated earlier material.
+    if (
+        roles is not None
+        and getattr(
+            roles,
+            "fade_to_floor",
+            None,
+        )
+        is not None
+    ):
+        return times
+
     # AcousticIsland may coexist with a different Router ownership.
     # It contributes bounds only; it never changes TransitionKind.
     for island in observation.routing.acoustic_islands:
