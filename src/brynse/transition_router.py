@@ -1489,8 +1489,60 @@ class DefaultTransitionRouter:
 
         evidence = context.fade_to_floor[0]
 
+        if evidence.incoming_handoff is None:
+            return None
+
         return TransitionSemanticRoles(
             incoming_handoff=evidence.incoming_handoff,
+            outgoing_edge_fade=evidence.outgoing,
+            fade_to_floor=evidence,
+        )
+
+    @staticmethod
+    def enrich_interstitial_roles_with_fade_to_floor(
+        *,
+        roles: TransitionSemanticRoles | None,
+        context: TransitionRoutingContext,
+    ) -> TransitionSemanticRoles | None:
+        """Add outgoing-only FadeToFloor evidence to owned Interstitial roles."""
+
+        if roles is None or len(context.fade_to_floor) != 1:
+            return roles
+
+        evidence = context.fade_to_floor[0]
+
+        if (
+            evidence.incoming_handoff is not None
+            or roles.outgoing_edge_fade is not None
+        ):
+            return roles
+
+        return TransitionSemanticRoles(
+            outgoing_handoff=roles.outgoing_handoff,
+            incoming_handoff=roles.incoming_handoff,
+            outgoing_edge_fade=evidence.outgoing,
+            incoming_edge_fade=roles.incoming_edge_fade,
+            acoustic_island=roles.acoustic_island,
+            fade_to_floor=evidence,
+            inserted_region=roles.inserted_region,
+        )
+
+    @staticmethod
+    def assign_outgoing_fade_to_floor_roles(
+        *,
+        context: TransitionRoutingContext,
+    ) -> TransitionSemanticRoles | None:
+        """Publish outgoing-only FadeToFloor authority."""
+
+        if len(context.fade_to_floor) != 1:
+            return None
+
+        evidence = context.fade_to_floor[0]
+
+        if evidence.incoming_handoff is not None:
+            return None
+
+        return TransitionSemanticRoles(
             outgoing_edge_fade=evidence.outgoing,
             fade_to_floor=evidence,
         )
@@ -1707,9 +1759,12 @@ class DefaultTransitionRouter:
                 )
 
             semantic_roles = (
-                self.assign_interstitial_roles(
-                    fade=fade_assessment,
-                    interstitial=interstitial_assessment,
+                self.enrich_interstitial_roles_with_fade_to_floor(
+                    roles=self.assign_interstitial_roles(
+                        fade=fade_assessment,
+                        interstitial=interstitial_assessment,
+                        context=context,
+                    ),
                     context=context,
                 )
                 if conflict_kind is TransitionKind.INTERSTITIAL
@@ -1735,11 +1790,30 @@ class DefaultTransitionRouter:
                 kind=TransitionKind.INTERSTITIAL,
                 fade_assessment=fade_assessment,
                 interstitial_assessment=interstitial_assessment,
-                semantic_roles=self.assign_interstitial_roles(
-                    fade=fade_assessment,
-                    interstitial=interstitial_assessment,
-                    context=context,
+                semantic_roles=(
+                    self.enrich_interstitial_roles_with_fade_to_floor(
+                        roles=self.assign_interstitial_roles(
+                            fade=fade_assessment,
+                            interstitial=interstitial_assessment,
+                            context=context,
+                        ),
+                        context=context,
+                    )
                 ),
+            )
+
+        outgoing_fade_to_floor_roles = (
+            self.assign_outgoing_fade_to_floor_roles(
+                context=context,
+            )
+        )
+
+        if outgoing_fade_to_floor_roles is not None:
+            return TransitionRoute(
+                kind=TransitionKind.FADE,
+                fade_assessment=fade_assessment,
+                interstitial_assessment=interstitial_assessment,
+                semantic_roles=outgoing_fade_to_floor_roles,
             )
 
         hard_cut = self.assess_hard_cut(

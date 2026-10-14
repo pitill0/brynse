@@ -5742,6 +5742,66 @@ def test_interstitial_routed_edge_geometry_precedes_legacy_rediscovery() -> None
 
 
 
+def test_pcm_verification_can_preserve_incoming_edge() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.models import TemporalSplitDecision, TemporalSplitKind
+    from brynse.transition_specialists import (
+        _verify_owned_temporal_decision,
+    )
+
+    class Verifier:
+        def __init__(self):
+            self.calls = []
+
+        def verify(self, **kwargs):
+            self.calls.append(kwargs)
+            return SimpleNamespace(
+                verified_time_seconds=(
+                    kwargs["provisional_time_seconds"] - 1.0
+                ),
+            )
+
+    base = _observation(boundary=110.0)
+    observation = replace(
+        base,
+        window=SimpleNamespace(
+            start_time_seconds=0.0,
+        ),
+        semantic_roles=SimpleNamespace(
+            outgoing_handoff=None,
+            incoming_handoff=None,
+            outgoing_edge_fade=None,
+            incoming_edge_fade=None,
+            inserted_region=None,
+            acoustic_island=None,
+            fade_to_floor=None,
+        ),
+    )
+
+    verifier = Verifier()
+    decision = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=110.0,
+    )
+
+    result = _verify_owned_temporal_decision(
+        verifier=verifier,
+        observation=observation,
+        decision=decision,
+        outgoing_extra_times=(99.0, 100.0),
+        incoming_extra_times=(110.0,),
+        verify_outgoing=True,
+        verify_incoming=False,
+    )
+
+    assert result.outgoing_end_seconds == 99.0
+    assert result.incoming_start_seconds == 110.0
+    assert len(verifier.calls) == 1
+
+
 def test_interstitial_mixed_roles_resolve_routed_extents() -> None:
     from dataclasses import replace
     from types import SimpleNamespace

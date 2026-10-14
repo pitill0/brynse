@@ -97,6 +97,26 @@ class FadeSpecialist:
                     )
                 )
 
+        fade_to_floor = (
+            None
+            if observation.semantic_roles is None
+            else observation.semantic_roles.fade_to_floor
+        )
+
+        if (
+            fade_to_floor is not None
+            and fade_to_floor.incoming_handoff is None
+        ):
+            outgoing_extra.extend(
+                (
+                    fade_to_floor.outgoing.start_time_seconds,
+                    fade_to_floor.outgoing.floor_time_seconds,
+                )
+            )
+            incoming_extra.append(
+                observation.routing.reference_time_seconds
+            )
+
         if not outgoing_extra and not incoming_extra:
             shared = (
                 observation.selected.time_seconds,
@@ -105,12 +125,19 @@ class FadeSpecialist:
             outgoing_extra.extend(shared)
             incoming_extra.extend(shared)
 
+        outgoing_only_fade_to_floor = (
+            fade_to_floor is not None
+            and fade_to_floor.incoming_handoff is None
+        )
+
         verified = _verify_owned_temporal_decision(
             verifier=verifier,
             observation=observation,
             decision=result.temporal,
             outgoing_extra_times=outgoing_extra,
             incoming_extra_times=incoming_extra,
+            verify_outgoing=True,
+            verify_incoming=not outgoing_only_fade_to_floor,
         )
 
         if verified is result.temporal:
@@ -183,21 +210,24 @@ class FadeSpecialist:
                 outgoing_fade.floor_time_seconds
             )
             specialist_incoming = (
-                incoming_handoff.time_seconds
+                reference
+                if incoming_handoff is None
+                else incoming_handoff.time_seconds
             )
 
             if specialist_outgoing < specialist_incoming:
-                diagnostics = FadeSpecialistDiagnostics(
-                    outgoing_selection=OutgoingFadeSelection(
-                        fade=outgoing_fade,
-                        hypothesis=incoming_handoff,
-                        support_distance_seconds=abs(
-                            specialist_outgoing
-                            - specialist_incoming
+                if incoming_handoff is not None:
+                    diagnostics = FadeSpecialistDiagnostics(
+                        outgoing_selection=OutgoingFadeSelection(
+                            fade=outgoing_fade,
+                            hypothesis=incoming_handoff,
+                            support_distance_seconds=abs(
+                                specialist_outgoing
+                                - specialist_incoming
+                            ),
                         ),
-                    ),
-                    incoming_selection=None,
-                )
+                        incoming_selection=None,
+                    )
 
                 return TransitionSpecialistResult(
                     temporal=TemporalSplitDecision(

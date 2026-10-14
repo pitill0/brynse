@@ -116,6 +116,192 @@ def test_detector_rejects_ambiguous_supported_handoffs():
     assert result == ()
 
 
+def test_detector_observes_outgoing_only_floor_before_later_activity():
+    terminal = OutgoingFadeEvidence(
+        start_time_seconds=92.0,
+        floor_time_seconds=100.0,
+        rise_time_seconds=None,
+        start_rms=2000.0,
+        floor_rms=0.5,
+        descent_ratio=4000.0,
+        descent_consistency=0.85,
+    )
+    later = OutgoingFadeEvidence(
+        start_time_seconds=103.0,
+        floor_time_seconds=104.0,
+        rise_time_seconds=None,
+        start_rms=1800.0,
+        floor_rms=600.0,
+        descent_ratio=3.0,
+        descent_consistency=0.8,
+    )
+
+    result = FadeToFloorDetector().observe(
+        reference_time_seconds=105.0,
+        fade=FadeRoutingEvidence(
+            outgoing_fades=(terminal, later),
+        ),
+        hypotheses=(),
+    )
+
+    assert len(result) == 1
+    assert result[0].outgoing is terminal
+    assert result[0].incoming_handoff is None
+
+
+def test_detector_rejects_when_deepest_floor_is_after_reference():
+    earlier = OutgoingFadeEvidence(
+        start_time_seconds=92.0,
+        floor_time_seconds=94.0,
+        rise_time_seconds=None,
+        start_rms=2000.0,
+        floor_rms=500.0,
+        descent_ratio=4.0,
+        descent_consistency=0.8,
+    )
+    terminal = OutgoingFadeEvidence(
+        start_time_seconds=99.0,
+        floor_time_seconds=101.0,
+        rise_time_seconds=None,
+        start_rms=2000.0,
+        floor_rms=0.0,
+        descent_ratio=2000.0,
+        descent_consistency=0.9,
+    )
+
+    result = FadeToFloorDetector().observe(
+        reference_time_seconds=100.0,
+        fade=FadeRoutingEvidence(
+            outgoing_fades=(earlier, terminal),
+        ),
+        hypotheses=(),
+    )
+
+    assert result == ()
+
+
+def test_detector_rejects_shallower_terminal_when_deepest_floor_has_rise():
+    earlier_terminal = OutgoingFadeEvidence(
+        start_time_seconds=80.0,
+        floor_time_seconds=82.0,
+        rise_time_seconds=None,
+        start_rms=2000.0,
+        floor_rms=200.0,
+        descent_ratio=10.0,
+        descent_consistency=0.8,
+    )
+    deepest_with_rise = OutgoingFadeEvidence(
+        start_time_seconds=98.0,
+        floor_time_seconds=100.0,
+        rise_time_seconds=101.0,
+        start_rms=2000.0,
+        floor_rms=0.0,
+        descent_ratio=2000.0,
+        descent_consistency=0.9,
+    )
+
+    result = FadeToFloorDetector().observe(
+        reference_time_seconds=102.0,
+        fade=FadeRoutingEvidence(
+            outgoing_fades=(
+                earlier_terminal,
+                deepest_with_rise,
+            ),
+        ),
+        hypotheses=(),
+    )
+
+    assert result == ()
+
+
+def test_detector_rejects_isolated_unowned_terminal_floor():
+    terminal = OutgoingFadeEvidence(
+        start_time_seconds=92.0,
+        floor_time_seconds=100.0,
+        rise_time_seconds=None,
+        start_rms=2000.0,
+        floor_rms=0.5,
+        descent_ratio=4000.0,
+        descent_consistency=0.85,
+    )
+
+    result = FadeToFloorDetector().observe(
+        reference_time_seconds=105.0,
+        fade=FadeRoutingEvidence(
+            outgoing_fades=(terminal,),
+        ),
+        hypotheses=(),
+    )
+
+    assert result == ()
+
+
+def test_interstitial_roles_accept_outgoing_only_fade_to_floor():
+    outgoing = outgoing_fade()
+    incoming = supported_handoff(
+        time_seconds=110.0,
+        basin_start=109.0,
+        basin_minimum=109.5,
+        basin_recovery=111.0,
+    )
+    evidence = FadeToFloorEvidence(
+        outgoing=outgoing,
+    )
+    context = TransitionRoutingContext(
+        reference_time_seconds=105.0,
+        evidence=TransitionEvidenceState(),
+        fade_to_floor=(evidence,),
+    )
+    roles = TransitionSemanticRoles(
+        incoming_handoff=incoming,
+    )
+
+    enriched = (
+        DefaultTransitionRouter
+        .enrich_interstitial_roles_with_fade_to_floor(
+            roles=roles,
+            context=context,
+        )
+    )
+
+    assert enriched is not None
+    assert enriched.incoming_handoff is incoming
+    assert enriched.outgoing_edge_fade is outgoing
+    assert enriched.fade_to_floor is evidence
+
+
+def test_fade_specialist_resolves_outgoing_only_fade_to_floor():
+    outgoing = outgoing_fade()
+    evidence = FadeToFloorEvidence(
+        outgoing=outgoing,
+    )
+
+    observation = SimpleNamespace(
+        selected=SimpleNamespace(
+            time_seconds=105.0,
+        ),
+        routing=SimpleNamespace(
+            reference_time_seconds=105.0,
+            fade=FadeRoutingEvidence(),
+            hypotheses=(),
+        ),
+        fade_assessment=None,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_edge_fade=outgoing,
+            fade_to_floor=evidence,
+        ),
+    )
+
+    result = FadeSpecialist._resolve_geometry(
+        observation=observation,
+    )
+
+    assert result.temporal is not None
+    assert result.temporal.kind is TemporalSplitKind.EXCLUSION
+    assert result.temporal.outgoing_end_seconds == 100.0
+    assert result.temporal.incoming_start_seconds == 105.0
+
+
 def test_detector_rejects_outgoing_with_observed_later_rise():
     outgoing = outgoing_fade(rise=100.1)
     handoff = supported_handoff(

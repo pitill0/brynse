@@ -16,14 +16,15 @@ from brynse.transition_evidence import (
 
 @dataclass(frozen=True)
 class FadeToFloorEvidence:
-    """Outgoing fade whose floor belongs to one supported later handoff."""
+    """Terminal outgoing fade, optionally paired with a direct handoff."""
 
     outgoing: OutgoingFadeEvidence
-    incoming_handoff: BoundaryHypothesis
+    incoming_handoff: BoundaryHypothesis | None = None
 
     def __post_init__(self) -> None:
         if (
-            self.outgoing.floor_time_seconds
+            self.incoming_handoff is not None
+            and self.outgoing.floor_time_seconds
             > self.incoming_handoff.time_seconds
         ):
             raise ValueError(
@@ -65,51 +66,76 @@ class FadeToFloorDetector:
             if self._is_supported_handoff(hypothesis)
         )
 
-        # FadeToFloor describes a direct transition into one acoustically
-        # supported destination. Multiple supported handoffs make ownership
-        # ambiguous, so the Observer must abstain rather than choose one.
-        if len(supported) != 1:
+        observed = tuple(fade.outgoing_fades)
+
+        if not observed:
             return ()
 
-        candidates: list[FadeToFloorEvidence] = []
+        deepest_rms = min(
+            outgoing.floor_rms
+            for outgoing in observed
+        )
+        deepest = tuple(
+            outgoing
+            for outgoing in observed
+            if outgoing.floor_rms == deepest_rms
+        )
 
-        for outgoing in fade.outgoing_fades:
-            # A later observed rise means ordinary fade geometry has more
-            # specific evidence available. FadeToFloor describes the case
-            # where the outgoing envelope simply reaches its floor.
-            if outgoing.rise_time_seconds is not None:
-                continue
+        # Equal acoustic floors do not establish unique outgoing authority.
+        if len(deepest) != 1:
+            return ()
 
-            floor = outgoing.floor_time_seconds
+        outgoing = deepest[0]
+        floor = outgoing.floor_time_seconds
 
-            if floor > reference_time_seconds:
-                continue
+        # FadeToFloor authority belongs only to the globally deepest outgoing
+        # floor. If that deepest fade later rises, a shallower earlier fade
+        # must not be promoted as an artificial terminal substitute.
+        if outgoing.rise_time_seconds is not None:
+            return ()
 
-            owners = tuple(
-                hypothesis
-                for hypothesis in supported
-                if (
-                    hypothesis.time_seconds >= floor
-                    and hypothesis.basin_geometry is not None
-                    and (
-                        hypothesis.basin_geometry.start_seconds
-                        <= floor
-                        <= hypothesis.basin_geometry.recovery_seconds
-                    )
+        # A deeper floor after the reference means the observed track had not
+        # yet reached its terminal floor at the semantic boundary.
+        if floor > reference_time_seconds:
+            return ()
+
+        owners = tuple(
+            hypothesis
+            for hypothesis in supported
+            if (
+                hypothesis.time_seconds >= floor
+                and hypothesis.basin_geometry is not None
+                and (
+                    hypothesis.basin_geometry.start_seconds
+                    <= floor
+                    <= hypothesis.basin_geometry.recovery_seconds
                 )
             )
+        )
 
-            if len(owners) != 1:
-                continue
-
-            candidates.append(
+        if len(owners) == 1:
+            return (
                 FadeToFloorEvidence(
                     outgoing=outgoing,
                     incoming_handoff=owners[0],
-                )
+                ),
             )
 
-        if len(candidates) != 1:
+        # The outgoing edge may still be authoritative even when the next
+        # semantic identity is not. Require independently observed later
+        # acoustic activity before the reference so an isolated ordinary fade
+        # does not manufacture a transition by itself.
+        later_activity = any(
+            candidate.start_time_seconds > floor
+            and candidate.start_time_seconds <= reference_time_seconds
+            for candidate in fade.outgoing_fades
+        )
+
+        if not later_activity:
             return ()
 
-        return (candidates[0],)
+        return (
+            FadeToFloorEvidence(
+                outgoing=outgoing,
+            ),
+        )

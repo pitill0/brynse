@@ -214,10 +214,10 @@ def _owned_pcm_edge_times(
                     island.incoming_handoff,
                 )
 
-    # A Router-owned FadeToFloor is a complete direct-transition topology.
-    # An independently observed AcousticIsland may still remain available as
-    # descriptive context, but it must not expand this specialist's PCM
-    # ownership back into unrelated earlier material.
+    # Router-owned FadeToFloor evidence gives authoritative acoustic ownership
+    # to the terminal fade edge. It may describe either a complete direct
+    # transition or only the outgoing side of a richer/unknown topology.
+    # Unrelated descriptive context must not expand that PCM ownership.
     if (
         roles is not None
         and getattr(
@@ -269,6 +269,8 @@ def _verify_owned_temporal_decision(
     decision: TemporalSplitDecision,
     outgoing_extra_times=(),
     incoming_extra_times=(),
+    verify_outgoing: bool = True,
+    verify_incoming: bool = True,
 ) -> TemporalSplitDecision:
     """Let PCM choose final timestamps without changing semantic kind."""
 
@@ -351,13 +353,21 @@ def _verify_owned_temporal_decision(
             incoming_start_seconds=boundary,
         )
 
-    outgoing_verified = verify_edge(
-        provisional=decision.outgoing_end_seconds,
-        times=outgoing_times,
+    outgoing_verified = (
+        verify_edge(
+            provisional=decision.outgoing_end_seconds,
+            times=outgoing_times,
+        )
+        if verify_outgoing
+        else None
     )
-    incoming_verified = verify_edge(
-        provisional=decision.incoming_start_seconds,
-        times=incoming_times,
+    incoming_verified = (
+        verify_edge(
+            provisional=decision.incoming_start_seconds,
+            times=incoming_times,
+        )
+        if verify_incoming
+        else None
     )
 
     outgoing = (
