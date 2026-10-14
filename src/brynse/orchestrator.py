@@ -12,6 +12,7 @@ from brynse.acoustic import (
     FfmpegAcousticDecoder,
     RmsAcousticAnalyzer,
 )
+from brynse.acoustic_island import AcousticIslandDetector
 from brynse.bounded_insert import BoundedInsertRegionDiscovery
 from brynse.buffer import EncodedAudioRingBuffer
 from brynse.fade_specialist import (
@@ -20,6 +21,7 @@ from brynse.fade_specialist import (
     IncomingFadeSelection,
     OutgoingFadeSelection,
 )
+from brynse.fade_to_floor import FadeToFloorDetector
 from brynse.frames import IncrementalFrameTimeline
 from brynse.hybrid import HybridAcousticSplitResolver
 from brynse.matching import (
@@ -42,14 +44,25 @@ from brynse.multisignal import (
     MultiSignalCandidateResolver,
     MultiSignalTemporalResolver,
 )
+from brynse.pcm_boundary import (
+    PcmBoundaryObservation,
+    PcmBoundaryVerifier,
+)
+from brynse.pcm_shared_edge import PcmSharedEdgeVerifier
+from brynse.pcm_temporal_edge import PcmTemporalEdgeVerifier
 from brynse.transition_evidence import (
     FadeRoutingEvidence,
     TransitionEvidenceExtractor,
 )
 from brynse.transition_router import (
     BoundedInsertRoutingAssessment,
+    BoundedInsertRoutingProvenance,
     DefaultTransitionRouter,
+    FadeRoutingAssessment,
+    HardCutRoutingAssessment,
+    InterstitialRoutingAssessment,
     TransitionKind,
+    TransitionRoute,
     TransitionRouter,
     TransitionRoutingContext,
 )
@@ -79,9 +92,15 @@ class TransitionRoutingObservation:
     context: TransitionRoutingContext
     kind: TransitionKind
     temporal: TemporalSplitDecision
+    route: TransitionRoute | None = None
     bounded_insert: BoundedInsertRoutingAssessment | None = None
+    bounded_insert_routing: BoundedInsertRoutingProvenance | None = None
+    fade_routing: FadeRoutingAssessment | None = None
+    interstitial_routing: InterstitialRoutingAssessment | None = None
+    hard_cut_routing: HardCutRoutingAssessment | None = None
     outgoing_fade_selection: OutgoingFadeSelection | None = None
     incoming_fade_selection: IncomingFadeSelection | None = None
+    pcm_boundary_scan: tuple[PcmBoundaryObservation, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -268,15 +287,21 @@ class MultiSignalAcousticCandidateResolver:
         )
         self._routed_transition_resolver = RoutedTransitionResolver(
             router=self._transition_router,
-            hard_cut=HardCutSpecialist(),
-            fade=FadeSpecialist,
+            hard_cut=HardCutSpecialist(
+                temporal_edge_verifier=PcmTemporalEdgeVerifier(),
+            ),
+            fade=FadeSpecialist(
+                temporal_edge_verifier=PcmTemporalEdgeVerifier(),
+            ),
             interstitial=InterstitialSpecialist(
                 incoming_pipeline=self._incoming_refiner,
+                temporal_edge_verifier=PcmTemporalEdgeVerifier(),
             ),
-            bounded_insert=BoundedInsertSpecialist(),
+            bounded_insert=BoundedInsertSpecialist(
+                temporal_edge_verifier=PcmTemporalEdgeVerifier(),
+            ),
             ambiguous=LegacyAmbiguousSpecialist(
-                temporal_resolver=self._temporal_resolver,
-                incoming_pipeline=self._incoming_refiner,
+                shared_edge_verifier=PcmSharedEdgeVerifier(),
             ),
         )
         self._on_routing_context = on_routing_context
@@ -346,6 +371,12 @@ class MultiSignalAcousticCandidateResolver:
             else ()
         )
 
+        fade_to_floor = FadeToFloorDetector().observe(
+            reference_time_seconds=candidate.time_seconds,
+            fade=fade,
+            hypotheses=routing_hypotheses,
+        )
+
         bounded_insert_discovery = BoundedInsertRegionDiscovery()
 
         bounded_insert_regions = bounded_insert_discovery.discover(
@@ -359,6 +390,13 @@ class MultiSignalAcousticCandidateResolver:
             )
         )
 
+        acoustic_islands = AcousticIslandDetector().observe(
+            reference_time_seconds=candidate.time_seconds,
+            fade=fade,
+            hypotheses=routing_hypotheses,
+            bounded_insert_regions=bounded_insert_regions,
+        )
+
         routing_context = TransitionRoutingContext(
             reference_time_seconds=candidate.time_seconds,
             evidence=TransitionEvidenceExtractor().extract(
@@ -368,6 +406,8 @@ class MultiSignalAcousticCandidateResolver:
             hypotheses=routing_hypotheses,
             fade=fade,
             bounded_insert_regions=bounded_insert_regions,
+            acoustic_islands=acoustic_islands,
+            fade_to_floor=fade_to_floor,
             bounded_insert_asymmetric_regions=(
                 bounded_insert_asymmetric_regions
             ),
@@ -385,8 +425,8 @@ class MultiSignalAcousticCandidateResolver:
             pcm16=pcm16,
         )
 
-        routing_kind, specialist_result = (
-            self._routed_transition_resolver.resolve(
+        routing_kind, specialist_result, transition_route = (
+            self._routed_transition_resolver.resolve_with_route(
                 observation=specialist_input,
             )
         )
@@ -394,6 +434,96 @@ class MultiSignalAcousticCandidateResolver:
 
         if temporal is None:
             return None
+
+        pcm_boundary_scan: tuple[PcmBoundaryObservation, ...] = ()
+
+        if self._on_routing_observation is not None:
+            anchor_times = [
+                temporal.outgoing_end_seconds,
+                temporal.incoming_start_seconds,
+            ]
+
+            semantic_roles = (
+                None
+                if transition_route is None
+                else transition_route.semantic_roles
+            )
+
+            # Router/specialist landmarks only delimit PCM observation.
+            # None of them receives temporal authority here.
+            anchor_times.extend(
+                hypothesis.time_seconds
+                for hypothesis in routing_context.hypotheses
+            )
+
+            anchor_times.extend(
+                fade.floor_time_seconds
+                for fade in routing_context.fade.outgoing_fades
+            )
+
+            anchor_times.extend(
+                fade.start_time_seconds
+                for fade in routing_context.fade.incoming_fades
+            )
+
+            if semantic_roles is not None:
+                outgoing_handoff = semantic_roles.outgoing_handoff
+                incoming_handoff = semantic_roles.incoming_handoff
+                inserted_region = semantic_roles.inserted_region
+                outgoing_edge_fade = semantic_roles.outgoing_edge_fade
+                incoming_edge_fade = semantic_roles.incoming_edge_fade
+
+                if outgoing_handoff is not None:
+                    anchor_times.append(
+                        outgoing_handoff.time_seconds
+                    )
+
+                if incoming_handoff is not None:
+                    anchor_times.append(
+                        incoming_handoff.time_seconds
+                    )
+
+                if inserted_region is not None:
+                    region_left = getattr(
+                        inserted_region,
+                        "left",
+                        None,
+                    )
+                    region_right = getattr(
+                        inserted_region,
+                        "right",
+                        None,
+                    )
+
+                    if region_left is not None:
+                        anchor_times.append(
+                            region_left.time_seconds
+                        )
+
+                    if region_right is not None:
+                        anchor_times.append(
+                            region_right.time_seconds
+                        )
+
+                if outgoing_edge_fade is not None:
+                    anchor_times.append(
+                        outgoing_edge_fade.floor_time_seconds
+                    )
+
+                if incoming_edge_fade is not None:
+                    anchor_times.append(
+                        incoming_edge_fade.start_time_seconds
+                    )
+
+            unique_anchor_times = tuple(
+                dict.fromkeys(anchor_times)
+            )
+
+            pcm_boundary_scan = PcmBoundaryVerifier().observe_many(
+                pcm=pcm16,
+                absolute_start_time_seconds=window.start_time_seconds,
+                anchor_times_seconds=unique_anchor_times,
+            )
 
         outgoing_fade_selection = None
         incoming_fade_selection = None
@@ -412,23 +542,52 @@ class MultiSignalAcousticCandidateResolver:
             incoming_fade_selection = diagnostics.incoming_selection
 
         if self._on_routing_observation is not None:
+            bounded_insert = None
+            bounded_insert_routing = None
+            fade_routing = None
+            interstitial_routing = None
+            hard_cut_routing = None
+
+            if isinstance(
+                self._transition_router,
+                DefaultTransitionRouter,
+            ):
+                bounded_insert = (
+                    self._transition_router.assess_bounded_insert(
+                        context=routing_context,
+                    )
+                )
+                bounded_insert_routing = (
+                    self._transition_router.assess_bounded_insert_routing(
+                        context=routing_context,
+                    )
+                )
+                fade_routing = self._transition_router.assess_fade(
+                    context=routing_context,
+                )
+                interstitial_routing = (
+                    self._transition_router.assess_interstitial(
+                        context=routing_context,
+                    )
+                )
+                hard_cut_routing = self._transition_router.assess_hard_cut(
+                    context=routing_context,
+                )
+
             self._on_routing_observation(
                 TransitionRoutingObservation(
                     context=routing_context,
                     kind=routing_kind,
                     temporal=temporal,
-                    bounded_insert=(
-                        self._transition_router.assess_bounded_insert(
-                            context=routing_context,
-                        )
-                        if isinstance(
-                            self._transition_router,
-                            DefaultTransitionRouter,
-                        )
-                        else None
-                    ),
+                    route=transition_route,
+                    bounded_insert=bounded_insert,
+                    bounded_insert_routing=bounded_insert_routing,
+                    fade_routing=fade_routing,
+                    interstitial_routing=interstitial_routing,
+                    hard_cut_routing=hard_cut_routing,
                     outgoing_fade_selection=outgoing_fade_selection,
                     incoming_fade_selection=incoming_fade_selection,
+                    pcm_boundary_scan=pcm_boundary_scan,
                 )
             )
 

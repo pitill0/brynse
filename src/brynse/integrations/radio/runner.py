@@ -17,6 +17,7 @@ from brynse.acoustic import AcousticWindowExtractor, FfmpegAcousticDecoder
 from brynse.autonomous_promotion import AutonomousBoundaryPromoter
 from brynse.incoming_refinement import build_incoming_boundary_pipeline
 from brynse.integrations.radio.autonomous import AutonomousSegmentState
+from brynse.integrations.radio.capture import RadioSessionCapture
 from brynse.integrations.radio.metadata import MetadataSemanticTracker
 from brynse.integrations.radio.models import TimedMetadataEvent
 from brynse.integrations.radio.orchestrator import (
@@ -70,6 +71,7 @@ class RippingRunConfig:
     transient_exclusion: bool = True
     ring_max_bytes: int = _DEFAULT_RING_MAX_BYTES
     autonomous_boundaries: bool = False
+    session_capture_directory: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -262,10 +264,31 @@ class RippingRunner:
         source = self._stream_opener(config.url)
         self._stream = source
         spool = None
+        session_capture = None
 
         try:
             codec = resolve_codec(config.codec, source.metadata)
             metaint = resolve_metaint(source.metadata)
+
+            if config.session_capture_directory is not None:
+                try:
+                    session_capture = RadioSessionCapture(
+                        directory=config.session_capture_directory,
+                        codec=codec,
+                        metaint=metaint,
+                        metadata_threshold_seconds=(
+                            config.metadata_threshold_seconds
+                        ),
+                        transient_exclusion=config.transient_exclusion,
+                        autonomous_boundaries=config.autonomous_boundaries,
+                        source_url=config.url,
+                        source_metadata=source.metadata,
+                    )
+                except OSError as exc:
+                    raise RippingRunError(
+                        "could not create session capture "
+                        f"{config.session_capture_directory}: {exc}"
+                    ) from exc
 
             ingestor = RippingStreamIngestor(
                 metaint=metaint,
@@ -332,13 +355,31 @@ class RippingRunner:
                 if not chunk:
                     break
 
+                if session_capture is not None:
+                    try:
+                        session_capture.write_stream_chunk(chunk)
+                    except OSError as exc:
+                        raise RippingRunError(
+                            "could not write session stream capture: "
+                            f"{exc}"
+                        ) from exc
+
                 result = session.feed(chunk)
 
                 if result.ingest.audio:
                     spool.append(result.ingest.audio)
 
-                if on_metadata is not None:
-                    for event in result.ingest.timed_metadata_events:
+                for event in result.ingest.timed_metadata_events:
+                    if session_capture is not None:
+                        try:
+                            session_capture.write_metadata_event(event)
+                        except OSError as exc:
+                            raise RippingRunError(
+                                "could not write session metadata capture: "
+                                f"{exc}"
+                            ) from exc
+
+                    if on_metadata is not None:
                         on_metadata(event)
 
                 for transition in result.transitions:
@@ -445,5 +486,8 @@ class RippingRunner:
             self._stream = None
             if spool is not None:
                 spool.close()
+            if session_capture is not None:
+                with suppress(OSError):
+                    session_capture.close()
             with suppress(OSError):
                 source.close()

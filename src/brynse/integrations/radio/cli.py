@@ -72,6 +72,14 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Write shadow transition routing observations as JSONL",
     )
+    parser.add_argument(
+        "--session-capture",
+        type=Path,
+        help=(
+            "Capture the exact raw ICY input and resolved metadata "
+            "for deterministic offline replay"
+        ),
+    )
     return parser
 
 
@@ -115,6 +123,42 @@ def _routing_trace_record(observation) -> dict[str, object]:
     outgoing_selection = observation.outgoing_fade_selection
     incoming_selection = observation.incoming_fade_selection
     bounded_insert = observation.bounded_insert
+    bounded_insert_routing = observation.bounded_insert_routing
+    fade_routing = observation.fade_routing
+    interstitial_routing = observation.interstitial_routing
+    hard_cut_routing = observation.hard_cut_routing
+    route = observation.route
+    semantic_roles = (
+        None
+        if route is None
+        else route.semantic_roles
+    )
+    fade_rise = context.fade.rise
+
+    pcm_boundary_scan = observation.pcm_boundary_scan
+
+    def pcm_boundary_detail(item):
+        return {
+            "time_seconds": item.time_seconds,
+            "horizons": [
+                {
+                    "horizon_seconds": horizon.horizon_seconds,
+                    "pre_rms": horizon.pre_rms,
+                    "post_rms": horizon.post_rms,
+                    "energy_change": horizon.energy_change,
+                    "spectral_change": horizon.spectral_change,
+                }
+                for horizon in item.features.horizons
+            ],
+            "delta_from_outgoing_seconds": round(
+                item.time_seconds - temporal.outgoing_end_seconds,
+                6,
+            ),
+            "delta_from_incoming_seconds": round(
+                item.time_seconds - temporal.incoming_start_seconds,
+                6,
+            ),
+        }
 
     local_values = (
         evidence.local_discontinuity_250ms,
@@ -194,6 +238,45 @@ def _routing_trace_record(observation) -> dict[str, object]:
         for fade in context.fade.incoming_fades
     ]
 
+    acoustic_islands_detail = [
+        {
+            "incoming_handoff_seconds": (
+                island.incoming_handoff.time_seconds
+            ),
+            "terminal_decay_start_seconds": (
+                None
+                if island.terminal_decay is None
+                else island.terminal_decay.start_time_seconds
+            ),
+            "terminal_decay_floor_seconds": (
+                None
+                if island.terminal_decay is None
+                else island.terminal_decay.floor_time_seconds
+            ),
+            "source_reset_start_seconds": (
+                None
+                if island.source_reset is None
+                else island.source_reset.start_time_seconds
+            ),
+            "source_reset_established_seconds": (
+                None
+                if island.source_reset is None
+                else island.source_reset.established_time_seconds
+            ),
+            "observed_region_left_seconds": (
+                None
+                if island.observed_region is None
+                else island.observed_region.left.time_seconds
+            ),
+            "observed_region_right_seconds": (
+                None
+                if island.observed_region is None
+                else island.observed_region.right.time_seconds
+            ),
+        }
+        for island in context.acoustic_islands
+    ]
+
     fade_geometries_detail = [
         {
             "outgoing_floor_seconds": geometry.outgoing_floor_seconds,
@@ -214,10 +297,152 @@ def _routing_trace_record(observation) -> dict[str, object]:
     return {
         "reference_time_seconds": context.reference_time_seconds,
         "router_kind": observation.kind.value,
+        "acoustic_island_count": len(context.acoustic_islands),
+        "acoustic_island_detail": acoustic_islands_detail,
+        "semantic_outgoing_handoff_seconds": (
+            None
+            if (
+                semantic_roles is None
+                or semantic_roles.outgoing_handoff is None
+            )
+            else semantic_roles.outgoing_handoff.time_seconds
+        ),
+        "semantic_incoming_handoff_seconds": (
+            None
+            if (
+                semantic_roles is None
+                or semantic_roles.incoming_handoff is None
+            )
+            else semantic_roles.incoming_handoff.time_seconds
+        ),
+        "semantic_inserted_region_kind": (
+            None
+            if (
+                semantic_roles is None
+                or semantic_roles.inserted_region is None
+                or route is None
+                or route.bounded_insert_ownership is None
+            )
+            else route.bounded_insert_ownership.value
+        ),
+        "fade_routing_candidate": (
+            None
+            if fade_routing is None
+            else fade_routing.legacy_candidate
+        ),
+        "fade_routing_two_sided_support": (
+            None
+            if fade_routing is None
+            else fade_routing.has_two_sided_support
+        ),
+        "fade_routing_outgoing_association": (
+            None
+            if fade_routing is None
+            else fade_routing.outgoing_association is not None
+        ),
+        "fade_routing_incoming_association": (
+            None
+            if fade_routing is None
+            else fade_routing.incoming_association is not None
+        ),
+        "fade_routing_outgoing_support_seconds": (
+            None
+            if (
+                fade_routing is None
+                or fade_routing.outgoing_association is None
+            )
+            else fade_routing.outgoing_association.hypothesis.time_seconds
+        ),
+        "fade_routing_incoming_support_seconds": (
+            None
+            if (
+                fade_routing is None
+                or fade_routing.incoming_association is None
+            )
+            else fade_routing.incoming_association.hypothesis.time_seconds
+        ),
+        "interstitial_routing_candidate": (
+            None
+            if interstitial_routing is None
+            else interstitial_routing.legacy_candidate
+        ),
+        "interstitial_routing_handoff_count": (
+            None
+            if interstitial_routing is None
+            else len(interstitial_routing.routing_handoffs)
+        ),
+        "interstitial_supported_handoff_count": (
+            None
+            if interstitial_routing is None
+            else len(interstitial_routing.supported_handoffs)
+        ),
+        "interstitial_absorbed_right_edge_fade": (
+            None
+            if interstitial_routing is None
+            else interstitial_routing.absorbed_right_edge_fade
+        ),
+        "interstitial_terminal_fade_support": (
+            None
+            if interstitial_routing is None
+            else interstitial_routing.has_terminal_fade_support
+        ),
+        "bounded_insert_ownership": (
+            None
+            if (
+                bounded_insert_routing is None
+                or bounded_insert_routing.ownership is None
+            )
+            else bounded_insert_routing.ownership.value
+        ),
+        "bounded_insert_symmetric_candidate": (
+            None
+            if bounded_insert_routing is None
+            else bounded_insert_routing.symmetric_assessment.candidate
+        ),
+        "bounded_insert_asymmetric_candidate": (
+            None
+            if bounded_insert_routing is None
+            else bounded_insert_routing.asymmetric_assessment.candidate
+        ),
+        "hard_cut_fallback_eligible": (
+            None
+            if hard_cut_routing is None
+            else hard_cut_routing.fallback_eligible
+        ),
+        "hard_cut_supported_handoff_count": (
+            None
+            if hard_cut_routing is None
+            else len(hard_cut_routing.supported_handoffs)
+        ),
         "temporal_kind": temporal.kind.value,
         "incoming_start_seconds": temporal.incoming_start_seconds,
         "outgoing_end_seconds": temporal.outgoing_end_seconds,
-        "fade_rise": context.fade.rise is not None,
+        "pcm_boundary_scan_count": len(pcm_boundary_scan),
+        "pcm_boundary_scan_detail": [
+            pcm_boundary_detail(item)
+            for item in pcm_boundary_scan
+        ],
+        "fade_rise": fade_rise is not None,
+        "fade_rise_time_seconds": (
+            None
+            if fade_rise is None
+            else fade_rise.time_seconds
+        ),
+        "fade_rise_jump_ratio": (
+            None
+            if fade_rise is None
+            else fade_rise.jump_ratio
+        ),
+        "fade_rise_persistence_ratio": (
+            None
+            if fade_rise is None
+            else fade_rise.persistence_ratio
+        ),
+        "fade_rise_after_global_ratio": (
+            None
+            if fade_rise is None
+            else fade_rise.after_global_ratio
+        ),
         "fade_basins": len(context.fade.basins),
         "fade_outgoing_count": len(context.fade.outgoing_fades),
         "fade_incoming_count": len(context.fade.incoming_fades),
@@ -433,6 +658,7 @@ def _run_stream(args: argparse.Namespace) -> int:
             metadata_threshold_seconds=args.metadata_threshold,
             transient_exclusion=args.transient_exclusion,
             autonomous_boundaries=args.autonomous_boundaries,
+            session_capture_directory=args.session_capture,
         ),
         stream_opener=_open_stream,
     )
@@ -441,6 +667,8 @@ def _run_stream(args: argparse.Namespace) -> int:
         print(f"codec: {codec}")
         print(f"icy-metaint: {metaint}")
         print(f"output: {args.output}")
+        if args.session_capture is not None:
+            print(f"session-capture: {args.session_capture}")
         print("ripping stream; press Ctrl+C to stop")
 
     def print_metadata(event: TimedMetadataEvent) -> None:

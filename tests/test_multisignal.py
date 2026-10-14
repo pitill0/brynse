@@ -773,23 +773,10 @@ def test_multisignal_acoustic_candidate_resolver_composes_product_pipeline() -> 
             )
 
     class FakeTemporalResolver:
-        def resolve(
-            self,
-            *,
-            selected,
-            profile,
-            window,
-            semantic_time_seconds,
-        ):
-            assert selected.time_seconds == 4.0
-            assert profile is globals_profile
-            assert window is acoustic_window
-            assert semantic_time_seconds == 10.0
-
-            return TemporalSplitDecision(
-                kind=TemporalSplitKind.HARD_CUT,
-                incoming_start_seconds=4.0,
-                outgoing_end_seconds=4.0,
+        def resolve(self, **kwargs):
+            raise AssertionError(
+                "AMBIGUOUS must not delegate temporal ownership "
+                "to the legacy resolver"
             )
 
     split = SplitDecision(
@@ -800,7 +787,11 @@ def test_multisignal_acoustic_candidate_resolver_composes_product_pipeline() -> 
 
     class FakeAligner:
         def align(self, *, decision, timeline):
-            assert decision.incoming_start_seconds == 4.0
+            assert decision == TemporalSplitDecision(
+                kind=TemporalSplitKind.HARD_CUT,
+                incoming_start_seconds=10.0,
+                outgoing_end_seconds=10.0,
+            )
             assert timeline is timeline_object
             return split
 
@@ -809,7 +800,6 @@ def test_multisignal_acoustic_candidate_resolver_composes_product_pipeline() -> 
 
     globals_pcm8 = pcm8
     globals_pcm16 = pcm16
-    globals_profile = profile
 
     resolver = MultiSignalAcousticCandidateResolver(
         window_extractor=FakeWindowExtractor(),
@@ -838,7 +828,11 @@ def test_multisignal_acoustic_candidate_resolver_composes_product_pipeline() -> 
     )
     assert resolution.candidate is candidate
     assert resolution.temporal.kind is TemporalSplitKind.HARD_CUT
-    assert resolution.temporal.incoming_start_seconds == 4.0
+    assert resolution.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        incoming_start_seconds=10.0,
+        outgoing_end_seconds=10.0,
+    )
     assert resolution.split is split
 
 

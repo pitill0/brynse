@@ -1,5 +1,6 @@
 import json
 from argparse import Namespace
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,6 +16,7 @@ from brynse.integrations.radio import cli
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
 from brynse.orchestrator import TransitionRoutingObservation
 from brynse.transition_evidence import (
+    CrossfadeRiseEvidence,
     FadeGeometryEvidence,
     FadeRoutingEvidence,
     IncomingFadeEvidence,
@@ -132,10 +134,37 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
     assert record == {
         "reference_time_seconds": 100.0,
         "router_kind": "hard_cut",
+        "acoustic_island_count": 0,
+        "acoustic_island_detail": [],
+        "semantic_outgoing_handoff_seconds": None,
+        "semantic_incoming_handoff_seconds": None,
+        "semantic_inserted_region_kind": None,
+        "fade_routing_candidate": None,
+        "fade_routing_two_sided_support": None,
+        "fade_routing_outgoing_association": None,
+        "fade_routing_incoming_association": None,
+        "fade_routing_outgoing_support_seconds": None,
+        "fade_routing_incoming_support_seconds": None,
+        "interstitial_routing_candidate": None,
+        "interstitial_routing_handoff_count": None,
+        "interstitial_supported_handoff_count": None,
+        "interstitial_absorbed_right_edge_fade": None,
+        "interstitial_terminal_fade_support": None,
+        "bounded_insert_ownership": None,
+        "bounded_insert_symmetric_candidate": None,
+        "bounded_insert_asymmetric_candidate": None,
+        "hard_cut_fallback_eligible": None,
+        "hard_cut_supported_handoff_count": None,
         "temporal_kind": "exclusion",
         "incoming_start_seconds": 102.0,
         "outgoing_end_seconds": 100.0,
+        "pcm_boundary_scan_count": 0,
+        "pcm_boundary_scan_detail": [],
         "fade_rise": False,
+        "fade_rise_time_seconds": None,
+        "fade_rise_jump_ratio": None,
+        "fade_rise_persistence_ratio": None,
+        "fade_rise_after_global_ratio": None,
         "fade_basins": 0,
         "fade_outgoing_count": 1,
         "fade_incoming_count": 1,
@@ -236,6 +265,185 @@ def test_routing_trace_record_preserves_shadow_comparison() -> None:
     }
 
 
+def test_routing_trace_record_exposes_exact_semantic_handoffs() -> None:
+    from brynse.transition_router import (
+        TransitionRoute,
+        TransitionSemanticRoles,
+    )
+
+    base = _observation()
+    hypothesis = base.context.hypotheses[0]
+
+    route = TransitionRoute(
+        kind=TransitionKind.HARD_CUT,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=hypothesis,
+            incoming_handoff=hypothesis,
+        ),
+    )
+
+    record = cli._routing_trace_record(
+        replace(
+            base,
+            route=route,
+        )
+    )
+
+    assert record["semantic_outgoing_handoff_seconds"] == 101.1
+    assert record["semantic_incoming_handoff_seconds"] == 101.1
+    assert record["semantic_inserted_region_kind"] is None
+
+
+def test_routing_trace_record_exposes_exact_inserted_region_kind() -> None:
+    from brynse.transition_router import (
+        BoundedInsertOwnership,
+        TransitionRoute,
+        TransitionSemanticRoles,
+    )
+
+    base = _observation()
+
+    route = TransitionRoute(
+        kind=TransitionKind.BOUNDED_INSERT,
+        bounded_insert_ownership=BoundedInsertOwnership.SYMMETRIC,
+        semantic_roles=TransitionSemanticRoles(
+            inserted_region=object(),
+        ),
+    )
+
+    record = cli._routing_trace_record(
+        replace(
+            base,
+            kind=TransitionKind.BOUNDED_INSERT,
+            route=route,
+        )
+    )
+
+    assert record["semantic_outgoing_handoff_seconds"] is None
+    assert record["semantic_incoming_handoff_seconds"] is None
+    assert record["semantic_inserted_region_kind"] == "symmetric"
+
+
+def test_routing_trace_record_preserves_router_v2_assessments() -> None:
+    from dataclasses import replace
+
+    from brynse.transition_router import DefaultTransitionRouter
+
+    base = _observation()
+    router = DefaultTransitionRouter()
+    context = base.context
+
+    bounded_insert_routing = router.assess_bounded_insert_routing(
+        context=context,
+    )
+    fade_routing = router.assess_fade(
+        context=context,
+    )
+    interstitial_routing = router.assess_interstitial(
+        context=context,
+    )
+    hard_cut_routing = router.assess_hard_cut(
+        context=context,
+    )
+
+    observation = replace(
+        base,
+        bounded_insert_routing=bounded_insert_routing,
+        fade_routing=fade_routing,
+        interstitial_routing=interstitial_routing,
+        hard_cut_routing=hard_cut_routing,
+    )
+
+    record = cli._routing_trace_record(observation)
+
+    assert record["fade_routing_candidate"] is fade_routing.legacy_candidate
+    assert (
+        record["fade_routing_two_sided_support"]
+        is fade_routing.has_two_sided_support
+    )
+    assert (
+        record["fade_routing_outgoing_association"]
+        is (fade_routing.outgoing_association is not None)
+    )
+    assert (
+        record["fade_routing_incoming_association"]
+        is (fade_routing.incoming_association is not None)
+    )
+
+    assert (
+        record["interstitial_routing_candidate"]
+        is interstitial_routing.legacy_candidate
+    )
+    assert record["interstitial_routing_handoff_count"] == len(
+        interstitial_routing.routing_handoffs
+    )
+    assert record["interstitial_supported_handoff_count"] == len(
+        interstitial_routing.supported_handoffs
+    )
+    assert (
+        record["interstitial_absorbed_right_edge_fade"]
+        is interstitial_routing.absorbed_right_edge_fade
+    )
+    assert (
+        record["interstitial_terminal_fade_support"]
+        is interstitial_routing.has_terminal_fade_support
+    )
+
+    expected_ownership = (
+        None
+        if bounded_insert_routing.ownership is None
+        else bounded_insert_routing.ownership.value
+    )
+
+    assert record["bounded_insert_ownership"] == expected_ownership
+    assert (
+        record["bounded_insert_symmetric_candidate"]
+        is bounded_insert_routing.symmetric_assessment.candidate
+    )
+    assert (
+        record["bounded_insert_asymmetric_candidate"]
+        is bounded_insert_routing.asymmetric_assessment.candidate
+    )
+
+    assert (
+        record["hard_cut_fallback_eligible"]
+        is hard_cut_routing.fallback_eligible
+    )
+    assert record["hard_cut_supported_handoff_count"] == len(
+        hard_cut_routing.supported_handoffs
+    )
+
+
+def test_routing_trace_record_preserves_fade_rise_diagnostics() -> None:
+    observation = _observation()
+
+    rise = CrossfadeRiseEvidence(
+        time_seconds=101.75,
+        jump_ratio=3.25,
+        persistence_ratio=4.5,
+        after_global_ratio=2.75,
+    )
+
+    observation = replace(
+        observation,
+        context=replace(
+            observation.context,
+            fade=replace(
+                observation.context.fade,
+                rise=rise,
+            ),
+        ),
+    )
+
+    record = cli._routing_trace_record(observation)
+
+    assert record["fade_rise"] is True
+    assert record["fade_rise_time_seconds"] == 101.75
+    assert record["fade_rise_jump_ratio"] == 3.25
+    assert record["fade_rise_persistence_ratio"] == 4.5
+    assert record["fade_rise_after_global_ratio"] == 2.75
+
+
 def test_run_stream_writes_routing_trace(monkeypatch, tmp_path) -> None:
     observation = _observation()
     trace_path = tmp_path / "routing.jsonl"
@@ -266,6 +474,7 @@ def test_run_stream_writes_routing_trace(monkeypatch, tmp_path) -> None:
         transient_exclusion=True,
         autonomous_boundaries=False,
         routing_trace=trace_path,
+        session_capture=None,
     )
 
     assert cli._run_stream(args) == 0
@@ -274,3 +483,46 @@ def test_run_stream_writes_routing_trace(monkeypatch, tmp_path) -> None:
     assert len(lines) == 1
 
     assert json.loads(lines[0]) == cli._routing_trace_record(observation)
+
+
+
+def test_routing_trace_record_exposes_acoustic_island_evidence() -> None:
+    from brynse.acoustic_island import AcousticIslandEvidence
+
+    base = _observation()
+    hypothesis = base.context.hypotheses[0]
+    outgoing = base.context.fade.outgoing_fades[0]
+    incoming = base.context.fade.incoming_fades[0]
+
+    island = AcousticIslandEvidence(
+        incoming_handoff=hypothesis,
+        terminal_decay=outgoing,
+        source_reset=incoming,
+    )
+
+    context = replace(
+        base.context,
+        acoustic_islands=(island,),
+    )
+
+    record = cli._routing_trace_record(
+        replace(
+            base,
+            context=context,
+        )
+    )
+
+    assert record["acoustic_island_count"] == 1
+    assert record["acoustic_island_detail"] == [
+        {
+            "incoming_handoff_seconds": hypothesis.time_seconds,
+            "terminal_decay_start_seconds": outgoing.start_time_seconds,
+            "terminal_decay_floor_seconds": outgoing.floor_time_seconds,
+            "source_reset_start_seconds": incoming.start_time_seconds,
+            "source_reset_established_seconds": (
+                incoming.established_time_seconds
+            ),
+            "observed_region_left_seconds": None,
+            "observed_region_right_seconds": None,
+        }
+    ]

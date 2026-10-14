@@ -40,6 +40,314 @@ def test_hard_cut_specialist_owns_both_edges() -> None:
     )
 
 
+def test_interstitial_shared_handoff_uses_routed_fade_hard_cut_geometry() -> None:
+    from dataclasses import replace
+
+    from brynse.boundaries import (
+        BoundaryEvidence,
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.transition_evidence import (
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        OutgoingFadeRoutingAssociation,
+        TransitionSemanticRoles,
+    )
+
+    basin = BoundaryProposal(
+        time_seconds=100.2,
+        source=BoundaryProposalSource.BASIN,
+    )
+    structural = BoundaryProposal(
+        time_seconds=100.3,
+        source=BoundaryProposalSource.STRUCTURAL,
+    )
+    shared = BoundaryHypothesis(
+        time_seconds=100.25,
+        proposals=(basin, structural),
+        evidence=(
+            BoundaryEvidence(
+                proposal=basin,
+                basin_start_seconds=99.5,
+                basin_recovery_seconds=101.0,
+            ),
+        ),
+    )
+
+    fade_assessment = FadeRoutingAssessment(
+        rise_present=False,
+        basin_count=1,
+        geometry_count=0,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=OutgoingFadeEvidence(
+                start_time_seconds=96.0,
+                floor_time_seconds=100.0,
+                rise_time_seconds=None,
+                start_rms=1000.0,
+                floor_rms=100.0,
+                descent_ratio=10.0,
+                descent_consistency=0.9,
+            ),
+            hypothesis=shared,
+            support_distance_seconds=0.25,
+        ),
+        incoming_association=IncomingFadeRoutingAssociation(
+            fade=IncomingFadeEvidence(
+                start_time_seconds=100.0,
+                established_time_seconds=101.5,
+                start_rms=100.0,
+                established_rms=900.0,
+                ascent_ratio=9.0,
+                ascent_consistency=0.9,
+                persistence_ratio=3.0,
+            ),
+            hypothesis=shared,
+            support_distance_seconds=0.25,
+        ),
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            raise AssertionError(
+                "shared routed handoff must resolve before rediscovery"
+            )
+
+    base = _observation(boundary=95.0)
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            hypotheses=(shared,),
+        ),
+        fade_assessment=fade_assessment,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=shared,
+            incoming_handoff=shared,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=100.0,
+    )
+
+
+def test_interstitial_shared_handoff_uses_routed_fade_crossfade_geometry() -> None:
+    from dataclasses import replace
+
+    from brynse.boundaries import (
+        BoundaryEvidence,
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.transition_evidence import (
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        OutgoingFadeRoutingAssociation,
+        TransitionSemanticRoles,
+    )
+
+    basin = BoundaryProposal(
+        time_seconds=100.2,
+        source=BoundaryProposalSource.BASIN,
+    )
+    structural = BoundaryProposal(
+        time_seconds=100.3,
+        source=BoundaryProposalSource.STRUCTURAL,
+    )
+    shared = BoundaryHypothesis(
+        time_seconds=100.25,
+        proposals=(basin, structural),
+        evidence=(
+            BoundaryEvidence(
+                proposal=basin,
+                basin_start_seconds=99.5,
+                basin_recovery_seconds=101.0,
+            ),
+        ),
+    )
+
+    fade_assessment = FadeRoutingAssessment(
+        rise_present=False,
+        basin_count=1,
+        geometry_count=0,
+        outgoing_association=OutgoingFadeRoutingAssociation(
+            fade=OutgoingFadeEvidence(
+                start_time_seconds=96.0,
+                floor_time_seconds=100.3,
+                rise_time_seconds=None,
+                start_rms=1000.0,
+                floor_rms=100.0,
+                descent_ratio=10.0,
+                descent_consistency=0.9,
+            ),
+            hypothesis=shared,
+            support_distance_seconds=0.05,
+        ),
+        incoming_association=IncomingFadeRoutingAssociation(
+            fade=IncomingFadeEvidence(
+                start_time_seconds=99.8,
+                established_time_seconds=101.5,
+                start_rms=100.0,
+                established_rms=900.0,
+                ascent_ratio=9.0,
+                ascent_consistency=0.9,
+                persistence_ratio=3.0,
+            ),
+            hypothesis=shared,
+            support_distance_seconds=0.45,
+        ),
+    )
+
+    base = _observation(boundary=95.0)
+    observation = replace(
+        base,
+        fade_assessment=fade_assessment,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=shared,
+            incoming_handoff=shared,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=object(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.CROSSFADE,
+        outgoing_end_seconds=100.3,
+        incoming_start_seconds=99.8,
+    )
+
+
+def test_interstitial_distinct_roles_preserve_existing_pipeline() -> None:
+    from dataclasses import replace
+
+    from brynse.transition_router import TransitionSemanticRoles
+
+    outgoing = object()
+    incoming = object()
+
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=108.0,
+    )
+
+    class IncomingPipeline:
+        def __init__(self):
+            self.calls = 0
+
+        def refine(self, **kwargs):
+            self.calls += 1
+            return refined
+
+    pipeline = IncomingPipeline()
+
+    base = _observation(boundary=100.0)
+    observation = replace(
+        base,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=outgoing,
+            incoming_handoff=incoming,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=pipeline,
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal is refined
+    assert pipeline.calls == 1
+
+
+def test_interstitial_complete_roles_recover_supported_exclusion() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.transition_router import (
+        InterstitialRoutingAssessment,
+        TransitionSemanticRoles,
+    )
+
+    outgoing = SimpleNamespace(
+        time_seconds=100.0,
+        basin_geometry=SimpleNamespace(
+            start_seconds=99.0,
+            minimum_seconds=100.0,
+            recovery_seconds=101.0,
+        ),
+    )
+    incoming = SimpleNamespace(
+        time_seconds=108.0,
+        basin_geometry=SimpleNamespace(
+            start_seconds=107.0,
+            minimum_seconds=107.5,
+            recovery_seconds=107.8,
+        ),
+    )
+
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=105.0,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+    base = _observation(boundary=100.0)
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            hypotheses=(outgoing, incoming),
+        ),
+        interstitial_assessment=InterstitialRoutingAssessment(
+            supported_handoffs=(outgoing, incoming),
+        ),
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=outgoing,
+            incoming_handoff=incoming,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=108.0,
+    )
+
+
 def test_interstitial_specialist_reuses_incoming_pipeline() -> None:
     refined = TemporalSplitDecision(
         kind=TemporalSplitKind.EXCLUSION,
@@ -126,6 +434,150 @@ def test_interstitial_specialist_refines_outgoing_from_supported_analysis() -> N
     )
 
 
+def test_interstitial_specialist_uses_routed_outgoing_role_instead_of_nearest_high() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import (
+        BoundaryEvidence,
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.transition_router import TransitionSemanticRoles
+
+    def hypothesis(time_seconds):
+        basin = BoundaryProposal(
+            time_seconds=time_seconds,
+            source=BoundaryProposalSource.BASIN,
+        )
+        structural = BoundaryProposal(
+            time_seconds=time_seconds,
+            source=BoundaryProposalSource.STRUCTURAL,
+        )
+
+        return BoundaryHypothesis(
+            time_seconds=time_seconds,
+            proposals=(basin, structural),
+            evidence=(
+                BoundaryEvidence(
+                    proposal=basin,
+                    basin_start_seconds=time_seconds - 0.5,
+                    basin_recovery_seconds=time_seconds + 0.5,
+                ),
+            ),
+        )
+
+    routed_outgoing = hypothesis(96.0)
+    nearer_high = hypothesis(104.0)
+
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=108.0,
+    )
+
+    def analysis(item):
+        return SimpleNamespace(
+            hypothesis=item,
+            assessment=SimpleNamespace(
+                candidate_confidence=BoundaryConfidence.HIGH,
+            ),
+        )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return (
+                analysis(routed_outgoing),
+                analysis(nearer_high),
+            )
+
+    base = _observation(boundary=100.0)
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            hypotheses=(routed_outgoing, nearer_high),
+        ),
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=routed_outgoing,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=96.0,
+        incoming_start_seconds=108.0,
+    )
+
+
+def test_interstitial_specialist_routed_outgoing_role_must_still_be_high() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import (
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.transition_router import TransitionSemanticRoles
+
+    routed_outgoing = BoundaryHypothesis(
+        time_seconds=96.0,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=96.0,
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+    )
+
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=108.0,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return (
+                SimpleNamespace(
+                    hypothesis=routed_outgoing,
+                    assessment=SimpleNamespace(
+                        candidate_confidence=BoundaryConfidence.UNRESOLVED,
+                    ),
+                ),
+            )
+
+    base = _observation(boundary=100.0)
+    observation = replace(
+        base,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=routed_outgoing,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal is refined
+
+
 def test_interstitial_specialist_keeps_outgoing_without_supported_analysis() -> None:
     refined = TemporalSplitDecision(
         kind=TemporalSplitKind.EXCLUSION,
@@ -186,223 +638,421 @@ def test_interstitial_specialist_does_not_move_outgoing_past_incoming() -> None:
     assert result.temporal is refined
 
 
-def test_ambiguous_fallback_preserves_existing_temporal_path() -> None:
-    original = TemporalSplitDecision(
-        kind=TemporalSplitKind.HARD_CUT,
-        outgoing_end_seconds=100.0,
-        incoming_start_seconds=100.0,
-    )
+def test_ambiguous_fallback_preserves_semantic_reference() -> None:
+    observation = _observation(boundary=100.0)
 
-    refined = TemporalSplitDecision(
-        kind=TemporalSplitKind.EXCLUSION,
-        outgoing_end_seconds=100.0,
-        incoming_start_seconds=102.5,
-    )
-
-    class TemporalResolver:
-        def __init__(self):
-            self.calls = []
-
-        def resolve(self, **kwargs):
-            self.calls.append(kwargs)
-            return original
-
-    class IncomingPipeline:
-        def __init__(self):
-            self.calls = []
-
-        def refine(self, **kwargs):
-            self.calls.append(kwargs)
-            return refined
-
-    temporal = TemporalResolver()
-    incoming = IncomingPipeline()
-    observation = _observation()
-
-    result = LegacyAmbiguousSpecialist(
-        temporal_resolver=temporal,
-        incoming_pipeline=incoming,
-    ).resolve(
-        observation=observation,
-    )
-
-    assert result.temporal is refined
-
-    assert temporal.calls == [
-        {
-            "selected": observation.selected,
-            "profile": observation.profile,
-            "window": observation.window,
-            "semantic_time_seconds": 102.0,
-        }
-    ]
-
-    assert incoming.calls[0]["decision"] is original
-    assert incoming.calls[0]["hypotheses"] is (
-        observation.routing.hypotheses
-    )
-
-
-
-def test_phase4_ambiguous_uses_recovery_of_spanning_structural_basin() -> None:
-    from dataclasses import replace
-    from types import SimpleNamespace
-
-    from brynse.boundaries import BoundaryProposalSource
-
-    original = TemporalSplitDecision(
-        kind=TemporalSplitKind.HARD_CUT,
-        outgoing_end_seconds=1519.23,
-        incoming_start_seconds=1519.23,
-    )
-
-    refined = TemporalSplitDecision(
-        kind=TemporalSplitKind.EXCLUSION,
-        outgoing_end_seconds=1519.23,
-        incoming_start_seconds=1523.87306122297,
-    )
-
-    hypothesis = SimpleNamespace(
-        proposals=(
-            SimpleNamespace(
-                source=BoundaryProposalSource.STRUCTURAL,
-                time_seconds=1513.9730612229698,
-            ),
-            SimpleNamespace(
-                source=BoundaryProposalSource.BASIN,
-                time_seconds=1516.62306122297,
-            ),
-            SimpleNamespace(
-                source=BoundaryProposalSource.STRUCTURAL,
-                time_seconds=1516.9730612229698,
-            ),
-        ),
-        basin_geometry=SimpleNamespace(
-            start_seconds=1509.4730612229698,
-            minimum_seconds=1516.62306122297,
-            recovery_seconds=1519.0730612229697,
-        ),
-    )
-
-    class TemporalResolver:
-        def resolve(self, **kwargs):
-            return original
-
-    class IncomingPipeline:
-        def refine(self, **kwargs):
-            return refined
-
-    base = _observation(
-        boundary=1519.23,
-    )
-
-    observation = replace(
-        base,
-        routing=replace(
-            base.routing,
-            reference_time_seconds=1520.9795918351758,
-            hypotheses=(hypothesis,),
-        ),
-    )
-
-    result = LegacyAmbiguousSpecialist(
-        temporal_resolver=TemporalResolver(),
-        incoming_pipeline=IncomingPipeline(),
-    ).resolve(
+    result = LegacyAmbiguousSpecialist().resolve(
         observation=observation,
     )
 
     assert result.temporal == TemporalSplitDecision(
-        kind=TemporalSplitKind.EXCLUSION,
-        outgoing_end_seconds=1519.0730612229697,
-        incoming_start_seconds=1523.87306122297,
-    )
-
-
-def test_phase4_ambiguous_keeps_outgoing_without_structure_after_minimum() -> None:
-    from dataclasses import replace
-    from types import SimpleNamespace
-
-    from brynse.boundaries import BoundaryProposalSource
-
-    original = TemporalSplitDecision(
         kind=TemporalSplitKind.HARD_CUT,
-        outgoing_end_seconds=447.676,
-        incoming_start_seconds=447.676,
+        outgoing_end_seconds=102.0,
+        incoming_start_seconds=102.0,
     )
 
-    refined = TemporalSplitDecision(
-        kind=TemporalSplitKind.EXCLUSION,
-        outgoing_end_seconds=447.676,
-        incoming_start_seconds=448.59398,
+
+def _phase6_fade_hypothesis(*, time: float):
+    from brynse.boundaries import (
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
     )
 
-    hypothesis = SimpleNamespace(
+    return BoundaryHypothesis(
+        time_seconds=time,
         proposals=(
-            SimpleNamespace(
+            BoundaryProposal(
+                time_seconds=time,
                 source=BoundaryProposalSource.STRUCTURAL,
-                time_seconds=436.6689795918642,
-            ),
-            SimpleNamespace(
-                source=BoundaryProposalSource.BASIN,
-                time_seconds=439.0189795918642,
-            ),
-            SimpleNamespace(
-                source=BoundaryProposalSource.STRUCTURAL,
-                time_seconds=439.6689795918642,
             ),
         ),
-        basin_geometry=SimpleNamespace(
-            start_seconds=438.6689795918642,
-            minimum_seconds=439.0189795918642,
-            recovery_seconds=439.1689795918642,
+        evidence=(),
+    )
+
+
+def _phase6_replace(instance, /, **changes):
+    from dataclasses import replace
+
+    return replace(instance, **changes)
+
+
+def test_fade_specialist_uses_shared_reconciled_hard_cut_edge() -> None:
+    from brynse.fade_specialist import FadeSpecialist
+    from brynse.transition_evidence import (
+        CrossfadeRiseEvidence,
+        FadeGeometryEvidence,
+        FadeRoutingEvidence,
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    outgoing = OutgoingFadeEvidence(
+        start_time_seconds=99.0,
+        floor_time_seconds=101.0,
+        rise_time_seconds=105.0,
+        start_rms=1000.0,
+        floor_rms=50.0,
+        descent_ratio=20.0,
+        descent_consistency=0.95,
+    )
+    incoming = IncomingFadeEvidence(
+        start_time_seconds=101.0,
+        established_time_seconds=104.0,
+        start_rms=50.0,
+        established_rms=1000.0,
+        ascent_ratio=20.0,
+        ascent_consistency=0.95,
+        persistence_ratio=10.0,
+    )
+
+    outgoing_support = _phase6_fade_hypothesis(time=100.2)
+    incoming_support = _phase6_fade_hypothesis(time=103.0)
+
+    original = _observation(boundary=100.0)
+
+    observation = _phase6_replace(
+        original,
+        routing=_phase6_replace(
+            original.routing,
+            reference_time_seconds=101.5,
+            hypotheses=(
+                outgoing_support,
+                incoming_support,
+            ),
+            fade=FadeRoutingEvidence(
+                rise=CrossfadeRiseEvidence(
+                    time_seconds=105.0,
+                    jump_ratio=3.0,
+                    persistence_ratio=4.0,
+                    after_global_ratio=3.0,
+                ),
+                outgoing_fades=(outgoing,),
+                incoming_fades=(incoming,),
+                geometries=(
+                    FadeGeometryEvidence(
+                        outgoing=outgoing,
+                        incoming=incoming,
+                    ),
+                ),
+            ),
+        ),
+        fade_assessment=FadeRoutingAssessment(
+            rise_present=True,
+            basin_count=0,
+            geometry_count=1,
+            outgoing_association=OutgoingFadeRoutingAssociation(
+                fade=outgoing,
+                hypothesis=outgoing_support,
+                support_distance_seconds=0.8,
+            ),
+            incoming_association=IncomingFadeRoutingAssociation(
+                fade=incoming,
+                hypothesis=incoming_support,
+                support_distance_seconds=2.0,
+            ),
         ),
     )
 
-    class TemporalResolver:
-        def resolve(self, **kwargs):
-            return original
+    result = FadeSpecialist.resolve(observation=observation)
 
-    class IncomingPipeline:
-        def refine(self, **kwargs):
-            return refined
-
-    base = _observation(
-        boundary=447.676,
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        incoming_start_seconds=101.0,
+        outgoing_end_seconds=101.0,
     )
 
-    observation = replace(
-        base,
-        routing=replace(
-            base.routing,
-            reference_time_seconds=449.175510,
-            hypotheses=(hypothesis,),
+
+def test_fade_specialist_uses_shared_reconciled_crossfade_edges() -> None:
+    from brynse.fade_specialist import FadeSpecialist
+    from brynse.transition_evidence import (
+        CrossfadeRiseEvidence,
+        FadeGeometryEvidence,
+        FadeRoutingEvidence,
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    outgoing = OutgoingFadeEvidence(
+        start_time_seconds=99.0,
+        floor_time_seconds=101.4,
+        rise_time_seconds=105.0,
+        start_rms=1000.0,
+        floor_rms=50.0,
+        descent_ratio=20.0,
+        descent_consistency=0.95,
+    )
+    incoming = IncomingFadeEvidence(
+        start_time_seconds=101.0,
+        established_time_seconds=104.0,
+        start_rms=50.0,
+        established_rms=1000.0,
+        ascent_ratio=20.0,
+        ascent_consistency=0.95,
+        persistence_ratio=10.0,
+    )
+
+    outgoing_support = _phase6_fade_hypothesis(time=100.2)
+    incoming_support = _phase6_fade_hypothesis(time=103.0)
+
+    original = _observation(boundary=100.0)
+
+    observation = _phase6_replace(
+        original,
+        routing=_phase6_replace(
+            original.routing,
+            reference_time_seconds=101.5,
+            hypotheses=(
+                outgoing_support,
+                incoming_support,
+            ),
+            fade=FadeRoutingEvidence(
+                rise=CrossfadeRiseEvidence(
+                    time_seconds=105.0,
+                    jump_ratio=3.0,
+                    persistence_ratio=4.0,
+                    after_global_ratio=3.0,
+                ),
+                outgoing_fades=(outgoing,),
+                incoming_fades=(incoming,),
+                geometries=(
+                    FadeGeometryEvidence(
+                        outgoing=outgoing,
+                        incoming=incoming,
+                    ),
+                ),
+            ),
+        ),
+        fade_assessment=FadeRoutingAssessment(
+            rise_present=True,
+            basin_count=0,
+            geometry_count=1,
+            outgoing_association=OutgoingFadeRoutingAssociation(
+                fade=outgoing,
+                hypothesis=outgoing_support,
+                support_distance_seconds=1.2,
+            ),
+            incoming_association=IncomingFadeRoutingAssociation(
+                fade=incoming,
+                hypothesis=incoming_support,
+                support_distance_seconds=2.0,
+            ),
         ),
     )
 
-    result = LegacyAmbiguousSpecialist(
-        temporal_resolver=TemporalResolver(),
-        incoming_pipeline=IncomingPipeline(),
-    ).resolve(
-        observation=observation,
+    result = FadeSpecialist.resolve(observation=observation)
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.CROSSFADE,
+        incoming_start_seconds=101.0,
+        outgoing_end_seconds=101.4,
     )
 
-    assert result.temporal is refined
 
-
-
-def test_ambiguous_fallback_preserves_none() -> None:
-    class TemporalResolver:
-        def resolve(self, **kwargs):
-            return None
-
-    result = LegacyAmbiguousSpecialist(
-        temporal_resolver=TemporalResolver(),
-    ).resolve(
-        observation=_observation(),
+def test_fade_specialist_uses_shared_reconciled_exclusion_edges() -> None:
+    from brynse.fade_specialist import FadeSpecialist
+    from brynse.transition_evidence import (
+        CrossfadeRiseEvidence,
+        FadeGeometryEvidence,
+        FadeRoutingEvidence,
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        OutgoingFadeRoutingAssociation,
     )
 
-    assert result.temporal is None
+    outgoing = OutgoingFadeEvidence(
+        start_time_seconds=99.0,
+        floor_time_seconds=101.0,
+        rise_time_seconds=105.0,
+        start_rms=1000.0,
+        floor_rms=50.0,
+        descent_ratio=20.0,
+        descent_consistency=0.95,
+    )
+    incoming = IncomingFadeEvidence(
+        start_time_seconds=101.4,
+        established_time_seconds=104.0,
+        start_rms=50.0,
+        established_rms=1000.0,
+        ascent_ratio=20.0,
+        ascent_consistency=0.95,
+        persistence_ratio=10.0,
+    )
+
+    outgoing_support = _phase6_fade_hypothesis(time=100.2)
+    incoming_support = _phase6_fade_hypothesis(time=103.0)
+
+    original = _observation(boundary=100.0)
+
+    observation = _phase6_replace(
+        original,
+        routing=_phase6_replace(
+            original.routing,
+            reference_time_seconds=101.5,
+            hypotheses=(
+                outgoing_support,
+                incoming_support,
+            ),
+            fade=FadeRoutingEvidence(
+                rise=CrossfadeRiseEvidence(
+                    time_seconds=105.0,
+                    jump_ratio=3.0,
+                    persistence_ratio=4.0,
+                    after_global_ratio=3.0,
+                ),
+                outgoing_fades=(outgoing,),
+                incoming_fades=(incoming,),
+                geometries=(
+                    FadeGeometryEvidence(
+                        outgoing=outgoing,
+                        incoming=incoming,
+                    ),
+                ),
+            ),
+        ),
+        fade_assessment=FadeRoutingAssessment(
+            rise_present=True,
+            basin_count=0,
+            geometry_count=1,
+            outgoing_association=OutgoingFadeRoutingAssociation(
+                fade=outgoing,
+                hypothesis=outgoing_support,
+                support_distance_seconds=0.8,
+            ),
+            incoming_association=IncomingFadeRoutingAssociation(
+                fade=incoming,
+                hypothesis=incoming_support,
+                support_distance_seconds=1.6,
+            ),
+        ),
+    )
+
+    result = FadeSpecialist.resolve(observation=observation)
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        incoming_start_seconds=101.4,
+        outgoing_end_seconds=101.0,
+    )
+
+
+def test_fade_specialist_preserves_policy_without_shared_reconciled_geometry() -> None:
+    from brynse.fade_specialist import FadeSpecialist
+    from brynse.transition_evidence import (
+        CrossfadeRiseEvidence,
+        FadeGeometryEvidence,
+        FadeRoutingEvidence,
+        IncomingFadeEvidence,
+        OutgoingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        IncomingFadeRoutingAssociation,
+        OutgoingFadeRoutingAssociation,
+    )
+
+    outgoing = OutgoingFadeEvidence(
+        start_time_seconds=99.0,
+        floor_time_seconds=101.0,
+        rise_time_seconds=105.0,
+        start_rms=1000.0,
+        floor_rms=50.0,
+        descent_ratio=20.0,
+        descent_consistency=0.95,
+    )
+    selected_incoming = IncomingFadeEvidence(
+        start_time_seconds=101.0,
+        established_time_seconds=104.0,
+        start_rms=50.0,
+        established_rms=1000.0,
+        ascent_ratio=20.0,
+        ascent_consistency=0.95,
+        persistence_ratio=10.0,
+    )
+    other_incoming = IncomingFadeEvidence(
+        start_time_seconds=100.0,
+        established_time_seconds=100.8,
+        start_rms=80.0,
+        established_rms=500.0,
+        ascent_ratio=6.25,
+        ascent_consistency=0.8,
+        persistence_ratio=4.0,
+    )
+
+    outgoing_support = _phase6_fade_hypothesis(time=100.2)
+    incoming_support = _phase6_fade_hypothesis(time=103.0)
+
+    original = _observation(boundary=100.0)
+
+    observation = _phase6_replace(
+        original,
+        routing=_phase6_replace(
+            original.routing,
+            reference_time_seconds=101.5,
+            hypotheses=(
+                outgoing_support,
+                incoming_support,
+            ),
+            fade=FadeRoutingEvidence(
+                rise=CrossfadeRiseEvidence(
+                    time_seconds=105.0,
+                    jump_ratio=3.0,
+                    persistence_ratio=4.0,
+                    after_global_ratio=3.0,
+                ),
+                outgoing_fades=(outgoing,),
+                incoming_fades=(
+                    selected_incoming,
+                    other_incoming,
+                ),
+                geometries=(
+                    FadeGeometryEvidence(
+                        outgoing=outgoing,
+                        incoming=other_incoming,
+                    ),
+                ),
+            ),
+        ),
+        fade_assessment=FadeRoutingAssessment(
+            rise_present=True,
+            basin_count=0,
+            geometry_count=1,
+            outgoing_association=OutgoingFadeRoutingAssociation(
+                fade=outgoing,
+                hypothesis=outgoing_support,
+                support_distance_seconds=0.8,
+            ),
+            incoming_association=IncomingFadeRoutingAssociation(
+                fade=selected_incoming,
+                hypothesis=incoming_support,
+                support_distance_seconds=2.0,
+            ),
+        ),
+    )
+
+    result = FadeSpecialist.resolve(observation=observation)
+
+    # The old reference/rise coherence rule remains authoritative when
+    # Router-v2 does not provide one exact shared reconciled geometry.
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        incoming_start_seconds=100.0,
+        outgoing_end_seconds=100.0,
+    )
 
 
 def test_fade_specialist_resolves_crossfade_from_observed_rise() -> None:
@@ -1498,6 +2148,516 @@ def test_bounded_insert_phase2_shadow_does_not_change_resolve() -> None:
     )
 
 
+def test_routed_resolver_exposes_exact_transition_route() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_evidence import TransitionEvidenceState
+    from brynse.transition_router import (
+        TransitionKind,
+        TransitionRoute,
+        TransitionRoutingContext,
+        TransitionSemanticRoles,
+    )
+    from brynse.transition_specialists import RoutedTransitionResolver
+
+    outgoing = SimpleNamespace(time_seconds=90.0)
+    incoming = SimpleNamespace(time_seconds=110.0)
+    roles = TransitionSemanticRoles(
+        outgoing_handoff=outgoing,
+        incoming_handoff=incoming,
+    )
+
+    route = TransitionRoute(
+        kind=TransitionKind.INTERSTITIAL,
+        semantic_roles=roles,
+    )
+
+    class Router:
+        def route(self, *, context):
+            _ = context
+            return route
+
+    class Specialist:
+        def resolve(self, *, observation):
+            assert observation.semantic_roles is roles
+            return TransitionSpecialistResult(
+                temporal=TemporalSplitDecision(
+                    kind=TemporalSplitKind.EXCLUSION,
+                    outgoing_end_seconds=90.0,
+                    incoming_start_seconds=110.0,
+                )
+            )
+
+    unused = Specialist()
+
+    resolver = RoutedTransitionResolver(
+        router=Router(),
+        hard_cut=unused,
+        fade=unused,
+        interstitial=unused,
+        bounded_insert=unused,
+        ambiguous=unused,
+    )
+
+    observation = TransitionSpecialistInput(
+        routing=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=TransitionEvidenceState(),
+        ),
+        selected=SimpleNamespace(time_seconds=100.0),
+        profile=SimpleNamespace(),
+        window=SimpleNamespace(),
+        pcm8=SimpleNamespace(),
+        pcm16=SimpleNamespace(),
+    )
+
+    kind, result, resolved_route = resolver.resolve_with_route(
+        observation=observation,
+    )
+
+    assert kind is TransitionKind.INTERSTITIAL
+    assert result.temporal is not None
+    assert resolved_route is route
+
+
+def test_routed_resolver_passes_semantic_roles() -> None:
+    from types import SimpleNamespace
+
+    from brynse.boundaries import (
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.transition_router import (
+        TransitionKind,
+        TransitionRoute,
+        TransitionRoutingContext,
+        TransitionSemanticRoles,
+    )
+    from brynse.transition_specialists import RoutedTransitionResolver
+
+    outgoing = BoundaryHypothesis(
+        time_seconds=99.0,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=99.0,
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+    )
+    incoming = BoundaryHypothesis(
+        time_seconds=101.0,
+        proposals=(
+            BoundaryProposal(
+                time_seconds=101.0,
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+    )
+
+    roles = TransitionSemanticRoles(
+        outgoing_handoff=outgoing,
+        incoming_handoff=incoming,
+    )
+
+    class Router:
+        def route(self, *, context):
+            return TransitionRoute(
+                kind=TransitionKind.INTERSTITIAL,
+                semantic_roles=roles,
+            )
+
+        def classify(self, *, context):
+            return TransitionKind.INTERSTITIAL
+
+    class Specialist:
+        observation = None
+
+        def resolve(self, *, observation):
+            self.observation = observation
+            return TransitionSpecialistResult(
+                temporal=None,
+            )
+
+    interstitial = Specialist()
+
+    resolver = RoutedTransitionResolver(
+        router=Router(),
+        hard_cut=Specialist(),
+        fade=Specialist(),
+        interstitial=interstitial,
+        bounded_insert=Specialist(),
+        ambiguous=Specialist(),
+    )
+
+    observation = TransitionSpecialistInput(
+        routing=TransitionRoutingContext(
+            reference_time_seconds=100.0,
+            evidence=SimpleNamespace(),
+        ),
+        selected=SimpleNamespace(time_seconds=100.0),
+        profile=None,
+        window=None,
+        pcm8=None,
+        pcm16=None,
+    )
+
+    kind, result = resolver.resolve(
+        observation=observation,
+    )
+
+    assert kind is TransitionKind.INTERSTITIAL
+    assert result.temporal is None
+    assert interstitial.observation is not None
+    assert interstitial.observation.semantic_roles is roles
+
+
+def test_routed_resolver_passes_interstitial_assessment_provenance() -> None:
+    from brynse.transition_router import (
+        InterstitialRoutingAssessment,
+        TransitionKind,
+        TransitionRoute,
+    )
+    from brynse.transition_specialists import RoutedTransitionResolver
+
+    assessment = InterstitialRoutingAssessment()
+
+    class Router:
+        def route(self, *, context):
+            _ = context
+            return TransitionRoute(
+                kind=TransitionKind.INTERSTITIAL,
+                interstitial_assessment=assessment,
+            )
+
+    class Specialist:
+        def __init__(self):
+            self.observation = None
+
+        def resolve(self, *, observation):
+            self.observation = observation
+            return TransitionSpecialistResult(
+                temporal=None,
+            )
+
+    interstitial = Specialist()
+
+    resolver = RoutedTransitionResolver(
+        router=Router(),
+        hard_cut=Specialist(),
+        fade=Specialist(),
+        interstitial=interstitial,
+        bounded_insert=Specialist(),
+        ambiguous=Specialist(),
+    )
+
+    original = _observation()
+
+    kind, result = resolver.resolve(
+        observation=original,
+    )
+
+    assert kind is TransitionKind.INTERSTITIAL
+    assert result.temporal is None
+
+    routed = interstitial.observation
+
+    assert routed is not None
+    assert routed is not original
+    assert routed.interstitial_assessment is assessment
+    assert routed.routing is original.routing
+    assert routed.selected is original.selected
+
+
+def test_routed_resolver_passes_fade_assessment_provenance() -> None:
+    from brynse.transition_router import (
+        FadeRoutingAssessment,
+        TransitionKind,
+        TransitionRoute,
+    )
+    from brynse.transition_specialists import RoutedTransitionResolver
+
+    assessment = FadeRoutingAssessment(
+        rise_present=True,
+        basin_count=1,
+        geometry_count=0,
+    )
+
+    class Router:
+        def route(self, *, context):
+            _ = context
+            return TransitionRoute(
+                kind=TransitionKind.FADE,
+                fade_assessment=assessment,
+            )
+
+    class Specialist:
+        def __init__(self):
+            self.observation = None
+
+        def resolve(self, *, observation):
+            self.observation = observation
+            return TransitionSpecialistResult(
+                temporal=None,
+            )
+
+    fade = Specialist()
+
+    resolver = RoutedTransitionResolver(
+        router=Router(),
+        hard_cut=Specialist(),
+        fade=fade,
+        interstitial=Specialist(),
+        bounded_insert=Specialist(),
+        ambiguous=Specialist(),
+    )
+
+    original = _observation()
+
+    kind, result = resolver.resolve(
+        observation=original,
+    )
+
+    assert kind is TransitionKind.FADE
+    assert result.temporal is None
+
+    routed = fade.observation
+
+    assert routed is not None
+    assert routed is not original
+    assert routed.fade_assessment is assessment
+    assert routed.routing is original.routing
+    assert routed.selected is original.selected
+
+
+def test_routed_resolver_passes_hard_cut_assessment_provenance() -> None:
+    from brynse.transition_router import (
+        HardCutRoutingAssessment,
+        TransitionKind,
+        TransitionRoute,
+    )
+    from brynse.transition_specialists import RoutedTransitionResolver
+
+    assessment = HardCutRoutingAssessment(
+        local_discontinuity_complete=True,
+        fade_rise_present=False,
+    )
+
+    class Router:
+        def route(self, *, context):
+            _ = context
+            return TransitionRoute(
+                kind=TransitionKind.HARD_CUT,
+                hard_cut=assessment,
+            )
+
+    class Specialist:
+        def __init__(self):
+            self.observation = None
+
+        def resolve(self, *, observation):
+            self.observation = observation
+            return TransitionSpecialistResult(
+                temporal=None,
+            )
+
+    hard_cut = Specialist()
+
+    resolver = RoutedTransitionResolver(
+        router=Router(),
+        hard_cut=hard_cut,
+        fade=Specialist(),
+        interstitial=Specialist(),
+        bounded_insert=Specialist(),
+        ambiguous=Specialist(),
+    )
+
+    original = _observation()
+
+    kind, result = resolver.resolve(
+        observation=original,
+    )
+
+    assert kind is TransitionKind.HARD_CUT
+    assert result.temporal is None
+
+    routed = hard_cut.observation
+
+    assert routed is not None
+    assert routed is not original
+    assert routed.hard_cut_assessment is assessment
+
+    assert routed.routing is original.routing
+    assert routed.selected is original.selected
+    assert routed.window is original.window
+    assert routed.pcm8 is original.pcm8
+    assert routed.pcm16 is original.pcm16
+
+
+def test_routed_resolver_consumes_route_provenance_without_reclassification() -> None:
+    from brynse.transition_router import (
+        BoundedInsertOwnership,
+        TransitionKind,
+        TransitionRoute,
+    )
+    from brynse.transition_specialists import RoutedTransitionResolver
+
+    class Router:
+        def __init__(self):
+            self.route_calls = []
+            self.classify_calls = []
+            self.ownership_calls = []
+
+        def route(self, *, context):
+            self.route_calls.append(context)
+            return TransitionRoute(
+                kind=TransitionKind.BOUNDED_INSERT,
+                bounded_insert_ownership=(
+                    BoundedInsertOwnership.ASYMMETRIC
+                ),
+            )
+
+        def classify(self, *, context):
+            self.classify_calls.append(context)
+            raise AssertionError(
+                "route-aware resolver must not call classify()"
+            )
+
+        def bounded_insert_ownership(self, *, context):
+            self.ownership_calls.append(context)
+            raise AssertionError(
+                "route already carries bounded-insert provenance"
+            )
+
+    class Specialist:
+        def __init__(self):
+            self.observation = None
+
+        def resolve(self, *, observation):
+            self.observation = observation
+            return TransitionSpecialistResult(
+                temporal=None,
+            )
+
+    router = Router()
+    bounded_insert = Specialist()
+
+    resolver = RoutedTransitionResolver(
+        router=router,
+        hard_cut=Specialist(),
+        fade=Specialist(),
+        interstitial=Specialist(),
+        bounded_insert=bounded_insert,
+        ambiguous=Specialist(),
+    )
+
+    original = _observation()
+
+    kind, result = resolver.resolve(
+        observation=original,
+    )
+
+    assert kind is TransitionKind.BOUNDED_INSERT
+    assert result.temporal is None
+
+    assert router.route_calls == [original.routing]
+    assert router.classify_calls == []
+    assert router.ownership_calls == []
+
+    routed = bounded_insert.observation
+
+    assert routed is not None
+    assert routed is not original
+    assert (
+        routed.bounded_insert_ownership
+        is BoundedInsertOwnership.ASYMMETRIC
+    )
+
+    assert routed.routing is original.routing
+    assert routed.selected is original.selected
+    assert routed.window is original.window
+    assert routed.pcm8 is original.pcm8
+    assert routed.pcm16 is original.pcm16
+
+
+def test_routed_resolver_passes_bounded_insert_routing_provenance() -> None:
+    from brynse.transition_router import (
+        BoundedInsertAsymmetricRoutingAssessment,
+        BoundedInsertOwnership,
+        BoundedInsertRoutingAssessment,
+        BoundedInsertRoutingProvenance,
+        TransitionKind,
+        TransitionRoute,
+    )
+    from brynse.transition_specialists import RoutedTransitionResolver
+
+    provenance = BoundedInsertRoutingProvenance(
+        ownership=BoundedInsertOwnership.ASYMMETRIC,
+        symmetric_assessment=BoundedInsertRoutingAssessment(
+            candidate=False,
+            related_region_count=0,
+            unique_region=False,
+        ),
+        asymmetric_assessment=BoundedInsertAsymmetricRoutingAssessment(
+            candidate=True,
+            related_region_count=1,
+            unique_region=True,
+            primary_is_context_structural_peak=True,
+        ),
+    )
+
+    class Router:
+        def route(self, *, context):
+            _ = context
+            return TransitionRoute(
+                kind=TransitionKind.BOUNDED_INSERT,
+                bounded_insert_ownership=provenance.ownership,
+                bounded_insert=provenance,
+            )
+
+    class Specialist:
+        def __init__(self):
+            self.observation = None
+
+        def resolve(self, *, observation):
+            self.observation = observation
+            return TransitionSpecialistResult(
+                temporal=None,
+            )
+
+    bounded_insert = Specialist()
+
+    resolver = RoutedTransitionResolver(
+        router=Router(),
+        hard_cut=Specialist(),
+        fade=Specialist(),
+        interstitial=Specialist(),
+        bounded_insert=bounded_insert,
+        ambiguous=Specialist(),
+    )
+
+    original = _observation()
+
+    kind, result = resolver.resolve(
+        observation=original,
+    )
+
+    assert kind is TransitionKind.BOUNDED_INSERT
+    assert result.temporal is None
+
+    routed = bounded_insert.observation
+
+    assert routed is not None
+    assert routed is not original
+    assert (
+        routed.bounded_insert_ownership
+        is BoundedInsertOwnership.ASYMMETRIC
+    )
+    assert routed.bounded_insert_assessment is provenance
+    assert routed.routing is original.routing
+    assert routed.selected is original.selected
+
+
 def test_routed_resolver_passes_bounded_insert_ownership_provenance() -> None:
     from brynse.transition_router import (
         BoundedInsertOwnership,
@@ -1644,6 +2804,62 @@ def test_bounded_insert_phase2_symmetric_provenance_gets_authority() -> None:
     )
 
 
+def test_bounded_insert_routing_provenance_owns_symmetric_region_identity() -> None:
+    from dataclasses import replace
+
+    from brynse.transition_router import (
+        BoundedInsertAsymmetricRoutingAssessment,
+        BoundedInsertOwnership,
+        BoundedInsertRoutingAssessment,
+        BoundedInsertRoutingProvenance,
+    )
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    owned = _bounded_insert_test_region(
+        left_time=100.0,
+        right_time=108.0,
+    )
+    unrelated = _bounded_insert_test_region(
+        left_time=200.0,
+        right_time=208.0,
+    )
+
+    base = _bounded_insert_specialist_observation(
+        regions=(unrelated,),
+    )
+
+    provenance = BoundedInsertRoutingProvenance(
+        ownership=BoundedInsertOwnership.SYMMETRIC,
+        symmetric_assessment=BoundedInsertRoutingAssessment(
+            candidate=True,
+            related_region_count=1,
+            unique_region=True,
+        ),
+        asymmetric_assessment=BoundedInsertAsymmetricRoutingAssessment(
+            candidate=False,
+            related_region_count=0,
+            unique_region=False,
+        ),
+        symmetric_region=owned,
+    )
+
+    observation = replace(
+        base,
+        bounded_insert_ownership=BoundedInsertOwnership.SYMMETRIC,
+        bounded_insert_assessment=provenance,
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=108.0,
+    )
+
+
 def test_bounded_insert_without_provenance_preserves_symmetric_legacy() -> None:
     from brynse.bounded_insert import BoundedInsertRegionEvidence
     from brynse.transition_specialists import BoundedInsertSpecialist
@@ -1677,6 +2893,202 @@ def test_bounded_insert_without_provenance_preserves_symmetric_legacy() -> None:
         kind=TemporalSplitKind.EXCLUSION,
         outgoing_end_seconds=1624.206,
         incoming_start_seconds=1635.106,
+    )
+
+
+def test_bounded_insert_routed_symmetric_roles_prevent_predecessor_rediscovery() -> None:
+    from dataclasses import replace
+
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_router import (
+        BoundedInsertOwnership,
+        TransitionSemanticRoles,
+    )
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    predecessor = _phase2_supported_edge(
+        time_seconds=90.0,
+        basin_start_seconds=89.5,
+        basin_recovery_seconds=90.5,
+        structural_strength=0.9,
+    )
+    bridge = _phase2_structural_only(
+        time_seconds=95.0,
+    )
+    left = _phase2_supported_edge(
+        time_seconds=100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.3,
+    )
+    right = _phase2_supported_edge(
+        time_seconds=110.0,
+        basin_start_seconds=109.5,
+        basin_recovery_seconds=110.5,
+        structural_strength=0.2,
+    )
+
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=105.0,
+        left=left,
+        right=right,
+    )
+
+    base = _bounded_insert_specialist_observation(
+        regions=(region,),
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=105.0,
+            hypotheses=(predecessor, bridge, left, right),
+            bounded_insert_regions=(region,),
+        ),
+        bounded_insert_ownership=BoundedInsertOwnership.SYMMETRIC,
+        semantic_roles=TransitionSemanticRoles(
+            inserted_region=region,
+            incoming_handoff=right,
+        ),
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=110.0,
+    )
+
+
+def test_bounded_insert_routed_symmetric_roles_use_assigned_predecessor() -> None:
+    from dataclasses import replace
+
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_router import (
+        BoundedInsertOwnership,
+        TransitionSemanticRoles,
+    )
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    predecessor = _phase2_supported_edge(
+        time_seconds=90.0,
+        basin_start_seconds=89.5,
+        basin_recovery_seconds=90.5,
+        structural_strength=0.9,
+    )
+    bridge = _phase2_structural_only(
+        time_seconds=95.0,
+    )
+    left = _phase2_supported_edge(
+        time_seconds=100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.3,
+    )
+    right = _phase2_supported_edge(
+        time_seconds=110.0,
+        basin_start_seconds=109.5,
+        basin_recovery_seconds=110.5,
+        structural_strength=0.2,
+    )
+
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=105.0,
+        left=left,
+        right=right,
+    )
+
+    base = _bounded_insert_specialist_observation(
+        regions=(region,),
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=105.0,
+            hypotheses=(predecessor, bridge, left, right),
+            bounded_insert_regions=(region,),
+        ),
+        bounded_insert_ownership=BoundedInsertOwnership.SYMMETRIC,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=predecessor,
+            inserted_region=region,
+            incoming_handoff=right,
+        ),
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=90.0,
+        incoming_start_seconds=110.0,
+    )
+
+
+def test_bounded_insert_asymmetric_outer_extent_consumes_routed_roles() -> None:
+    from brynse.bounded_insert import (
+        BoundedInsertAsymmetricRegionEvidence,
+    )
+    from brynse.transition_router import TransitionSemanticRoles
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    predecessor = _phase2_supported_edge(
+        time_seconds=90.0,
+        basin_start_seconds=89.5,
+        basin_recovery_seconds=90.5,
+        structural_strength=0.5,
+    )
+    primary = _asymmetric_specialist_primary(
+        time_seconds=100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+    )
+    complementary = _asymmetric_structural_complement(
+        time_seconds=105.0,
+    )
+    outer_right = _phase2_supported_edge(
+        time_seconds=110.0,
+        basin_start_seconds=109.5,
+        basin_recovery_seconds=110.5,
+        structural_strength=0.2,
+    )
+
+    asymmetric = BoundedInsertAsymmetricRegionEvidence(
+        reference_time_seconds=105.0,
+        primary=primary,
+        complementary=complementary,
+    )
+
+    roles = TransitionSemanticRoles(
+        outgoing_handoff=predecessor,
+        inserted_region=asymmetric,
+        incoming_handoff=outer_right,
+    )
+
+    proposal = BoundedInsertSpecialist.propose_asymmetric_outer_extent(
+        asymmetric_region=asymmetric,
+        symmetric_regions=(),
+        hypotheses=(
+            predecessor,
+            primary,
+            complementary,
+            outer_right,
+        ),
+        semantic_roles=roles,
+    )
+
+    assert proposal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=90.0,
+        incoming_start_seconds=110.0,
     )
 
 
@@ -3031,4 +4443,2433 @@ def test_phase4_symmetric_preserves_support_when_reference_misses_later_basin() 
         kind=TemporalSplitKind.EXCLUSION,
         outgoing_end_seconds=100.0,
         incoming_start_seconds=110.0,
+    )
+
+
+
+# ---------------------------------------------------------------------------
+# Phase 4e: production replay refinements
+# ---------------------------------------------------------------------------
+
+
+def test_phase4e_hard_cut_keeps_basin_only_reference_time() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import BoundaryProposalSource
+
+    base = _observation(boundary=203.0)
+
+    basin_only = SimpleNamespace(
+        time_seconds=205.443,
+        proposals=(
+            SimpleNamespace(
+                source=BoundaryProposalSource.BASIN,
+            ),
+        ),
+        basin_geometry=SimpleNamespace(
+            start_seconds=204.693,
+            minimum_seconds=205.443,
+            recovery_seconds=208.593,
+        ),
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=204.800,
+            hypotheses=(basin_only,),
+        ),
+    )
+
+    result = HardCutSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=204.800,
+        incoming_start_seconds=204.800,
+    )
+
+
+def test_phase4e_hard_cut_completes_supported_selected_basin() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import BoundaryProposalSource
+
+    base = _observation(boundary=938.337)
+
+    supported = SimpleNamespace(
+        time_seconds=938.581,
+        proposals=(
+            SimpleNamespace(
+                source=BoundaryProposalSource.BASIN,
+            ),
+            SimpleNamespace(
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+        basin_geometry=SimpleNamespace(
+            start_seconds=938.231,
+            minimum_seconds=938.581,
+            recovery_seconds=938.831,
+        ),
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=939.337,
+            hypotheses=(supported,),
+        ),
+    )
+
+    result = HardCutSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=938.831,
+        incoming_start_seconds=938.831,
+    )
+
+
+def test_phase4e_bounded_insert_collapses_reference_structural_bridge() -> None:
+    from dataclasses import replace
+
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_router import BoundedInsertOwnership
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    left = _phase2_supported_edge(
+        time_seconds=492.139,
+        basin_start_seconds=491.189,
+        basin_recovery_seconds=495.789,
+    )
+    bridge = _phase2_structural_only(
+        time_seconds=495.589,
+    )
+    right = _phase2_supported_edge(
+        time_seconds=499.914,
+        basin_start_seconds=499.489,
+        basin_recovery_seconds=500.789,
+    )
+
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=495.595,
+        left=left,
+        right=right,
+        interior_hypotheses=(bridge,),
+    )
+
+    base = _bounded_insert_specialist_observation(
+        regions=(region,),
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=495.595,
+            hypotheses=(
+                left,
+                bridge,
+                right,
+            ),
+            bounded_insert_regions=(region,),
+        ),
+        bounded_insert_ownership=BoundedInsertOwnership.SYMMETRIC,
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=495.589,
+        incoming_start_seconds=495.589,
+    )
+
+
+def test_phase4e_bounded_insert_extends_symmetric_structural_chain() -> None:
+    from dataclasses import replace
+
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_router import BoundedInsertOwnership
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    predecessor = _phase2_supported_edge(
+        time_seconds=2231.217,
+        basin_start_seconds=2230.892,
+        basin_recovery_seconds=2232.692,
+    )
+    structural_a = _phase2_structural_only(
+        time_seconds=2235.192,
+    )
+    structural_b = _phase2_structural_only(
+        time_seconds=2240.192,
+    )
+    anchor = _phase2_supported_edge(
+        time_seconds=2247.967,
+        basin_start_seconds=2246.192,
+        basin_recovery_seconds=2248.092,
+    )
+    right = _phase2_supported_edge(
+        time_seconds=2264.517,
+        basin_start_seconds=2264.092,
+        basin_recovery_seconds=2264.592,
+    )
+
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=2248.699,
+        left=anchor,
+        right=right,
+    )
+
+    base = _bounded_insert_specialist_observation(
+        regions=(region,),
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=2248.699,
+            hypotheses=(
+                predecessor,
+                structural_a,
+                structural_b,
+                anchor,
+                right,
+            ),
+            bounded_insert_regions=(region,),
+        ),
+        bounded_insert_ownership=BoundedInsertOwnership.SYMMETRIC,
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=2231.217,
+        incoming_start_seconds=2264.517,
+    )
+
+
+def test_phase4e_bounded_insert_fade_blocks_asymmetric_outer_extent() -> None:
+    from dataclasses import replace
+
+    from brynse.bounded_insert import (
+        BoundedInsertAsymmetricRegionEvidence,
+        BoundedInsertRegionEvidence,
+    )
+    from brynse.transition_evidence import (
+        CrossfadeRiseEvidence,
+        FadeRoutingEvidence,
+    )
+    from brynse.transition_router import BoundedInsertOwnership
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    predecessor = _phase2_supported_edge(
+        time_seconds=90.0,
+        basin_start_seconds=89.5,
+        basin_recovery_seconds=90.5,
+    )
+    structural = _phase2_structural_only(
+        time_seconds=95.0,
+    )
+    primary = _phase2_supported_edge(
+        time_seconds=100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.8,
+    )
+    complementary = _phase2_structural_only(
+        time_seconds=119.0,
+    )
+    outer_right = _phase2_supported_edge(
+        time_seconds=120.0,
+        basin_start_seconds=119.5,
+        basin_recovery_seconds=120.5,
+    )
+
+    asymmetric = BoundedInsertAsymmetricRegionEvidence(
+        reference_time_seconds=110.0,
+        primary=primary,
+        complementary=complementary,
+    )
+    symmetric = BoundedInsertRegionEvidence(
+        reference_time_seconds=110.0,
+        left=primary,
+        right=outer_right,
+    )
+
+    base = _bounded_insert_specialist_observation(
+        regions=(symmetric,),
+    )
+
+    routing = replace(
+        base.routing,
+        reference_time_seconds=110.0,
+        hypotheses=(
+            predecessor,
+            structural,
+            primary,
+            complementary,
+            outer_right,
+        ),
+        bounded_insert_regions=(symmetric,),
+        bounded_insert_asymmetric_regions=(asymmetric,),
+        fade=FadeRoutingEvidence(
+            rise=CrossfadeRiseEvidence(
+                time_seconds=100.0,
+                jump_ratio=2.0,
+                persistence_ratio=2.0,
+                after_global_ratio=2.0,
+            ),
+        ),
+    )
+
+    observation = replace(
+        base,
+        routing=routing,
+        bounded_insert_ownership=BoundedInsertOwnership.ASYMMETRIC,
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    # Without the fade guard, outer extent would claim predecessor=90.
+    # With fade ownership evidence, the existing local asymmetric fallback
+    # remains responsible for the bounded-insert geometry.
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.5,
+        incoming_start_seconds=119.0,
+    )
+
+
+
+def test_phase4e_hard_cut_keeps_basin_only_reference_when_selected_is_inside_same_basin() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import BoundaryProposalSource
+
+    # Lowjazz-like alternate execution path:
+    # selected and semantic reference both land before the minimum of the
+    # same basin-only geometry.  A basin without structural support must
+    # not drag the cut forward to its minimum.
+    base = _observation(boundary=204.750)
+
+    basin_only = SimpleNamespace(
+        time_seconds=205.443,
+        proposals=(
+            SimpleNamespace(
+                source=BoundaryProposalSource.BASIN,
+            ),
+        ),
+        basin_geometry=SimpleNamespace(
+            start_seconds=204.693,
+            minimum_seconds=205.443,
+            recovery_seconds=208.593,
+        ),
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=204.800,
+            hypotheses=(basin_only,),
+        ),
+    )
+
+    result = HardCutSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=204.800,
+        incoming_start_seconds=204.800,
+    )
+
+
+
+# ---------------------------------------------------------------------------
+# Phase 4f: asymmetric pre-basin structural extent
+# ---------------------------------------------------------------------------
+
+
+def _phase4f_asymmetric_observation(
+    *,
+    incoming_established_seconds,
+    incoming_start_seconds=98.8,
+):
+    from dataclasses import replace
+
+    from brynse.boundaries import (
+        BoundaryEvidence,
+        BoundaryHypothesis,
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+    from brynse.bounded_insert import (
+        BoundedInsertAsymmetricRegionEvidence,
+    )
+    from brynse.transition_evidence import (
+        FadeRoutingEvidence,
+        IncomingFadeEvidence,
+    )
+    from brynse.transition_router import (
+        BoundedInsertOwnership,
+    )
+
+    structural = BoundaryProposal(
+        time_seconds=98.7,
+        source=BoundaryProposalSource.STRUCTURAL,
+        strength=0.48,
+    )
+    basin = BoundaryProposal(
+        time_seconds=100.0,
+        source=BoundaryProposalSource.BASIN,
+    )
+
+    primary = BoundaryHypothesis(
+        time_seconds=100.0,
+        proposals=(
+            structural,
+            basin,
+        ),
+        evidence=(
+            BoundaryEvidence(
+                proposal=basin,
+                basin_depth=0.2,
+                basin_start_seconds=99.5,
+                basin_recovery_seconds=100.5,
+            ),
+        ),
+    )
+
+    complementary_proposal = BoundaryProposal(
+        time_seconds=103.0,
+        source=BoundaryProposalSource.STRUCTURAL,
+        strength=0.2,
+    )
+    complementary = BoundaryHypothesis(
+        time_seconds=103.0,
+        proposals=(complementary_proposal,),
+    )
+
+    region = BoundedInsertAsymmetricRegionEvidence(
+        reference_time_seconds=102.0,
+        primary=primary,
+        complementary=complementary,
+    )
+
+    base = _asymmetric_specialist_observation(
+        region
+    )
+
+    return replace(
+        base,
+        routing=replace(
+            base.routing,
+            fade=FadeRoutingEvidence(
+                incoming_fades=(
+                    IncomingFadeEvidence(
+                        start_time_seconds=(
+                            incoming_start_seconds
+                        ),
+                        established_time_seconds=(
+                            incoming_established_seconds
+                        ),
+                        start_rms=100.0,
+                        established_rms=500.0,
+                        ascent_ratio=5.0,
+                        ascent_consistency=0.5,
+                        persistence_ratio=3.0,
+                    ),
+                ),
+            ),
+        ),
+        bounded_insert_ownership=(
+            BoundedInsertOwnership.ASYMMETRIC
+        ),
+    )
+
+
+def test_phase4f_asymmetric_pre_basin_structural_owns_outer_left_extent() -> None:
+    from brynse.transition_specialists import (
+        BoundedInsertSpecialist,
+    )
+
+    observation = _phase4f_asymmetric_observation(
+        incoming_established_seconds=99.2,
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=98.7,
+        incoming_start_seconds=103.0,
+    )
+
+
+def test_phase4f_asymmetric_pre_basin_structural_requires_local_incoming_phase() -> None:
+    from brynse.transition_specialists import (
+        BoundedInsertSpecialist,
+    )
+
+    observation = _phase4f_asymmetric_observation(
+        incoming_start_seconds=90.0,
+        incoming_established_seconds=91.0,
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.5,
+        incoming_start_seconds=103.0,
+    )
+
+
+def test_phase4f_compatibility_fallback_does_not_use_incoming_phase() -> None:
+    from dataclasses import replace
+
+    from brynse.transition_specialists import (
+        BoundedInsertSpecialist,
+    )
+
+    observation = _phase4f_asymmetric_observation(
+        incoming_established_seconds=99.2,
+    )
+
+    # Remove Router provenance.  This exercises the compatibility
+    # path, which deliberately calls the fallback without fade
+    # evidence and must preserve its historical result.
+    observation = replace(
+        observation,
+        bounded_insert_ownership=None,
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.5,
+        incoming_start_seconds=103.0,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 4g: failed direct-transition right-basin recovery
+# ---------------------------------------------------------------------------
+
+
+def _phase4g_right_basin_observation(
+    *,
+    boundary=100.0,
+    reference_inside_right_basin=True,
+):
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import BoundaryProposalSource
+
+    base = _observation(boundary=boundary)
+
+    right_edge = SimpleNamespace(
+        proposals=(
+            SimpleNamespace(
+                source=BoundaryProposalSource.BASIN,
+            ),
+            SimpleNamespace(
+                source=BoundaryProposalSource.STRUCTURAL,
+            ),
+        ),
+        basin_geometry=SimpleNamespace(
+            start_seconds=101.5,
+            minimum_seconds=102.0,
+            recovery_seconds=103.0,
+        ),
+    )
+
+    region = SimpleNamespace(
+        reference_inside_right_basin=reference_inside_right_basin,
+        right_edge=right_edge,
+    )
+
+    return replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=102.25,
+            hypotheses=(),
+            bounded_insert_regions=(region,),
+        ),
+    )
+
+
+def test_phase4g_interstitial_failed_hard_cut_uses_supported_right_basin() -> None:
+    from brynse.transition_specialists import InterstitialSpecialist
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return kwargs["decision"]
+
+    observation = _phase4g_right_basin_observation()
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=102.0,
+        incoming_start_seconds=102.0,
+    )
+
+
+def test_phase4g_ambiguous_preserves_reference_without_basin_recovery() -> None:
+    observation = _phase4g_right_basin_observation()
+
+    result = LegacyAmbiguousSpecialist().resolve(
+        observation=observation,
+    )
+
+    reference = observation.routing.reference_time_seconds
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=reference,
+        incoming_start_seconds=reference,
+    )
+
+
+def test_phase4g_right_basin_recovery_requires_reference_ownership() -> None:
+    from brynse.transition_specialists import InterstitialSpecialist
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return kwargs["decision"]
+
+    observation = _phase4g_right_basin_observation(
+        reference_inside_right_basin=False,
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=100.0,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 4h: interstitial terminal-fade outgoing recovery
+# ---------------------------------------------------------------------------
+
+
+def _phase4h_larry_observation(
+    *,
+    reference_inside_right=True,
+    left_peak=True,
+    right_peak=False,
+    fade_starts_before_outgoing=True,
+):
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import BoundaryProposalSource
+
+    base = _observation(boundary=100.0)
+
+    peak_strength = 0.9
+
+    left_strength = peak_strength if left_peak else 0.4
+    right_strength = peak_strength if right_peak else 0.5
+
+    left = SimpleNamespace(
+        proposals=(
+            SimpleNamespace(
+                source=BoundaryProposalSource.BASIN,
+                strength=None,
+            ),
+            SimpleNamespace(
+                source=BoundaryProposalSource.STRUCTURAL,
+                strength=left_strength,
+            ),
+        ),
+        basin_geometry=SimpleNamespace(
+            start_seconds=102.0,
+            minimum_seconds=102.5,
+            recovery_seconds=103.0,
+        ),
+    )
+
+    right_geometry = SimpleNamespace(
+        start_seconds=106.0,
+        minimum_seconds=107.0,
+        recovery_seconds=108.0,
+    )
+
+    right = SimpleNamespace(
+        proposals=(
+            SimpleNamespace(
+                source=BoundaryProposalSource.BASIN,
+                strength=None,
+            ),
+            SimpleNamespace(
+                source=BoundaryProposalSource.STRUCTURAL,
+                strength=right_strength,
+            ),
+        ),
+        basin_geometry=right_geometry,
+    )
+
+    region = SimpleNamespace(
+        left_edge=left,
+        right_edge=right,
+        reference_inside_left_basin=False,
+        reference_inside_right_basin=reference_inside_right,
+        structural_only_interior_count=0,
+    )
+
+    fade_start = 99.0 if fade_starts_before_outgoing else 101.0
+
+    fade = SimpleNamespace(
+        rise=None,
+        outgoing_fades=(
+            SimpleNamespace(
+                start_time_seconds=fade_start,
+                floor_time_seconds=106.8,
+            ),
+        ),
+    )
+
+    context_peak = SimpleNamespace(
+        proposals=(
+            SimpleNamespace(
+                source=BoundaryProposalSource.STRUCTURAL,
+                strength=peak_strength,
+            ),
+        ),
+        basin_geometry=None,
+    )
+
+    hypotheses = (
+        SimpleNamespace(
+            proposals=left.proposals,
+            basin_geometry=left.basin_geometry,
+        ),
+        SimpleNamespace(
+            proposals=right.proposals,
+            basin_geometry=right.basin_geometry,
+        ),
+        context_peak,
+    )
+
+    return replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=107.2,
+            hypotheses=hypotheses,
+            fade=fade,
+            bounded_insert_regions=(region,),
+        ),
+    )
+
+
+def test_phase4h_interstitial_extends_outgoing_to_confirmed_terminal_fade() -> None:
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=107.5,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return ()
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=_phase4h_larry_observation(),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=106.8,
+        incoming_start_seconds=107.5,
+    )
+
+
+def test_phase4h_terminal_fade_requires_reference_inside_right_basin() -> None:
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=107.5,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return ()
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=_phase4h_larry_observation(
+            reference_inside_right=False,
+        ),
+    )
+
+    assert result.temporal is refined
+
+
+def test_phase4h_terminal_fade_requires_left_structural_peak() -> None:
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=107.5,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return ()
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=_phase4h_larry_observation(
+            left_peak=False,
+        ),
+    )
+
+    assert result.temporal is refined
+
+
+def test_phase4h_terminal_fade_rejects_right_structural_peak() -> None:
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=107.5,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return ()
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=_phase4h_larry_observation(
+            right_peak=True,
+        ),
+    )
+
+    assert result.temporal is refined
+
+
+def test_phase4h_terminal_fade_requires_current_outgoing_inside_fade() -> None:
+    refined = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=107.5,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return refined
+
+        def analyze_hypotheses(self, **kwargs):
+            return ()
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=_phase4h_larry_observation(
+            fade_starts_before_outgoing=False,
+        ),
+    )
+
+    assert result.temporal is refined
+
+
+# ---------------------------------------------------------------------------
+# Phase 4i: symmetric bounded-insert predecessor terminal fade
+# ---------------------------------------------------------------------------
+
+
+def _phase4i_mark_observation(
+    *,
+    incoming_phase=True,
+    floor_inside_predecessor=True,
+    left_peak=False,
+):
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_router import BoundedInsertOwnership
+
+    predecessor = _phase2_supported_edge(
+        time_seconds=98.0,
+        basin_start_seconds=97.0,
+        basin_recovery_seconds=99.5,
+        structural_strength=0.9,
+    )
+
+    left = _phase2_supported_edge(
+        time_seconds=102.4,
+        basin_start_seconds=101.5,
+        basin_recovery_seconds=102.2,
+        structural_strength=(
+            0.9 if left_peak else 0.4
+        ),
+    )
+
+    interior = _phase2_structural_only(
+        time_seconds=106.0,
+    )
+
+    right = _phase2_supported_edge(
+        time_seconds=112.0,
+        basin_start_seconds=111.5,
+        basin_recovery_seconds=112.4,
+        structural_strength=0.5,
+    )
+
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=103.0,
+        left=left,
+        right=right,
+        interior_hypotheses=(interior,),
+    )
+
+    floor = 98.5 if floor_inside_predecessor else 100.0
+
+    incoming_fades = ()
+
+    if incoming_phase:
+        incoming_fades = (
+            SimpleNamespace(
+                start_time_seconds=floor,
+                established_time_seconds=105.0,
+            ),
+        )
+
+    fade = SimpleNamespace(
+        rise=None,
+        outgoing_fades=(
+            SimpleNamespace(
+                start_time_seconds=90.0,
+                floor_time_seconds=floor,
+            ),
+        ),
+        incoming_fades=incoming_fades,
+    )
+
+    base = _bounded_insert_specialist_observation(
+        regions=(region,),
+    )
+
+    return replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=103.0,
+            hypotheses=(
+                predecessor,
+                left,
+                interior,
+                right,
+            ),
+            fade=fade,
+            bounded_insert_regions=(region,),
+        ),
+        bounded_insert_ownership=(
+            BoundedInsertOwnership.SYMMETRIC
+        ),
+    )
+
+
+def test_phase4i_symmetric_insert_uses_predecessor_terminal_fade() -> None:
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=_phase4i_mark_observation(),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=98.5,
+        incoming_start_seconds=112.0,
+    )
+
+
+def test_phase4i_terminal_fade_requires_matching_incoming_phase() -> None:
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=_phase4i_mark_observation(
+            incoming_phase=False,
+        ),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=102.2,
+        incoming_start_seconds=112.0,
+    )
+
+
+def test_phase4i_terminal_fade_must_belong_to_predecessor_basin() -> None:
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=_phase4i_mark_observation(
+            floor_inside_predecessor=False,
+        ),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=102.2,
+        incoming_start_seconds=112.0,
+    )
+
+
+def test_phase4i_terminal_fade_rejects_dominant_left_edge() -> None:
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=_phase4i_mark_observation(
+            left_peak=True,
+        ),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=102.2,
+        incoming_start_seconds=112.0,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 4j: hard-cut terminal acoustic handoff
+# ---------------------------------------------------------------------------
+
+
+def _phase4j_nikki_observation(
+    *,
+    incoming_phase=True,
+    floor_after_minimum=True,
+    supported=True,
+):
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.boundaries import (
+        BoundaryProposal,
+        BoundaryProposalSource,
+    )
+
+    base = _observation(boundary=100.75)
+
+    proposals = [
+        BoundaryProposal(
+            time_seconds=100.5,
+            source=BoundaryProposalSource.BASIN,
+        ),
+    ]
+
+    if supported:
+        proposals.append(
+            BoundaryProposal(
+                time_seconds=100.4,
+                source=BoundaryProposalSource.STRUCTURAL,
+                strength=0.8,
+            )
+        )
+
+    hypothesis = SimpleNamespace(
+        time_seconds=100.5,
+        proposals=tuple(proposals),
+        basin_geometry=SimpleNamespace(
+            start_seconds=99.5,
+            minimum_seconds=100.5,
+            recovery_seconds=101.5,
+        ),
+    )
+
+    floor = 101.25 if floor_after_minimum else 100.25
+
+    incoming_fades = ()
+
+    if incoming_phase:
+        incoming_fades = (
+            SimpleNamespace(
+                start_time_seconds=floor,
+                established_time_seconds=102.0,
+            ),
+        )
+
+    fade = SimpleNamespace(
+        rise=None,
+        outgoing_fades=(
+            SimpleNamespace(
+                start_time_seconds=95.0,
+                floor_time_seconds=floor,
+            ),
+        ),
+        incoming_fades=incoming_fades,
+    )
+
+    return replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=103.0,
+            hypotheses=(hypothesis,),
+            fade=fade,
+        ),
+    )
+
+
+def test_phase4j_hard_cut_uses_terminal_acoustic_handoff() -> None:
+    result = HardCutSpecialist().resolve(
+        observation=_phase4j_nikki_observation(),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=101.25,
+        incoming_start_seconds=101.25,
+    )
+
+
+def test_phase4j_terminal_handoff_requires_matching_incoming_phase() -> None:
+    result = HardCutSpecialist().resolve(
+        observation=_phase4j_nikki_observation(
+            incoming_phase=False,
+        ),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=101.5,
+        incoming_start_seconds=101.5,
+    )
+
+
+def test_phase4j_terminal_handoff_must_follow_basin_minimum() -> None:
+    result = HardCutSpecialist().resolve(
+        observation=_phase4j_nikki_observation(
+            floor_after_minimum=False,
+        ),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=101.5,
+        incoming_start_seconds=101.5,
+    )
+
+
+def test_phase4j_terminal_handoff_requires_supported_basin() -> None:
+    result = HardCutSpecialist().resolve(
+        observation=_phase4j_nikki_observation(
+            supported=False,
+        ),
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=101.5,
+        incoming_start_seconds=101.5,
+    )
+
+
+def test_bounded_insert_partial_roles_exclude_complete_edge_envelopes() -> None:
+    from dataclasses import replace
+
+    from brynse.bounded_insert import BoundedInsertRegionEvidence
+    from brynse.transition_router import (
+        BoundedInsertOwnership,
+        TransitionSemanticRoles,
+    )
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    left = _phase2_supported_edge(
+        time_seconds=100.25,
+        basin_start_seconds=99.0,
+        basin_recovery_seconds=100.0,
+    )
+    interior_a = _phase2_structural_only(
+        time_seconds=104.0,
+    )
+    interior_b = _phase2_structural_only(
+        time_seconds=106.0,
+    )
+    right = _phase2_supported_edge(
+        time_seconds=110.25,
+        basin_start_seconds=110.0,
+        basin_recovery_seconds=112.0,
+    )
+
+    region = BoundedInsertRegionEvidence(
+        reference_time_seconds=109.5,
+        left=left,
+        right=right,
+        interior_hypotheses=(
+            interior_a,
+            interior_b,
+        ),
+    )
+
+    base = _bounded_insert_specialist_observation(
+        regions=(region,),
+    )
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=109.5,
+            hypotheses=(
+                left,
+                interior_a,
+                interior_b,
+                right,
+            ),
+            bounded_insert_regions=(region,),
+        ),
+        bounded_insert_ownership=BoundedInsertOwnership.SYMMETRIC,
+        semantic_roles=TransitionSemanticRoles(
+            inserted_region=region,
+            incoming_handoff=right,
+        ),
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=99.0,
+        incoming_start_seconds=112.0,
+    )
+
+
+
+def test_interstitial_routed_edge_geometry_precedes_legacy_rediscovery() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.transition_router import TransitionSemanticRoles
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            raise AssertionError(
+                "routed Interstitial edge geometry must resolve "
+                "before legacy rediscovery"
+            )
+
+    base = _observation(boundary=121.5)
+    observation = replace(
+        base,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_edge_fade=SimpleNamespace(
+                floor_time_seconds=105.7,
+            ),
+            incoming_edge_fade=SimpleNamespace(
+                start_time_seconds=123.5,
+            ),
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=105.7,
+        incoming_start_seconds=123.5,
+    )
+
+
+
+def test_interstitial_mixed_roles_resolve_routed_extents() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.transition_router import (
+        InterstitialRoutingAssessment,
+        TransitionSemanticRoles,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            raise AssertionError(
+                "mixed routed Interstitial topology must resolve "
+                "before legacy rediscovery"
+            )
+
+    incoming_handoff = SimpleNamespace(
+        time_seconds=123.2,
+        basin_geometry=SimpleNamespace(
+            start_seconds=123.0,
+            minimum_seconds=123.3,
+            recovery_seconds=124.5,
+        ),
+    )
+
+    base = _observation(boundary=121.5)
+
+    observation = replace(
+        base,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_edge_fade=SimpleNamespace(
+                floor_time_seconds=105.7,
+            ),
+            incoming_handoff=incoming_handoff,
+        ),
+        interstitial_assessment=InterstitialRoutingAssessment(
+            supported_handoffs=(incoming_handoff,),
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=105.7,
+        incoming_start_seconds=124.5,
+    )
+
+
+def test_interstitial_acoustic_island_refines_owned_region_left_edge() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.transition_router import TransitionSemanticRoles
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            raise AssertionError(
+                "owned Acoustic Island must resolve before legacy rediscovery"
+            )
+
+    region = SimpleNamespace(
+        left=SimpleNamespace(time_seconds=586.803),
+        right=SimpleNamespace(time_seconds=592.078),
+    )
+
+    island = SimpleNamespace(
+        incoming_handoff=region.right,
+        terminal_decay=SimpleNamespace(
+            floor_time_seconds=583.378,
+        ),
+        source_reset=SimpleNamespace(
+            start_time_seconds=584.328,
+        ),
+        observed_region=region,
+    )
+
+    base = _observation(boundary=588.434)
+
+    observation = replace(
+        base,
+        semantic_roles=TransitionSemanticRoles(
+            outgoing_handoff=region.left,
+            incoming_handoff=region.right,
+            acoustic_island=island,
+            inserted_region=region,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=583.378,
+        incoming_start_seconds=592.078,
+    )
+
+
+def test_bounded_insert_acoustic_island_refines_owned_left_edge() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_router import (
+        BoundedInsertOwnership,
+        TransitionSemanticRoles,
+    )
+    from brynse.transition_specialists import BoundedInsertSpecialist
+
+    left = SimpleNamespace(
+        time_seconds=2154.703,
+        proposals=(),
+        evidence=(),
+        basin_geometry=None,
+    )
+    right = SimpleNamespace(
+        time_seconds=2171.378,
+        proposals=(),
+        evidence=(),
+        basin_geometry=None,
+    )
+
+    region = SimpleNamespace(
+        reference_time_seconds=2155.860,
+        left=left,
+        right=right,
+        left_edge=left,
+        right_edge=right,
+        interior_hypotheses=(),
+        structural_only_interior_count=0,
+        reference_inside_left_basin=False,
+        reference_inside_right_basin=False,
+    )
+
+    island = SimpleNamespace(
+        incoming_handoff=right,
+        terminal_decay=SimpleNamespace(
+            floor_time_seconds=2155.303,
+        ),
+        source_reset=SimpleNamespace(
+            start_time_seconds=2151.453,
+        ),
+        observed_region=region,
+    )
+
+    routing = SimpleNamespace(
+        bounded_insert_regions=(region,),
+        bounded_insert_asymmetric_regions=(),
+        acoustic_islands=(island,),
+        hypotheses=(),
+        reference_time_seconds=2155.860,
+        fade=SimpleNamespace(
+            rise=object(),
+        ),
+    )
+
+    observation = TransitionSpecialistInput(
+        routing=routing,
+        selected=SimpleNamespace(
+            time_seconds=2155.860,
+        ),
+        profile=None,
+        window=None,
+        pcm8=None,
+        pcm16=None,
+        bounded_insert_ownership=(
+            BoundedInsertOwnership.SYMMETRIC
+        ),
+        semantic_roles=TransitionSemanticRoles(
+            inserted_region=region,
+            incoming_handoff=right,
+        ),
+    )
+
+    result = BoundedInsertSpecialist().resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=2151.453,
+        incoming_start_seconds=2171.378,
+    )
+
+
+def test_acoustic_island_left_edge_requires_observed_region() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_specialists import (
+        _refine_acoustic_island_left_edge,
+    )
+
+    decision = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=1100.0,
+        incoming_start_seconds=1105.0,
+    )
+
+    island = SimpleNamespace(
+        terminal_decay=SimpleNamespace(
+            floor_time_seconds=1101.0,
+        ),
+        source_reset=SimpleNamespace(
+            start_time_seconds=1098.879,
+        ),
+        observed_region=None,
+    )
+
+    result = _refine_acoustic_island_left_edge(
+        decision=decision,
+        island=island,
+        region=SimpleNamespace(),
+    )
+
+    assert result is None
+
+
+def test_acoustic_island_left_edge_does_not_replace_better_existing_edge() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_specialists import (
+        _refine_acoustic_island_left_edge,
+    )
+
+    region = SimpleNamespace()
+
+    decision = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=1098.536,
+        incoming_start_seconds=1105.279,
+    )
+
+    island = SimpleNamespace(
+        terminal_decay=SimpleNamespace(
+            floor_time_seconds=1105.229,
+        ),
+        source_reset=SimpleNamespace(
+            start_time_seconds=1098.879,
+        ),
+        observed_region=region,
+    )
+
+    result = _refine_acoustic_island_left_edge(
+        decision=decision,
+        island=island,
+        region=region,
+    )
+
+    assert result is None
+
+
+
+def test_ambiguous_specialist_pcm_verifies_earlier_shared_edge() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    pcm16 = object()
+
+    class SharedEdgeVerifier:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def verify(self, **kwargs):
+            self.calls.append(kwargs)
+            return SimpleNamespace(
+                verified_time_seconds=99.8,
+            )
+
+    verifier = SharedEdgeVerifier()
+    base = _observation(boundary=100.0)
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=100.0,
+        ),
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=pcm16,
+    )
+
+    result = LegacyAmbiguousSpecialist(
+        shared_edge_verifier=verifier,
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=99.8,
+        incoming_start_seconds=99.8,
+    )
+
+    assert len(verifier.calls) == 1
+    assert verifier.calls[0] == {
+        "pcm": pcm16,
+        "absolute_start_time_seconds": 90.0,
+        "provisional_time_seconds": 100.0,
+    }
+
+
+def test_ambiguous_specialist_preserves_reference_when_pcm_abstains() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    class SharedEdgeVerifier:
+        def verify(self, **kwargs):
+            return None
+
+    base = _observation(boundary=100.0)
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=100.0,
+        ),
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+    )
+
+    result = LegacyAmbiguousSpecialist(
+        shared_edge_verifier=SharedEdgeVerifier(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=100.0,
+    )
+
+
+
+def test_interstitial_pcm_verifies_exclusion_edges_independently() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return TemporalSplitDecision(
+                kind=TemporalSplitKind.EXCLUSION,
+                outgoing_end_seconds=100.0,
+                incoming_start_seconds=105.0,
+            )
+
+        analyze_hypotheses = None
+
+    class TemporalEdgeVerifier:
+        def __init__(self):
+            self.calls = []
+
+        def verify(self, **kwargs):
+            self.calls.append(kwargs)
+
+            provisional = kwargs["provisional_time_seconds"]
+
+            if provisional == 100.0:
+                return SimpleNamespace(
+                    verified_time_seconds=100.6,
+                )
+
+            if provisional == 105.0:
+                return SimpleNamespace(
+                    verified_time_seconds=103.2,
+                )
+
+            raise AssertionError(provisional)
+
+    verifier = TemporalEdgeVerifier()
+    base = _observation(boundary=102.0)
+
+    observation = replace(
+        base,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+        temporal_edge_verifier=verifier,
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.6,
+        incoming_start_seconds=103.2,
+    )
+
+    assert [
+        call["provisional_time_seconds"]
+        for call in verifier.calls
+    ] == [100.0, 105.0]
+
+
+def test_interstitial_pcm_preserves_exclusion_when_verified_edges_cross() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return TemporalSplitDecision(
+                kind=TemporalSplitKind.EXCLUSION,
+                outgoing_end_seconds=100.0,
+                incoming_start_seconds=105.0,
+            )
+
+        analyze_hypotheses = None
+
+    class TemporalEdgeVerifier:
+        def verify(self, **kwargs):
+            provisional = kwargs["provisional_time_seconds"]
+
+            return SimpleNamespace(
+                verified_time_seconds=(
+                    104.0
+                    if provisional == 100.0
+                    else 103.0
+                ),
+            )
+
+    base = _observation(boundary=102.0)
+
+    observation = replace(
+        base,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+        temporal_edge_verifier=TemporalEdgeVerifier(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=105.0,
+    )
+
+
+def test_interstitial_pcm_abstention_preserves_existing_exclusion() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return TemporalSplitDecision(
+                kind=TemporalSplitKind.EXCLUSION,
+                outgoing_end_seconds=100.0,
+                incoming_start_seconds=105.0,
+            )
+
+        analyze_hypotheses = None
+
+    class TemporalEdgeVerifier:
+        def verify(self, **kwargs):
+            return None
+
+    base = _observation(boundary=102.0)
+
+    observation = replace(
+        base,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+        temporal_edge_verifier=TemporalEdgeVerifier(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=105.0,
+    )
+
+
+
+def test_interstitial_reset_pair_only_acoustic_island_becomes_pcm_verified_exclusion() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    incoming_handoff = SimpleNamespace(
+        time_seconds=110.0,
+    )
+
+    island = SimpleNamespace(
+        observed_region=None,
+        terminal_decay=SimpleNamespace(
+            floor_time_seconds=100.0,
+        ),
+        source_reset=SimpleNamespace(
+            start_time_seconds=100.0,
+        ),
+        incoming_handoff=incoming_handoff,
+    )
+
+    semantic_roles = SimpleNamespace(
+        acoustic_island=island,
+        inserted_region=None,
+        outgoing_handoff=None,
+        incoming_handoff=incoming_handoff,
+        outgoing_edge_fade=None,
+        incoming_edge_fade=None,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            raise AssertionError(
+                "reset-pair-only Acoustic Island must resolve "
+                "before legacy incoming rediscovery"
+            )
+
+    class TemporalEdgeVerifier:
+        def __init__(self):
+            self.calls = []
+
+        def verify(self, **kwargs):
+            self.calls.append(kwargs)
+            provisional = kwargs["provisional_time_seconds"]
+
+            if provisional == 100.0:
+                return SimpleNamespace(
+                    verified_time_seconds=100.4,
+                )
+
+            if provisional == 110.0:
+                return SimpleNamespace(
+                    verified_time_seconds=108.8,
+                )
+
+            raise AssertionError(provisional)
+
+    verifier = TemporalEdgeVerifier()
+    base = _observation(boundary=105.0)
+
+    observation = replace(
+        base,
+        semantic_roles=semantic_roles,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+        temporal_edge_verifier=verifier,
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.4,
+        incoming_start_seconds=108.8,
+    )
+
+    assert [
+        call["provisional_time_seconds"]
+        for call in verifier.calls
+    ] == [100.0, 110.0]
+
+
+def test_interstitial_region_backed_acoustic_island_does_not_use_reset_pair_only_path() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    incoming_handoff = SimpleNamespace(
+        time_seconds=110.0,
+    )
+
+    region = SimpleNamespace(
+        left=SimpleNamespace(
+            time_seconds=101.0,
+        ),
+        right=SimpleNamespace(
+            time_seconds=110.0,
+        ),
+    )
+
+    island = SimpleNamespace(
+        observed_region=region,
+        terminal_decay=SimpleNamespace(
+            floor_time_seconds=100.0,
+        ),
+        source_reset=SimpleNamespace(
+            start_time_seconds=100.0,
+        ),
+        incoming_handoff=incoming_handoff,
+    )
+
+    semantic_roles = SimpleNamespace(
+        acoustic_island=island,
+        inserted_region=region,
+        outgoing_handoff=region.left,
+        incoming_handoff=incoming_handoff,
+        outgoing_edge_fade=None,
+        incoming_edge_fade=None,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            raise AssertionError(
+                "region-backed Acoustic Island must preserve "
+                "its existing specialist path"
+            )
+
+    base = _observation(boundary=105.0)
+
+    observation = replace(
+        base,
+        semantic_roles=semantic_roles,
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal is not None
+    assert result.temporal.kind is TemporalSplitKind.EXCLUSION
+
+
+
+def test_hard_cut_pcm_authority_uses_explicit_bounds() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    class Verifier:
+        def __init__(self):
+            self.calls = []
+
+        def verify(self, **kwargs):
+            self.calls.append(kwargs)
+
+            return SimpleNamespace(
+                verified_time_seconds=104.25,
+            )
+
+    verifier = Verifier()
+    base = _observation(boundary=100.0)
+
+    observation = replace(
+        base,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    result = HardCutSpecialist(
+        temporal_edge_verifier=verifier,
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal is not None
+    assert result.temporal.kind is TemporalSplitKind.HARD_CUT
+    assert result.temporal.outgoing_end_seconds == 104.25
+    assert result.temporal.incoming_start_seconds == 104.25
+
+    assert len(verifier.calls) == 1
+    assert "search_bounds" in verifier.calls[0]
+
+
+def test_interstitial_pcm_authority_runs_once_per_final_edge() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            return TemporalSplitDecision(
+                kind=TemporalSplitKind.EXCLUSION,
+                outgoing_end_seconds=100.0,
+                incoming_start_seconds=110.0,
+            )
+
+        analyze_hypotheses = None
+
+    class Verifier:
+        def __init__(self):
+            self.calls = []
+
+        def verify(self, **kwargs):
+            self.calls.append(kwargs)
+
+            provisional = kwargs[
+                "provisional_time_seconds"
+            ]
+
+            return SimpleNamespace(
+                verified_time_seconds=(
+                    96.0
+                    if provisional == 100.0
+                    else 116.0
+                ),
+            )
+
+    verifier = Verifier()
+    base = _observation(boundary=105.0)
+
+    observation = replace(
+        base,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+        temporal_edge_verifier=verifier,
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal == TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=96.0,
+        incoming_start_seconds=116.0,
+    )
+
+    assert len(verifier.calls) == 2
+
+
+def test_bounded_insert_pcm_authority_preserves_exclusion_contract() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.transition_specialists import (
+        _verify_owned_temporal_decision,
+    )
+
+    class Verifier:
+        def verify(self, **kwargs):
+            provisional = kwargs[
+                "provisional_time_seconds"
+            ]
+
+            return SimpleNamespace(
+                verified_time_seconds=(
+                    112.0
+                    if provisional == 100.0
+                    else 108.0
+                ),
+            )
+
+    base = _observation(boundary=105.0)
+
+    observation = replace(
+        base,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    provisional = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=110.0,
+    )
+
+    result = _verify_owned_temporal_decision(
+        verifier=Verifier(),
+        observation=observation,
+        decision=provisional,
+    )
+
+    # PCM proposed an invalid EXCLUSION ordering:
+    # outgoing=112, incoming=108.
+    # Specialist semantics remain authoritative over kind.
+    assert result == provisional
+
+
+def test_crossfade_pcm_authority_preserves_crossfade_contract() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.transition_specialists import (
+        _verify_owned_temporal_decision,
+    )
+
+    class Verifier:
+        def verify(self, **kwargs):
+            provisional = kwargs[
+                "provisional_time_seconds"
+            ]
+
+            return SimpleNamespace(
+                verified_time_seconds=(
+                    101.0
+                    if provisional == 110.0
+                    else 112.0
+                ),
+            )
+
+    base = _observation(boundary=105.0)
+
+    observation = replace(
+        base,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    provisional = TemporalSplitDecision(
+        kind=TemporalSplitKind.CROSSFADE,
+        outgoing_end_seconds=110.0,
+        incoming_start_seconds=100.0,
+    )
+
+    result = _verify_owned_temporal_decision(
+        verifier=Verifier(),
+        observation=observation,
+        decision=provisional,
+    )
+
+    # PCM would invert CROSSFADE ordering:
+    # incoming=112 > outgoing=101.
+    assert result == provisional
+
+
+def test_pcm_owned_handoff_bounds_include_constituent_proposals() -> None:
+    from types import SimpleNamespace
+
+    from brynse.transition_specialists import (
+        _owned_pcm_edge_times,
+    )
+
+    handoff = SimpleNamespace(
+        time_seconds=100.0,
+        proposals=(
+            SimpleNamespace(time_seconds=98.5),
+            SimpleNamespace(time_seconds=101.25),
+        ),
+        basin_geometry=SimpleNamespace(
+            start_seconds=99.75,
+            minimum_seconds=100.0,
+            recovery_seconds=100.25,
+        ),
+    )
+
+    observation = TransitionSpecialistInput(
+        routing=SimpleNamespace(
+            acoustic_islands=(),
+        ),
+        selected=SimpleNamespace(
+            time_seconds=100.0,
+        ),
+        profile=None,
+        window=None,
+        pcm8=None,
+        pcm16=None,
+        semantic_roles=SimpleNamespace(
+            outgoing_handoff=handoff,
+            incoming_handoff=None,
+            outgoing_edge_fade=None,
+            incoming_edge_fade=None,
+            inserted_region=None,
+            acoustic_island=None,
+        ),
+    )
+
+    times = _owned_pcm_edge_times(
+        observation=observation,
+        edge="outgoing",
+    )
+
+    assert min(times) == 98.5
+    assert max(times) == 101.25
+
+
+
+
+def test_interstitial_region_backed_pcm_extends_outgoing_domain_when_left_structure_precedes_basin(
+) -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    left = SimpleNamespace(
+        time_seconds=99.75,
+        proposals=(
+            SimpleNamespace(
+                time_seconds=99.0,
+                source="structural",
+            ),
+            SimpleNamespace(
+                time_seconds=100.25,
+                source="basin",
+            ),
+        ),
+        basin_geometry=SimpleNamespace(
+            start_seconds=100.0,
+            minimum_seconds=100.25,
+            recovery_seconds=100.5,
+        ),
+    )
+
+    right = SimpleNamespace(
+        time_seconds=110.0,
+        proposals=(),
+        basin_geometry=SimpleNamespace(
+            start_seconds=109.5,
+            minimum_seconds=110.0,
+            recovery_seconds=110.5,
+        ),
+    )
+
+    region = SimpleNamespace(
+        left=left,
+        right=right,
+    )
+
+    island = SimpleNamespace(
+        observed_region=region,
+        terminal_decay=SimpleNamespace(
+            start_time_seconds=98.0,
+            floor_time_seconds=98.5,
+        ),
+        source_reset=SimpleNamespace(
+            start_time_seconds=99.0,
+            established_time_seconds=99.25,
+        ),
+        incoming_handoff=right,
+    )
+
+    roles = SimpleNamespace(
+        acoustic_island=island,
+        inserted_region=region,
+        outgoing_handoff=left,
+        incoming_handoff=right,
+        outgoing_edge_fade=None,
+        incoming_edge_fade=None,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            raise AssertionError(
+                "region-backed Acoustic Island must resolve "
+                "before legacy incoming rediscovery"
+            )
+
+        analyze_hypotheses = None
+
+    class Verifier:
+        def __init__(self):
+            self.calls = []
+
+        def verify(self, **kwargs):
+            self.calls.append(kwargs)
+
+            return SimpleNamespace(
+                verified_time_seconds=(
+                    kwargs["provisional_time_seconds"]
+                ),
+            )
+
+    verifier = Verifier()
+    base = _observation(boundary=105.0)
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=105.0,
+            acoustic_islands=(island,),
+        ),
+        semantic_roles=roles,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+        temporal_edge_verifier=verifier,
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal is not None
+    assert result.temporal.kind is TemporalSplitKind.EXCLUSION
+
+    assert len(verifier.calls) == 2
+
+    outgoing_bounds = verifier.calls[0]["search_bounds"]
+    incoming_bounds = verifier.calls[1]["search_bounds"]
+
+    assert outgoing_bounds.end_time_seconds == 110.0
+    assert incoming_bounds.start_time_seconds == 105.0
+
+
+def test_interstitial_region_backed_pcm_partitions_edges_at_reference() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    region = SimpleNamespace(
+        left=SimpleNamespace(
+            time_seconds=100.0,
+            proposals=(),
+            basin_geometry=SimpleNamespace(
+                start_seconds=99.5,
+                minimum_seconds=100.0,
+                recovery_seconds=100.5,
+            ),
+        ),
+        right=SimpleNamespace(
+            time_seconds=110.0,
+            proposals=(),
+            basin_geometry=SimpleNamespace(
+                start_seconds=109.5,
+                minimum_seconds=110.0,
+                recovery_seconds=110.5,
+            ),
+        ),
+    )
+
+    island = SimpleNamespace(
+        observed_region=region,
+        terminal_decay=SimpleNamespace(
+            start_time_seconds=98.75,
+            floor_time_seconds=99.0,
+        ),
+        source_reset=SimpleNamespace(
+            start_time_seconds=99.25,
+            established_time_seconds=99.5,
+        ),
+        incoming_handoff=region.right,
+    )
+
+    roles = SimpleNamespace(
+        acoustic_island=island,
+        inserted_region=region,
+        outgoing_handoff=region.left,
+        incoming_handoff=region.right,
+        outgoing_edge_fade=None,
+        incoming_edge_fade=None,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            raise AssertionError(
+                "region-backed Acoustic Island must resolve "
+                "before legacy incoming rediscovery"
+            )
+
+        analyze_hypotheses = None
+
+    class Verifier:
+        def __init__(self):
+            self.calls = []
+
+        def verify(self, **kwargs):
+            self.calls.append(kwargs)
+
+            return SimpleNamespace(
+                verified_time_seconds=(
+                    kwargs["provisional_time_seconds"]
+                ),
+            )
+
+    verifier = Verifier()
+    base = _observation(boundary=105.0)
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=105.0,
+            acoustic_islands=(island,),
+        ),
+        semantic_roles=roles,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+        temporal_edge_verifier=verifier,
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal is not None
+    assert result.temporal.kind is TemporalSplitKind.EXCLUSION
+
+    assert len(verifier.calls) == 2
+
+    outgoing_bounds = verifier.calls[0]["search_bounds"]
+    incoming_bounds = verifier.calls[1]["search_bounds"]
+
+    assert outgoing_bounds.end_time_seconds == 105.0
+    assert incoming_bounds.start_time_seconds == 105.0
+
+    assert (
+        outgoing_bounds.start_time_seconds
+        < outgoing_bounds.end_time_seconds
+    )
+    assert (
+        incoming_bounds.start_time_seconds
+        < incoming_bounds.end_time_seconds
     )
