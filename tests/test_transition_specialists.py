@@ -6640,6 +6640,127 @@ def test_pcm_owned_handoff_bounds_include_constituent_proposals() -> None:
     assert max(times) == 101.25
 
 
+
+
+def test_interstitial_region_backed_pcm_extends_outgoing_domain_when_left_structure_precedes_basin(
+) -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    left = SimpleNamespace(
+        time_seconds=99.75,
+        proposals=(
+            SimpleNamespace(
+                time_seconds=99.0,
+                source="structural",
+            ),
+            SimpleNamespace(
+                time_seconds=100.25,
+                source="basin",
+            ),
+        ),
+        basin_geometry=SimpleNamespace(
+            start_seconds=100.0,
+            minimum_seconds=100.25,
+            recovery_seconds=100.5,
+        ),
+    )
+
+    right = SimpleNamespace(
+        time_seconds=110.0,
+        proposals=(),
+        basin_geometry=SimpleNamespace(
+            start_seconds=109.5,
+            minimum_seconds=110.0,
+            recovery_seconds=110.5,
+        ),
+    )
+
+    region = SimpleNamespace(
+        left=left,
+        right=right,
+    )
+
+    island = SimpleNamespace(
+        observed_region=region,
+        terminal_decay=SimpleNamespace(
+            start_time_seconds=98.0,
+            floor_time_seconds=98.5,
+        ),
+        source_reset=SimpleNamespace(
+            start_time_seconds=99.0,
+            established_time_seconds=99.25,
+        ),
+        incoming_handoff=right,
+    )
+
+    roles = SimpleNamespace(
+        acoustic_island=island,
+        inserted_region=region,
+        outgoing_handoff=left,
+        incoming_handoff=right,
+        outgoing_edge_fade=None,
+        incoming_edge_fade=None,
+    )
+
+    class IncomingPipeline:
+        def refine(self, **kwargs):
+            raise AssertionError(
+                "region-backed Acoustic Island must resolve "
+                "before legacy incoming rediscovery"
+            )
+
+        analyze_hypotheses = None
+
+    class Verifier:
+        def __init__(self):
+            self.calls = []
+
+        def verify(self, **kwargs):
+            self.calls.append(kwargs)
+
+            return SimpleNamespace(
+                verified_time_seconds=(
+                    kwargs["provisional_time_seconds"]
+                ),
+            )
+
+    verifier = Verifier()
+    base = _observation(boundary=105.0)
+
+    observation = replace(
+        base,
+        routing=replace(
+            base.routing,
+            reference_time_seconds=105.0,
+            acoustic_islands=(island,),
+        ),
+        semantic_roles=roles,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    result = InterstitialSpecialist(
+        incoming_pipeline=IncomingPipeline(),
+        temporal_edge_verifier=verifier,
+    ).resolve(
+        observation=observation,
+    )
+
+    assert result.temporal is not None
+    assert result.temporal.kind is TemporalSplitKind.EXCLUSION
+
+    assert len(verifier.calls) == 2
+
+    outgoing_bounds = verifier.calls[0]["search_bounds"]
+    incoming_bounds = verifier.calls[1]["search_bounds"]
+
+    assert outgoing_bounds.end_time_seconds == 110.0
+    assert incoming_bounds.start_time_seconds == 105.0
+
+
 def test_interstitial_region_backed_pcm_partitions_edges_at_reference() -> None:
     from dataclasses import replace
     from types import SimpleNamespace

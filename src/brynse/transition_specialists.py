@@ -880,6 +880,55 @@ def _refine_acoustic_island_left_edge(
 
 
 
+def _interstitial_left_structure_precedes_basin(
+    handoff,
+) -> bool:
+    """Return whether structural support lies wholly before the handoff basin."""
+
+    geometry = getattr(
+        handoff,
+        "basin_geometry",
+        None,
+    )
+
+    if geometry is None:
+        return False
+
+    if handoff.time_seconds >= geometry.start_seconds:
+        return False
+
+    structural_times = tuple(
+        float(proposal.time_seconds)
+        for proposal in getattr(
+            handoff,
+            "proposals",
+            (),
+        )
+        if getattr(
+            getattr(
+                proposal,
+                "source",
+                None,
+            ),
+            "value",
+            getattr(
+                proposal,
+                "source",
+                None,
+            ),
+        )
+        == "structural"
+    )
+
+    return (
+        bool(structural_times)
+        and all(
+            value < geometry.start_seconds
+            for value in structural_times
+        )
+    )
+
+
 class InterstitialSpecialist:
     """Resolve track -> interstitial -> incoming-track geometry.
 
@@ -945,6 +994,14 @@ class InterstitialSpecialist:
 
                 outgoing_extra_times = (reference,)
                 incoming_extra_times = (reference,)
+
+                if _interstitial_left_structure_precedes_basin(
+                    semantic_roles.outgoing_handoff
+                ):
+                    outgoing_extra_times = (
+                        reference,
+                        island.incoming_handoff.time_seconds,
+                    )
 
         verified = _verify_owned_temporal_decision(
             verifier=self._temporal_edge_verifier,
