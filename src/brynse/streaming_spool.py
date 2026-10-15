@@ -259,7 +259,7 @@ class StreamingSpool:
 
         fd, name = tempfile.mkstemp(
             dir=self._directory,
-            prefix=".fluxtuner-spool-",
+            prefix=".brynse-spool-",
             suffix=".chunk",
         )
 

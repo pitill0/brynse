@@ -163,7 +163,7 @@ def test_streaming_spool_reclaims_complete_storage_chunks_without_rewriting(
     try:
         spool.append(b"abcdefghijkl")
 
-        chunk_paths = list(tmp_path.glob(".fluxtuner-spool-*.chunk"))
+        chunk_paths = list(tmp_path.glob(".brynse-spool-*.chunk"))
 
         assert len(chunk_paths) == 3
         assert {path.read_bytes() for path in chunk_paths} == {
@@ -177,7 +177,7 @@ def test_streaming_spool_reclaims_complete_storage_chunks_without_rewriting(
 
         spool.discard_before(8)
 
-        remaining_paths = sorted(tmp_path.glob(".fluxtuner-spool-*.chunk"))
+        remaining_paths = sorted(tmp_path.glob(".brynse-spool-*.chunk"))
 
         assert remaining_paths == [retained_chunk]
         assert retained_chunk.stat().st_ino == retained_inode
@@ -201,7 +201,7 @@ def test_streaming_spool_discards_inside_chunk_without_rewriting_it(
     try:
         spool.append(b"abcdefghijkl")
 
-        chunk_paths = list(tmp_path.glob(".fluxtuner-spool-*.chunk"))
+        chunk_paths = list(tmp_path.glob(".brynse-spool-*.chunk"))
         first_chunk = next(path for path in chunk_paths if path.read_bytes() == b"abcdefgh")
         first_inode = first_chunk.stat().st_ino
 
@@ -267,7 +267,7 @@ def test_streaming_spool_keeps_open_chunk_file_descriptors_bounded(
         # Eight physical chunks, all still logically retained.
         spool.append(b"abcdefghijklmnopqrstuvwxyz012345")
 
-        chunk_paths = set(tmp_path.glob(".fluxtuner-spool-*.chunk"))
+        chunk_paths = set(tmp_path.glob(".brynse-spool-*.chunk"))
 
         assert len(chunk_paths) == 8
 

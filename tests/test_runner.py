@@ -222,7 +222,7 @@ def test_runner_retains_clean_audio_in_safe_streaming_spool(
     result = runner.run()
 
     assert result.stopped is False
-    assert spool_directories == [tmp_path / ".fluxtuner-spool"]
+    assert spool_directories == [tmp_path / ".brynse-spool"]
     assert spool.appended == [frame]
     assert spool.closed is True
 

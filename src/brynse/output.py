@@ -373,7 +373,7 @@ class Mp3SegmentFinalizer:
 
                 stderr_reader = threading.Thread(
                     target=drain_stderr,
-                    name="fluxtuner-mp3-ffmpeg-stderr",
+                    name="brynse-mp3-ffmpeg-stderr",
                     daemon=True,
                 )
                 stderr_reader.start()
@@ -396,7 +396,7 @@ class Mp3SegmentFinalizer:
 
                 feeder = threading.Thread(
                     target=feed_stdin,
-                    name="fluxtuner-mp3-ffmpeg-stdin",
+                    name="brynse-mp3-ffmpeg-stdin",
                     daemon=True,
                 )
                 feeder.start()
@@ -679,7 +679,7 @@ class AacSegmentFinalizer:
 
             stderr_reader = threading.Thread(
                 target=drain_stderr,
-                name="fluxtuner-aac-ffmpeg-stderr",
+                name="brynse-aac-ffmpeg-stderr",
                 daemon=True,
             )
             stderr_reader.start()
@@ -702,7 +702,7 @@ class AacSegmentFinalizer:
 
             feeder = threading.Thread(
                 target=feed_stdin,
-                name="fluxtuner-aac-ffmpeg-stdin",
+                name="brynse-aac-ffmpeg-stdin",
                 daemon=True,
             )
             feeder.start()

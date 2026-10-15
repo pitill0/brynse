@@ -2615,7 +2615,7 @@ def test_public_package_api_exports_expected_symbols() -> None:
 def test_public_package_api_version_matches_project_bootstrap() -> None:
     import brynse
 
-    assert brynse.__version__ == "0.1.0.dev0"
+    assert brynse.__version__ == "0.1.0"
 
 
 def test_encoded_track_writer_iterates_range_in_bounded_chunks() -> None:
@@ -3826,7 +3826,7 @@ def test_async_streaming_runtime_propagates_spool_limit_and_cleans_up_tasks(
         finally:
             spool.close()
 
-        assert list((tmp_path / "spool").glob(".fluxtuner-spool-*.chunk")) == []
+        assert list((tmp_path / "spool").glob(".brynse-spool-*.chunk")) == []
 
     asyncio.run(exercise())
 
@@ -3919,4 +3919,4 @@ def test_safe_streaming_pipeline_cleans_spool_when_construction_fails(
             codec="mp3",
         )
 
-    assert list(spool_directory.glob(".fluxtuner-spool-*.chunk")) == []
+    assert list(spool_directory.glob(".brynse-spool-*.chunk")) == []

@@ -313,7 +313,7 @@ class RippingRunner:
             )
             self._session = session
             spool = create_safe_streaming_spool(
-                directory=config.output_directory / ".fluxtuner-spool",
+                directory=config.output_directory / ".brynse-spool",
             )
             output_writer = SessionOutputWriter(
                 ingestor=ingestor,
