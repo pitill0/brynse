@@ -4147,6 +4147,57 @@ def test_transition_routing_context_preserves_acoustic_island_evidence() -> None
     assert not hasattr(context, "outgoing_end_seconds")
 
 
+def test_region_backed_acoustic_island_precedes_direct_fade_to_floor() -> None:
+    from types import SimpleNamespace
+
+    from brynse.acoustic_island import AcousticIslandEvidence
+    from brynse.fade_to_floor import FadeToFloorEvidence
+    from brynse.transition_evidence import TransitionEvidenceState
+    from brynse.transition_router import (
+        DefaultTransitionRouter,
+        TransitionKind,
+        TransitionRoutingContext,
+    )
+
+    left = SimpleNamespace(time_seconds=100.0)
+    right = SimpleNamespace(time_seconds=120.0)
+
+    region = SimpleNamespace(
+        left=left,
+        right=right,
+    )
+
+    island = AcousticIslandEvidence(
+        incoming_handoff=right,
+        observed_region=region,
+    )
+
+    fade_to_floor = FadeToFloorEvidence(
+        outgoing=SimpleNamespace(
+            floor_time_seconds=90.0,
+        ),
+        incoming_handoff=SimpleNamespace(
+            time_seconds=92.0,
+        ),
+    )
+
+    route = DefaultTransitionRouter().route(
+        context=TransitionRoutingContext(
+            reference_time_seconds=105.0,
+            evidence=TransitionEvidenceState(),
+            acoustic_islands=(island,),
+            fade_to_floor=(fade_to_floor,),
+        )
+    )
+
+    assert route.kind is TransitionKind.INTERSTITIAL
+    assert route.semantic_roles is not None
+    assert route.semantic_roles.acoustic_island is island
+    assert route.semantic_roles.inserted_region is region
+    assert route.semantic_roles.outgoing_handoff is left
+    assert route.semantic_roles.incoming_handoff is right
+
+
 def test_acoustic_island_owns_richer_topology_before_fade() -> None:
     from types import SimpleNamespace
 

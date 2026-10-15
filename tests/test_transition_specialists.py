@@ -5742,6 +5742,54 @@ def test_interstitial_routed_edge_geometry_precedes_legacy_rediscovery() -> None
 
 
 
+def test_pcm_verification_respects_outgoing_semantic_ceiling() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from brynse.transition_specialists import (
+        _verify_owned_temporal_decision,
+    )
+
+    class Verifier:
+        def verify(self, **kwargs):
+            provisional = kwargs["provisional_time_seconds"]
+
+            return SimpleNamespace(
+                verified_time_seconds=(
+                    105.0
+                    if provisional == 100.0
+                    else provisional
+                ),
+            )
+
+    base = _observation(boundary=105.0)
+    observation = replace(
+        base,
+        window=SimpleNamespace(
+            start_time_seconds=90.0,
+        ),
+        pcm16=object(),
+    )
+
+    decision = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=110.0,
+    )
+
+    result = _verify_owned_temporal_decision(
+        verifier=Verifier(),
+        observation=observation,
+        decision=decision,
+        outgoing_extra_times=(100.0, 105.0),
+        incoming_extra_times=(110.0,),
+        outgoing_ceiling_seconds=101.0,
+    )
+
+    assert result.outgoing_end_seconds == 101.0
+    assert result.incoming_start_seconds == 110.0
+
+
 def test_pcm_verification_can_preserve_incoming_edge() -> None:
     from dataclasses import replace
     from types import SimpleNamespace

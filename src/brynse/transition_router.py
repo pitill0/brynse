@@ -1717,6 +1717,29 @@ class DefaultTransitionRouter:
                 ),
             )
 
+        acoustic_island_roles = self.assign_acoustic_island_roles(
+            context=context,
+        )
+
+        region_backed_acoustic_island = (
+            acoustic_island_roles is not None
+            and acoustic_island_roles.acoustic_island is not None
+            and (
+                acoustic_island_roles
+                .acoustic_island
+                .observed_region
+                is not None
+            )
+        )
+
+        if region_backed_acoustic_island:
+            return TransitionRoute(
+                kind=TransitionKind.INTERSTITIAL,
+                fade_assessment=fade_assessment,
+                interstitial_assessment=interstitial_assessment,
+                semantic_roles=acoustic_island_roles,
+            )
+
         fade_to_floor_roles = self.assign_fade_to_floor_roles(
             context=context,
         )
@@ -1728,10 +1751,6 @@ class DefaultTransitionRouter:
                 interstitial_assessment=interstitial_assessment,
                 semantic_roles=fade_to_floor_roles,
             )
-
-        acoustic_island_roles = self.assign_acoustic_island_roles(
-            context=context,
-        )
 
         if acoustic_island_roles is not None:
             return TransitionRoute(

@@ -271,6 +271,7 @@ def _verify_owned_temporal_decision(
     incoming_extra_times=(),
     verify_outgoing: bool = True,
     verify_incoming: bool = True,
+    outgoing_ceiling_seconds: float | None = None,
 ) -> TemporalSplitDecision:
     """Let PCM choose final timestamps without changing semantic kind."""
 
@@ -375,6 +376,13 @@ def _verify_owned_temporal_decision(
         if outgoing_verified is not None
         else decision.outgoing_end_seconds
     )
+
+    if outgoing_ceiling_seconds is not None:
+        outgoing = min(
+            outgoing,
+            outgoing_ceiling_seconds,
+        )
+
     incoming = (
         incoming_verified.verified_time_seconds
         if incoming_verified is not None
@@ -1028,12 +1036,43 @@ class InterstitialSpecialist:
                         island.incoming_handoff.time_seconds,
                     )
 
+        outgoing_ceiling_seconds = None
+
+        if (
+            result.temporal.kind is TemporalSplitKind.EXCLUSION
+            and semantic_roles is not None
+            and semantic_roles.acoustic_island is not None
+        ):
+            island = semantic_roles.acoustic_island
+            region = island.observed_region
+
+            if (
+                region is not None
+                and island.terminal_decay is not None
+                and island.source_reset is not None
+                and semantic_roles.inserted_region is region
+                and semantic_roles.outgoing_handoff is region.left
+                and semantic_roles.incoming_handoff
+                is island.incoming_handoff
+            ):
+                semantic_outgoing = min(
+                    island.terminal_decay.floor_time_seconds,
+                    island.source_reset.start_time_seconds,
+                )
+
+                if (
+                    result.temporal.outgoing_end_seconds
+                    == semantic_outgoing
+                ):
+                    outgoing_ceiling_seconds = semantic_outgoing
+
         verified = _verify_owned_temporal_decision(
             verifier=self._temporal_edge_verifier,
             observation=observation,
             decision=result.temporal,
             outgoing_extra_times=outgoing_extra_times,
             incoming_extra_times=incoming_extra_times,
+            outgoing_ceiling_seconds=outgoing_ceiling_seconds,
         )
 
         if verified is result.temporal:
@@ -2310,10 +2349,36 @@ class BoundedInsertSpecialist:
         if result.temporal is None:
             return result
 
+        outgoing_ceiling_seconds = None
+        semantic_roles = observation.semantic_roles
+
+        inserted_region = (
+            None
+            if semantic_roles is None
+            else semantic_roles.inserted_region
+        )
+        inserted_region_left = (
+            None
+            if inserted_region is None
+            else getattr(inserted_region, "left", None)
+        )
+
+        if (
+            semantic_roles is not None
+            and semantic_roles.outgoing_handoff is not None
+            and inserted_region_left is not None
+            and semantic_roles.outgoing_handoff
+            is inserted_region_left
+        ):
+            outgoing_ceiling_seconds = (
+                semantic_roles.outgoing_handoff.time_seconds
+            )
+
         verified = _verify_owned_temporal_decision(
             verifier=self._temporal_edge_verifier,
             observation=observation,
             decision=result.temporal,
+            outgoing_ceiling_seconds=outgoing_ceiling_seconds,
         )
 
         if verified is result.temporal:
