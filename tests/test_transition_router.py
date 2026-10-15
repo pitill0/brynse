@@ -2962,6 +2962,190 @@ def test_bounded_insert_roles_preserve_symmetric_region_and_outer_edges() -> Non
     assert roles.incoming_handoff is right
 
 
+def test_bounded_insert_roles_prefer_adjacent_dominant_terminal_decay() -> None:
+    from brynse.transition_evidence import (
+        FadeRoutingEvidence,
+        OutgoingFadeEvidence,
+    )
+
+    router = DefaultTransitionRouter()
+
+    predecessor = _bounded_insert_edge(
+        90.0,
+        basin_start_seconds=89.5,
+        basin_recovery_seconds=90.5,
+        structural_strength=0.8,
+    )
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.3,
+    )
+    right = _bounded_insert_edge(
+        110.0,
+        basin_start_seconds=109.5,
+        basin_recovery_seconds=110.5,
+        structural_strength=0.2,
+    )
+
+    region = _bounded_insert_region(
+        reference_time_seconds=105.0,
+        left=left,
+        right=right,
+    )
+
+    terminal = OutgoingFadeEvidence(
+        start_time_seconds=84.0,
+        floor_time_seconds=89.5,
+        rise_time_seconds=None,
+        start_rms=5000.0,
+        floor_rms=80.0,
+        descent_ratio=40.0,
+        descent_consistency=0.75,
+    )
+    local = OutgoingFadeEvidence(
+        start_time_seconds=96.0,
+        floor_time_seconds=100.0,
+        rise_time_seconds=None,
+        start_rms=4000.0,
+        floor_rms=200.0,
+        descent_ratio=20.0,
+        descent_consistency=0.8,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=105.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(
+            predecessor,
+            left,
+            right,
+        ),
+        fade=FadeRoutingEvidence(
+            outgoing_fades=(
+                terminal,
+                local,
+            ),
+        ),
+        bounded_insert_regions=(region,),
+    )
+
+    fade = router.assess_fade(context=context)
+
+    assert fade.outgoing_association is not None
+    assert fade.outgoing_association.fade is local
+    assert fade.outgoing_association.hypothesis is left
+
+    provenance = router.assess_bounded_insert_routing(
+        context=context,
+    )
+
+    roles = router.assign_bounded_insert_roles(
+        context=context,
+        provenance=provenance,
+        fade=fade,
+    )
+
+    assert provenance.ownership is BoundedInsertOwnership.SYMMETRIC
+    assert roles is not None
+    assert roles.inserted_region is region
+    assert roles.outgoing_handoff is predecessor
+    assert roles.incoming_handoff is right
+
+
+def test_bounded_insert_roles_keep_left_without_adjacent_fade_dominance() -> None:
+    from brynse.transition_evidence import (
+        FadeRoutingEvidence,
+        OutgoingFadeEvidence,
+    )
+
+    router = DefaultTransitionRouter()
+
+    predecessor = _bounded_insert_edge(
+        90.0,
+        basin_start_seconds=89.5,
+        basin_recovery_seconds=90.5,
+        structural_strength=0.8,
+    )
+    left = _bounded_insert_edge(
+        100.0,
+        basin_start_seconds=99.5,
+        basin_recovery_seconds=100.5,
+        structural_strength=0.3,
+    )
+    right = _bounded_insert_edge(
+        110.0,
+        basin_start_seconds=109.5,
+        basin_recovery_seconds=110.5,
+        structural_strength=0.2,
+    )
+
+    region = _bounded_insert_region(
+        reference_time_seconds=105.0,
+        left=left,
+        right=right,
+    )
+
+    predecessor_fade = OutgoingFadeEvidence(
+        start_time_seconds=86.0,
+        floor_time_seconds=89.5,
+        rise_time_seconds=None,
+        start_rms=3000.0,
+        floor_rms=250.0,
+        descent_ratio=12.0,
+        descent_consistency=0.8,
+    )
+    local = OutgoingFadeEvidence(
+        start_time_seconds=96.0,
+        floor_time_seconds=100.0,
+        rise_time_seconds=None,
+        start_rms=4000.0,
+        floor_rms=200.0,
+        descent_ratio=20.0,
+        descent_consistency=0.8,
+    )
+
+    context = TransitionRoutingContext(
+        reference_time_seconds=105.0,
+        evidence=TransitionEvidenceState(),
+        hypotheses=(
+            predecessor,
+            left,
+            right,
+        ),
+        fade=FadeRoutingEvidence(
+            outgoing_fades=(
+                predecessor_fade,
+                local,
+            ),
+        ),
+        bounded_insert_regions=(region,),
+    )
+
+    fade = router.assess_fade(context=context)
+
+    assert fade.outgoing_association is not None
+    assert fade.outgoing_association.fade is local
+    assert fade.outgoing_association.hypothesis is left
+
+    provenance = router.assess_bounded_insert_routing(
+        context=context,
+    )
+
+    roles = router.assign_bounded_insert_roles(
+        context=context,
+        provenance=provenance,
+        fade=fade,
+    )
+
+    assert provenance.ownership is BoundedInsertOwnership.SYMMETRIC
+    assert roles is not None
+    assert roles.inserted_region is region
+    assert roles.outgoing_handoff is left
+    assert roles.incoming_handoff is right
+
+
 def test_bounded_insert_roles_allow_partial_symmetric_exterior_identity() -> None:
     router = DefaultTransitionRouter()
 

@@ -1050,6 +1050,56 @@ class DefaultTransitionRouter:
             outgoing = None
             incoming = region.right
 
+            previous_supported = tuple(
+                hypothesis
+                for hypothesis in ordered
+                if (
+                    hypothesis.time_seconds < region.left.time_seconds
+                    and supported(hypothesis)
+                )
+            )
+
+            predecessor = (
+                previous_supported[-1]
+                if previous_supported
+                else None
+            )
+
+            predecessor_intervening = (
+                ()
+                if predecessor is None
+                else tuple(
+                    hypothesis
+                    for hypothesis in ordered
+                    if (
+                        predecessor.time_seconds
+                        < hypothesis.time_seconds
+                        < region.left.time_seconds
+                    )
+                )
+            )
+
+            def unique_owned_outgoing_fade(hypothesis):
+                geometry = hypothesis.basin_geometry
+
+                if geometry is None:
+                    return None
+
+                candidates = tuple(
+                    outgoing_fade
+                    for outgoing_fade in context.fade.outgoing_fades
+                    if (
+                        geometry.start_seconds
+                        <= outgoing_fade.floor_time_seconds
+                        <= geometry.recovery_seconds
+                    )
+                )
+
+                if len(candidates) != 1:
+                    return None
+
+                return candidates[0]
+
             association = fade.outgoing_association
 
             if association is not None:
@@ -1057,6 +1107,33 @@ class DefaultTransitionRouter:
 
                 if candidate is region.left:
                     outgoing = candidate
+
+                    if (
+                        predecessor is not None
+                        and not predecessor_intervening
+                    ):
+                        predecessor_fade = (
+                            unique_owned_outgoing_fade(
+                                predecessor
+                            )
+                        )
+                        left_fade = unique_owned_outgoing_fade(
+                            region.left
+                        )
+
+                        if (
+                            predecessor_fade is not None
+                            and left_fade is association.fade
+                            and (
+                                predecessor_fade.descent_ratio
+                                > left_fade.descent_ratio
+                            )
+                            and (
+                                predecessor_fade.floor_rms
+                                < left_fade.floor_rms
+                            )
+                        ):
+                            outgoing = predecessor
 
                 elif (
                     candidate.time_seconds < region.left.time_seconds
@@ -1078,37 +1155,16 @@ class DefaultTransitionRouter:
                     ):
                         outgoing = candidate
 
-            if outgoing is None:
-                previous_supported = tuple(
-                    hypothesis
-                    for hypothesis in ordered
-                    if (
-                        hypothesis.time_seconds < region.left.time_seconds
-                        and supported(hypothesis)
-                    )
+            if (
+                outgoing is None
+                and predecessor is not None
+                and predecessor_intervening
+                and all(
+                    structural_only(hypothesis)
+                    for hypothesis in predecessor_intervening
                 )
-
-                if previous_supported:
-                    predecessor = previous_supported[-1]
-
-                    intervening = tuple(
-                        hypothesis
-                        for hypothesis in ordered
-                        if (
-                            predecessor.time_seconds
-                            < hypothesis.time_seconds
-                            < region.left.time_seconds
-                        )
-                    )
-
-                    if (
-                        intervening
-                        and all(
-                            structural_only(hypothesis)
-                            for hypothesis in intervening
-                        )
-                    ):
-                        outgoing = predecessor
+            ):
+                outgoing = predecessor
 
             return TransitionSemanticRoles(
                 outgoing_handoff=outgoing,
