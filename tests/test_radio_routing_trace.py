@@ -471,6 +471,7 @@ def test_run_stream_writes_routing_trace(monkeypatch, tmp_path) -> None:
         codec="mp3",
         ffmpeg="ffmpeg",
         metadata_threshold=8.0,
+        metadata_order="preserve",
         transient_exclusion=True,
         autonomous_boundaries=False,
         routing_trace=trace_path,

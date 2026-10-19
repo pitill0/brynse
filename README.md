@@ -193,6 +193,34 @@ Codec detection can normally be left automatic by omitting `--codec`.
 See [`docs/examples/live-radio-track-ripping.md`](docs/examples/live-radio-track-ripping.md)
 for the complete workflow, behavior, and validation notes.
 
+### Radio output filenames
+
+ICY `StreamTitle` is an unstructured string; Brynse does not infer artist/title
+order from capitalization or guess which side of a separator is the artist.
+
+The default `--metadata-order preserve` keeps the received order. For a station
+known to send `Title - Artist`, declare its convention explicitly:
+
+    brynse-radio "https://example.com/radio-stream" \\
+      --output ./tracks \\
+      --metadata-order title-artist
+
+This writes `Artist - Title` when the metadata contains exactly one ` - `
+separator and both fields are nonempty. Missing fields, unstructured titles,
+and multiple spaced separators retain the original text. Hyphens inside names
+such as `AC-DC` do not count as spaced separators.
+
+Use `--metadata-order artist-title` for a source already using that convention.
+The Python API exposes the same setting as
+`RippingRunConfig(metadata_order="title-artist", ...)`, and direct writer users
+can pass `metadata_order` to `SessionOutputWriter`.
+
+Formatting affects only output filenames. Original metadata and transition
+titles remain unchanged. Existing filename sanitization (including replacement
+of non-ASCII characters), output directories, MP3/M4A extensions, and atomic
+replacement of same-name files are preserved. Consumers should use the returned
+output paths directly.
+
 ## Generic streaming CLI
 
 `brynse` reads MP3 or AAC input incrementally from a file or
