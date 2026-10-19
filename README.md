@@ -195,31 +195,49 @@ for the complete workflow, behavior, and validation notes.
 
 ### Radio output filenames
 
-ICY `StreamTitle` is an unstructured string; Brynse does not infer artist/title
-order from capitalization or guess which side of a separator is the artist.
+Radio runs default to `metadata_order="auto"` in the Python API and
+`--metadata-order auto` in `brynse-radio`. No additional option is required
+for verified stream profiles.
 
-The default `--metadata-order preserve` keeps the received order. For a station
-known to send `Title - Artist`, declare its convention explicitly:
+The radio integration resolves known source conventions before formatting
+output filenames. The current built-in profile covers these exact Jazz Radio
+Classic Jazz endpoints:
 
-    brynse-radio "https://example.com/radio-stream" \\
-      --output ./tracks \\
-      --metadata-order title-artist
+- `http://jazz-wr01.ice.infomaniak.ch/jazz-wr01-128.mp3`
+- `https://jazz-wr01.ice.infomaniak.ch/jazz-wr01-128.mp3`
 
-This writes `Artist - Title` when the metadata contains exactly one ` - `
-separator and both fields are nonempty. Missing fields, unstructured titles,
-and multiple spaced separators retain the original text. Hyphens inside names
-such as `AC-DC` do not count as spaced separators.
+These streams were verified to send `Title - Artist`; their filenames therefore
+use `Artist - Title`. Matching uses the individual hostname and path, accepts
+only HTTP/HTTPS with default ports, and does not match URLs containing query
+parameters or embedded credentials. It performs no network lookups and does
+not apply a convention to an entire hosting domain.
 
-Use `--metadata-order artist-title` for a source already using that convention.
-The Python API exposes the same setting as
-`RippingRunConfig(metadata_order="title-artist", ...)`, and direct writer users
-can pass `metadata_order` to `SessionOutputWriter`.
+Unknown streams retain the received metadata order. ICY `StreamTitle` is an
+unstructured string: Brynse does not guess artist/title order from capitalization
+or the presence of a hyphen.
+
+Explicit settings override profiles:
+
+- `--metadata-order preserve`: always retain the received order.
+- `--metadata-order artist-title`: declare an already ordered source.
+- `--metadata-order title-artist`: declare a source requiring reordering.
+
+The Python API exposes these overrides through
+`RippingRunConfig(metadata_order="preserve", ...)`.
+
+Reordering requires exactly one ` - ` separator and two nonempty fields.
+Missing fields, unstructured titles and multiple spaced separators retain the
+original text. Hyphens inside names such as `AC-DC` are not spaced separators.
 
 Formatting affects only output filenames. Original metadata and transition
-titles remain unchanged. Existing filename sanitization (including replacement
-of non-ASCII characters), output directories, MP3/M4A extensions, and atomic
-replacement of same-name files are preserved. Consumers should use the returned
-output paths directly.
+titles remain unchanged. Existing sanitization, including replacement of
+non-ASCII characters, directories, MP3/M4A extensions and atomic replacement of
+same-name files are preserved. Consumers use the returned paths directly.
+
+Direct `SessionOutputWriter` users still default to `preserve`: automatic
+profile resolution belongs to the radio runner, which has the source URL.
+New profiles should cover verified stream endpoints and include matching,
+fallback and output-format tests.
 
 ## Generic streaming CLI
 

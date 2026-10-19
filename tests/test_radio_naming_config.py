@@ -12,7 +12,7 @@ from brynse.integrations.radio.runner import RippingRunConfig, RippingRunError, 
 from brynse.source import BinaryIOStreamSource
 
 
-@pytest.mark.parametrize("order", ["preserve", "artist-title", "title-artist"])
+@pytest.mark.parametrize("order", ["auto", "preserve", "artist-title", "title-artist"])
 def test_cli_forwards_metadata_order(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, order: str
 ) -> None:
@@ -40,7 +40,7 @@ def test_cli_forwards_metadata_order(
     assert configs[0].metadata_order == order
 
 
-def test_cli_preserves_metadata_order_by_default() -> None:
+def test_cli_uses_automatic_metadata_order_by_default() -> None:
     args = cli._build_parser().parse_args(
         [
             "https://example.invalid/stream",
@@ -48,7 +48,7 @@ def test_cli_preserves_metadata_order_by_default() -> None:
             "/tmp/tracks",
         ]
     )
-    assert args.metadata_order == "preserve"
+    assert args.metadata_order == "auto"
 
 
 def test_cli_rejects_unknown_metadata_order() -> None:

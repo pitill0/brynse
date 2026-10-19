@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-METADATA_ORDERS = ("preserve", "artist-title", "title-artist")
+METADATA_ORDERS = ("auto", "preserve", "artist-title", "title-artist")
 
 
 def validate_metadata_order(metadata_order: str) -> None:
     """Reject unsupported metadata order declarations."""
     if metadata_order not in METADATA_ORDERS:
-        raise ValueError("metadata_order must be 'preserve', 'artist-title' or 'title-artist'")
+        raise ValueError(
+            "metadata_order must be 'auto', 'preserve', 'artist-title' or 'title-artist'"
+        )
 
 
 def format_radio_track_title(

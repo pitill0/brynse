@@ -19,6 +19,7 @@ from brynse.incoming_refinement import build_incoming_boundary_pipeline
 from brynse.integrations.radio.autonomous import AutonomousSegmentState
 from brynse.integrations.radio.capture import RadioSessionCapture
 from brynse.integrations.radio.metadata import MetadataSemanticTracker
+from brynse.integrations.radio.metadata_profiles import resolve_radio_metadata_order
 from brynse.integrations.radio.models import TimedMetadataEvent
 from brynse.integrations.radio.naming import validate_metadata_order
 from brynse.integrations.radio.orchestrator import (
@@ -73,7 +74,7 @@ class RippingRunConfig:
     ring_max_bytes: int = _DEFAULT_RING_MAX_BYTES
     autonomous_boundaries: bool = False
     session_capture_directory: Path | None = None
-    metadata_order: str = "preserve"
+    metadata_order: str = "auto"
 
 
 @dataclass(frozen=True)
@@ -326,7 +327,10 @@ class RippingRunner:
                 directory=config.output_directory,
                 codec=codec,
                 source=spool,
-                metadata_order=config.metadata_order,
+                metadata_order=resolve_radio_metadata_order(
+                    config.url,
+                    metadata_order=config.metadata_order,
+                ),
             )
             autonomous_promoter = (
                 AutonomousBoundaryPromoter()

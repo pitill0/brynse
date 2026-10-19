@@ -84,10 +84,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--metadata-order",
         choices=METADATA_ORDERS,
-        default="preserve",
+        default="auto",
         help=(
-            "Declared artist/title order in source metadata; "
-            "used only for output filenames (default: preserve)"
+            "Source metadata order for output filenames; "
+            "auto uses verified stream profiles (default: auto)"
         ),
     )
     return parser
