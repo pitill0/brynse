@@ -434,3 +434,145 @@ def test_session_output_writer_rejects_boundary_at_or_before_open_segment(
         )
         is False
     )
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected_stem"),
+    [
+        ("Song - Artist", "Artist - Song"),
+        ("Song / One? - Artist: Name", "Artist_ Name - Song _ One"),
+        ("Song - Artist - Live", "Song - Artist - Live"),
+    ],
+)
+def test_session_output_writer_formats_only_output_name(
+    tmp_path: Path,
+    raw: str,
+    expected_stem: str,
+) -> None:
+    from dataclasses import replace
+
+    base = _transition()
+    transition = replace(
+        base,
+        outgoing=replace(base.outgoing, title=raw),
+    )
+    plan = SegmentWritePlan(
+        outgoing=SegmentByteRange(start_offset=1000, end_offset=5000),
+        incoming=SegmentByteRange(start_offset=5000, end_offset=10000),
+    )
+    output_path = tmp_path / f"{expected_stem}.mp3"
+    output = _Output(output_path)
+    writer = SessionOutputWriter(
+        ingestor=_Ingestor(),
+        directory=tmp_path,
+        codec="mp3",
+        range_planner=_Planner(plan),
+        output_service=output,
+        metadata_order="title-artist",
+    )
+
+    written = writer.write_transition(transition)
+
+    assert output.calls[0]["stem"] == expected_stem
+    assert written.path == output_path
+    assert written.transition is transition
+    assert written.transition.outgoing.title == raw
+
+
+@pytest.mark.parametrize("codec", ["mp3", "aac"])
+@pytest.mark.parametrize(
+    ("raw", "order", "expected_stem"),
+    [
+        (
+            "My one and only love - JOHN COLTRANE",
+            "title-artist",
+            "JOHN COLTRANE - My one and only love",
+        ),
+        ("AC-DC - Thunderstruck", "artist-title", "AC-DC - Thunderstruck"),
+        ("Song - Artist - Live", "title-artist", "Song - Artist - Live"),
+        ("Song / One? - Artist: Name", "title-artist", "Artist_ Name - Song _ One"),
+        ("Déjà vu - Beyoncé", "title-artist", "Beyonc_ - D_j_ vu"),
+    ],
+)
+def test_radio_naming_writes_real_media_and_preserves_replacement(
+    tmp_path: Path, codec: str, raw: str, order: str, expected_stem: str
+) -> None:
+    import shutil
+    import subprocess
+    from dataclasses import replace
+
+    from brynse.buffer import EncodedAudioRingBuffer
+
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        pytest.skip("FFmpeg is required for real media finalization")
+
+    payload = subprocess.run(
+        [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=0.6",
+            "-c:a",
+            "libmp3lame" if codec == "mp3" else "aac",
+            "-f",
+            "mp3" if codec == "mp3" else "adts",
+            "pipe:1",
+        ],
+        check=True,
+        capture_output=True,
+        timeout=15,
+    ).stdout
+    source = EncodedAudioRingBuffer(max_bytes=len(payload))
+    source.append(payload)
+
+    base = _transition()
+    transition = replace(base, outgoing=replace(base.outgoing, title=raw))
+    plan = SegmentWritePlan(
+        outgoing=SegmentByteRange(start_offset=0, end_offset=len(payload)),
+        incoming=SegmentByteRange(start_offset=0, end_offset=len(payload)),
+    )
+    directory = tmp_path / "tracks"
+    directory.mkdir()
+    extension = ".mp3" if codec == "mp3" else ".m4a"
+    expected_path = directory / f"{expected_stem}{extension}"
+    expected_path.write_bytes(b"previous-file")
+
+    writer = SessionOutputWriter(
+        ingestor=_Ingestor(),
+        directory=directory,
+        codec=codec,
+        source=source,
+        range_planner=_Planner(plan),
+        metadata_order=order,
+    )
+    written = writer.write_transition(transition)
+
+    assert written.path == expected_path
+    assert written.path.is_file()
+    assert written.path.stat().st_size > 0
+    assert written.path.read_bytes() != b"previous-file"
+    assert written.transition.outgoing.title == raw
+    assert set(directory.iterdir()) == {expected_path}
+
+    decoded = subprocess.run(
+        [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(written.path),
+            "-f",
+            "null",
+            "-",
+        ],
+        check=False,
+        capture_output=True,
+        timeout=15,
+    )
+    assert decoded.returncode == 0, decoded.stderr.decode(errors="replace")

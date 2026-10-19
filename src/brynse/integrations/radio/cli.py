@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from brynse.integrations.radio.models import TimedMetadataEvent
+from brynse.integrations.radio.naming import METADATA_ORDERS
 from brynse.integrations.radio.runner import (
     RippingRunConfig,
     RippingRunError,
@@ -78,6 +79,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "Capture the exact raw ICY input and resolved metadata "
             "for deterministic offline replay"
+        ),
+    )
+    parser.add_argument(
+        "--metadata-order",
+        choices=METADATA_ORDERS,
+        default="preserve",
+        help=(
+            "Declared artist/title order in source metadata; "
+            "used only for output filenames (default: preserve)"
         ),
     )
     return parser
@@ -656,6 +666,7 @@ def _run_stream(args: argparse.Namespace) -> int:
             codec=args.codec,
             ffmpeg_binary=args.ffmpeg,
             metadata_threshold_seconds=args.metadata_threshold,
+            metadata_order=args.metadata_order,
             transient_exclusion=args.transient_exclusion,
             autonomous_boundaries=args.autonomous_boundaries,
             session_capture_directory=args.session_capture,
