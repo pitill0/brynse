@@ -54,8 +54,11 @@ jobs:
             echo "===== $1 ====="
             shift
 
-            "$@"
-            rc=$?
+            if "$@"; then
+              rc=0
+            else
+              rc=$?
+            fi
 
             echo "gate_rc=$rc"
 
