@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,14 +16,17 @@ from brynse.output import (
     create_safe_segment_output_service,
 )
 
-_UNSAFE_STEM_CHARS = re.compile(r"[^A-Za-z0-9._ -]+")
 _MULTI_SPACE = re.compile(r"\s+")
+_UNSAFE_PATH_CHARS = frozenset(chr(code) for code in (47, 92, 58, 42, 63, 34, 60, 62, 124))
 
 
 def safe_track_stem(title: str) -> str:
-    """Return a filesystem-friendly stem while preserving readable titles."""
-    stem = _UNSAFE_STEM_CHARS.sub("_", title)
-    stem = _MULTI_SPACE.sub(" ", stem).strip(" ._-")
+    """Return a filesystem-friendly stem while preserving readable Unicode."""
+    cleaned = "".join(
+        "_" if char in _UNSAFE_PATH_CHARS or unicodedata.category(char).startswith("C") else char
+        for char in unicodedata.normalize("NFC", title)
+    )
+    stem = _MULTI_SPACE.sub(" ", cleaned).strip(" ._-")
     return stem or "track"
 
 

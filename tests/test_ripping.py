@@ -2000,7 +2000,7 @@ def test_track_file_writer_persists_exact_bytes(tmp_path) -> None:
     assert path.read_bytes() == payload
 
 
-def test_track_file_writer_replaces_existing_target_atomically(tmp_path) -> None:
+def test_track_file_writer_preserves_existing_target_atomically(tmp_path) -> None:
     from brynse.output import SegmentFileWriter
 
     target = tmp_path / "Track.aac"
@@ -2013,7 +2013,8 @@ def test_track_file_writer_replaces_existing_target_atomically(tmp_path) -> None
         data=b"new-audio",
     )
 
-    assert path == target
+    assert path == tmp_path / "Track-2.aac"
+    assert target.read_bytes() == b"old"
     assert path.read_bytes() == b"new-audio"
 
 

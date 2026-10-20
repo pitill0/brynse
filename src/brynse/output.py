@@ -161,7 +161,7 @@ class SegmentFileWriter:
             with tempfile.NamedTemporaryFile(
                 mode="wb",
                 dir=directory,
-                prefix=f".{stem}.",
+                prefix=".brynse-file-",
                 suffix=".tmp",
                 delete=False,
             ) as handle:
@@ -170,8 +170,14 @@ class SegmentFileWriter:
                 handle.flush()
                 os.fsync(handle.fileno())
 
-            os.replace(temp_path, target)
-            return target
+            from brynse._filename import publish_unique
+
+            return publish_unique(
+                temp_path=temp_path,
+                directory=directory,
+                stem=stem,
+                extension=extension,
+            )
         except OSError as exc:
             if temp_path is not None:
                 from contextlib import suppress
@@ -915,8 +921,13 @@ class SegmentOutputService:
         finalize_stream = getattr(finalizer, "finalize_stream", None)
 
         if callable(finalize_stream):
+            import os
+            import tempfile
+            from contextlib import suppress
+
+            from brynse._filename import publish_unique
+
             directory.mkdir(parents=True, exist_ok=True)
-            output_path = directory / f"{stem}.{output_codec}"
 
             chunks = self._encoded_writer.iter_range(
                 source=source,
@@ -924,26 +935,52 @@ class SegmentOutputService:
                 chunk_size=chunk_size,
             )
 
-            if (
-                self._finalize_base_timeout_seconds is not None
-                and self._finalize_throughput_bytes_per_second is not None
-            ):
-                timeout_seconds = max(
-                    self._finalize_base_timeout_seconds,
-                    segment_bytes / self._finalize_throughput_bytes_per_second,
-                )
-                finalize_stream(
-                    chunks=chunks,
-                    output_path=output_path,
-                    timeout_seconds=timeout_seconds,
-                )
-            else:
-                finalize_stream(
-                    chunks=chunks,
-                    output_path=output_path,
-                )
+            fd, private_name = tempfile.mkstemp(
+                dir=directory,
+                prefix=".brynse-stream-",
+                suffix=f".{output_codec}",
+            )
+            os.close(fd)
+            private_path = Path(private_name)
 
-            return output_path
+            try:
+                if (
+                    self._finalize_base_timeout_seconds is not None
+                    and self._finalize_throughput_bytes_per_second is not None
+                ):
+                    timeout_seconds = max(
+                        self._finalize_base_timeout_seconds,
+                        segment_bytes / self._finalize_throughput_bytes_per_second,
+                    )
+                    finalize_stream(
+                        chunks=chunks,
+                        output_path=private_path,
+                        timeout_seconds=timeout_seconds,
+                    )
+                else:
+                    finalize_stream(
+                        chunks=chunks,
+                        output_path=private_path,
+                    )
+
+                if private_path.stat().st_size == 0:
+                    raise SegmentFinalizeError("streaming finalization produced no output")
+
+                try:
+                    with private_path.open("rb") as completed:
+                        os.fsync(completed.fileno())
+
+                    return publish_unique(
+                        temp_path=private_path,
+                        directory=directory,
+                        stem=stem,
+                        extension=f".{output_codec}",
+                    )
+                except OSError as exc:
+                    raise SegmentFileWriteError("failed to publish finalized segment") from exc
+            finally:
+                with suppress(OSError):
+                    private_path.unlink(missing_ok=True)
 
         raw = self._encoded_writer.write_range(
             source=source,
@@ -1004,7 +1041,7 @@ class SegmentOutputService:
             with tempfile.NamedTemporaryFile(
                 mode="wb",
                 dir=directory,
-                prefix=f".{stem}.",
+                prefix=".brynse-m4a-",
                 suffix=".tmp",
                 delete=False,
             ) as handle:
@@ -1013,8 +1050,14 @@ class SegmentOutputService:
                 handle.flush()
                 os.fsync(handle.fileno())
 
-            os.replace(temp_path, target)
-            return target
+            from brynse._filename import publish_unique
+
+            return publish_unique(
+                temp_path=temp_path,
+                directory=directory,
+                stem=stem,
+                extension=".m4a",
+            )
         except OSError as exc:
             if temp_path is not None:
                 with suppress(OSError):
