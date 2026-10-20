@@ -188,6 +188,22 @@ Typical output includes the detected metadata and finalized files:
     [   267.598s] Artist - Track
     written: tracks/Artist - Previous Track.mp3
 
+### Recording filenames and collision safety
+
+Brynse preserves readable Unicode metadata in recording filenames, while
+replacing unsafe path characters and control characters. Long titles are
+limited by their UTF-8 byte length, accounting for the file extension and
+any collision suffix.
+
+Completed recordings are published without overwriting existing files.
+Repeated titles receive unique names such as `Artist - Track.mp3`,
+`Artist - Track-2.mp3`, and `Artist - Track-3.mp3`. This also applies to
+AAC recordings finalized as `.m4a` and to generic segment output.
+
+Publication occurs only after successful finalization. If finalization or
+publication fails, existing recordings are preserved and temporary output
+is cleaned up. Reported output paths refer to the actual published files.
+
 Codec detection can normally be left automatic by omitting `--codec`.
 
 See [`docs/examples/live-radio-track-ripping.md`](docs/examples/live-radio-track-ripping.md)
