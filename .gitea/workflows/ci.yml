@@ -39,7 +39,7 @@ jobs:
           set -eu
           python3 -m venv .ci-venv
           . .ci-venv/bin/activate
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip "setuptools>=83.0.0"
           python -m pip install -e ".[dev]" build twine
           python -m pip list
 
@@ -67,7 +67,7 @@ jobs:
             fi
           }
 
-          check "RUFF FORMAT" ruff format --check .
+          check "RUFF FORMAT" ruff format --check --quiet .
           check "RUFF LINT" ruff check .
           check "PYTHON COMPILE" python -m compileall -q src tests
           check "PYTEST" python -m pytest -q
