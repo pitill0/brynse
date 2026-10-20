@@ -1,0 +1,83 @@
+name: Brynse CI
+
+on:
+  push:
+    branches:
+      - main
+      - ci/gitea-quality-gates
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Tests, quality, security and packaging
+    runs-on: brynse-linux
+    timeout-minutes: 60
+
+    steps:
+      - name: Install system dependencies
+        run: |
+          set -eu
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            --no-install-recommends \
+            ca-certificates git nodejs \
+            python3 python3-venv python3-pip \
+            ffmpeg
+          python3 --version
+          ffmpeg -version | head -1
+
+      - name: Checkout Brynse
+        uses: actions/checkout@v4
+
+      - name: Install Brynse and tooling
+        run: |
+          set -eu
+          python3 -m venv .ci-venv
+          . .ci-venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]" build twine
+          python -m pip list
+
+      - name: Run all quality gates
+        shell: bash
+        run: |
+          source .ci-venv/bin/activate
+          failures=0
+
+          check() {
+            echo
+            echo "===== $1 ====="
+            shift
+
+            "$@"
+            rc=$?
+
+            echo "gate_rc=$rc"
+
+            if [ "$rc" -ne 0 ]; then
+              failures=$((failures + 1))
+            fi
+          }
+
+          check "RUFF FORMAT" ruff format --check .
+          check "RUFF LINT" ruff check .
+          check "PYTHON COMPILE" python -m compileall -q src tests
+          check "PYTEST" python -m pytest -q
+          check "MYPY" mypy --follow-imports=skip src/
+          check "BANDIT" bandit -r src -c pyproject.toml
+          check "PIP AUDIT" pip-audit --local
+          check "BUILD" python -m build
+          check "TWINE" python -m twine check dist/*
+
+          echo
+          echo "===== CI RESULT ====="
+          echo "failed_gates=$failures"
+
+          if [ "$failures" -ne 0 ]; then
+            exit 1
+          fi
