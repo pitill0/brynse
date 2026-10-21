@@ -740,7 +740,8 @@ def _run_stream(args: argparse.Namespace) -> int:
             ) from exc
 
         def write_routing(observation) -> None:
-            assert routing_trace is not None
+            if routing_trace is None:
+                raise CliError('routing trace is not open')
             routing_trace.write(
                 json.dumps(
                     _routing_trace_record(observation),

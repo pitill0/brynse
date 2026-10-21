@@ -105,7 +105,8 @@ class AcousticIslandDetector:
             return ()
 
         if correction is None:
-            assert canonical_region is not None
+            if canonical_region is None:
+                raise AssertionError('canonical region is required')
             return (
                 AcousticIslandEvidence(
                     incoming_handoff=canonical_region.right,

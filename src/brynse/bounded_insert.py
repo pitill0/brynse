@@ -228,8 +228,8 @@ class BoundedInsertRegionDiscovery:
         left_geometry = left.basin_geometry
         right_geometry = right.basin_geometry
 
-        assert left_geometry is not None
-        assert right_geometry is not None
+        if left_geometry is None or right_geometry is None:
+            raise AssertionError('both basin geometries are required')
 
         between_supports = (
             left.time_seconds

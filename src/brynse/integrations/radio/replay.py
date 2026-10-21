@@ -417,7 +417,8 @@ def _run(args: argparse.Namespace) -> int:
             ) from exc
 
         def write_routing(observation) -> None:
-            assert routing_trace is not None
+            if routing_trace is None:
+                raise ReplaySessionError('replay routing trace is not open')
 
             routing_trace.write(
                 json.dumps(

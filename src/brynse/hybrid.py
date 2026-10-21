@@ -574,7 +574,8 @@ class HybridAcousticSplitResolver:
                     floor_index = index
                 continue
 
-            assert floor_index is not None
+            if floor_index is None:
+                raise AssertionError('floor index is required')
 
             if current < smoothed[floor_index]:
                 floor_index = index
@@ -812,7 +813,8 @@ class HybridAcousticSplitResolver:
                     segment_end = index
                 continue
 
-            assert peak_index is not None
+            if peak_index is None:
+                raise AssertionError('peak index is required')
 
             start_level = smoothed[segment_start]
 
