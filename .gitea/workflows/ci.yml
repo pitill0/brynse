@@ -71,7 +71,7 @@ jobs:
           check "RUFF LINT" ruff check .
           check "PYTHON COMPILE" python -m compileall -q src tests
           check "PYTEST" python -m pytest -q
-          check "MYPY" mypy --follow-imports=skip src/
+          check "MYPY" mypy --no-incremental --show-error-codes src/
           check "BANDIT" bandit -r src -c pyproject.toml
           check "PIP AUDIT" pip-audit --local
           check "BUILD" python -m build
