@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
+from brynse.basin import AdaptiveBasinBoundaryDetector
 from brynse.boundaries import (
+    AcousticBoundaryHypothesisBuilder,
     BoundaryConfidence,
     BoundaryProposalSource,
+    BoundaryReconciler,
 )
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
-from brynse.basin import AdaptiveBasinBoundaryDetector
-from brynse.boundaries import AcousticBoundaryHypothesisBuilder, BoundaryReconciler
 from brynse.shadow import ShadowBoundaryAnalyzer
 from brynse.spectral import FfmpegSpectralDistributionAnalyzer
 from brynse.structural import StructuralBoundaryDetector

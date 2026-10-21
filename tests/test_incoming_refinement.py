@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from brynse.incoming_refinement import IncomingBoundaryRefiner
+from types import SimpleNamespace
+
+from brynse.boundaries import BoundaryConfidence
+from brynse.incoming_refinement import (
+    IncomingBoundaryDiscovery,
+    IncomingBoundaryRefiner,
+)
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
 
 
@@ -73,11 +79,6 @@ def test_incoming_refiner_does_not_modify_non_hard_cut_decision() -> None:
 
     assert refined == decision
 
-
-from types import SimpleNamespace
-
-from brynse.boundaries import BoundaryConfidence
-from brynse.incoming_refinement import IncomingBoundaryDiscovery
 
 
 def _analysis(

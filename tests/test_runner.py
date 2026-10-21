@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-from brynse.models import Segment
 from brynse.integrations.radio.runner import (
     RippingRunConfig,
     RippingRunError,
@@ -12,6 +11,7 @@ from brynse.integrations.radio.runner import (
     resolve_codec,
     resolve_metaint,
 )
+from brynse.models import Segment
 from brynse.source import BinaryIOStreamSource
 
 
@@ -1175,7 +1175,7 @@ def test_runner_materializes_promoted_autonomous_segment_and_advances_spool(
             return (analysis,)
 
     class FakePromoter:
-        instances: list["FakePromoter"] = []
+        instances: list[FakePromoter] = []
 
         def __init__(self) -> None:
             self.calls: list[dict[str, object]] = []
@@ -1186,7 +1186,7 @@ def test_runner_materializes_promoted_autonomous_segment_and_advances_spool(
             return resolution
 
     class FakeAutonomousState:
-        instances: list["FakeAutonomousState"] = []
+        instances: list[FakeAutonomousState] = []
 
         def __init__(self) -> None:
             self.observed = []
@@ -1206,7 +1206,7 @@ def test_runner_materializes_promoted_autonomous_segment_and_advances_spool(
             return transition
 
     class FakeOutputWriter:
-        instances: list["FakeOutputWriter"] = []
+        instances: list[FakeOutputWriter] = []
 
         def __init__(self, **kwargs) -> None:
             self.segment_transitions = []
@@ -1317,7 +1317,6 @@ def test_runner_ignores_promoted_autonomous_boundary_that_does_not_advance_outpu
     incoming_start: int,
 ) -> None:
     import brynse.integrations.radio.runner as runner_module
-
     from brynse.models import (
         BoundaryCandidate,
         SplitDecision,
@@ -1408,7 +1407,7 @@ def test_runner_ignores_promoted_autonomous_boundary_that_does_not_advance_outpu
             )
 
     class FakeOutputWriter:
-        instances: list["FakeOutputWriter"] = []
+        instances: list[FakeOutputWriter] = []
 
         def __init__(self, **kwargs) -> None:
             self.segment_writes = []
@@ -1589,7 +1588,7 @@ def test_runner_materializes_semantic_transition_before_autonomous_promotion(
             return resolution
 
     class FakeAutonomousState:
-        instances: list["FakeAutonomousState"] = []
+        instances: list[FakeAutonomousState] = []
 
         def __init__(self) -> None:
             self.materialized = []
