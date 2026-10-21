@@ -111,9 +111,7 @@ class PcmFeatureTimeline:
         spectral_prefix: np.ndarray,
     ) -> None:
         if absolute_start_time_seconds < 0:
-            raise ValueError(
-                "absolute_start_time_seconds must be non-negative"
-            )
+            raise ValueError("absolute_start_time_seconds must be non-negative")
 
         self._absolute_start_time_seconds = absolute_start_time_seconds
         self._frame_centers_seconds = frame_centers_seconds
@@ -132,9 +130,7 @@ class PcmFeatureTimeline:
         """Build one reusable feature timeline from mono signed-16-bit PCM."""
 
         if absolute_start_time_seconds < 0:
-            raise ValueError(
-                "absolute_start_time_seconds must be non-negative"
-            )
+            raise ValueError("absolute_start_time_seconds must be non-negative")
 
         if pcm.sample_rate <= 0:
             raise ValueError("PCM sample rate must be greater than zero")
@@ -143,9 +139,7 @@ class PcmFeatureTimeline:
             raise ValueError("PCM feature timeline requires mono PCM")
 
         if pcm.sample_width_bytes != 2:
-            raise ValueError(
-                "PCM feature timeline requires signed 16-bit PCM"
-            )
+            raise ValueError("PCM feature timeline requires signed 16-bit PCM")
 
         if frame_seconds <= 0:
             raise ValueError("frame_seconds must be greater than zero")
@@ -162,16 +156,16 @@ class PcmFeatureTimeline:
         if hop_samples < 1:
             raise ValueError("hop duration produces too few samples")
 
-        raw = np.frombuffer(pcm.data, dtype="<i2").astype(
+        raw: np.ndarray = np.frombuffer(pcm.data, dtype="<i2").astype(
             np.float64,
             copy=False,
         )
         samples = raw / 32768.0
 
         if samples.size < frame_samples:
-            empty_centers = np.empty(0, dtype=np.float64)
-            empty_rms_prefix = np.zeros(1, dtype=np.float64)
-            empty_spectral_prefix = np.zeros(
+            empty_centers: np.ndarray = np.empty(0, dtype=np.float64)
+            empty_rms_prefix: np.ndarray = np.zeros(1, dtype=np.float64)
+            empty_spectral_prefix: np.ndarray = np.zeros(
                 (1, len(_DEFAULT_BAND_EDGES_HZ) - 1),
                 dtype=np.float64,
             )
@@ -208,11 +202,7 @@ class PcmFeatureTimeline:
             d=1.0 / pcm.sample_rate,
         )
 
-        band_edges = tuple(
-            edge
-            for edge in _DEFAULT_BAND_EDGES_HZ
-            if edge < pcm.sample_rate / 2.0
-        )
+        band_edges = tuple(edge for edge in _DEFAULT_BAND_EDGES_HZ if edge < pcm.sample_rate / 2.0)
 
         nyquist = pcm.sample_rate / 2.0
 
@@ -254,16 +244,10 @@ class PcmFeatureTimeline:
             where=totals > 1e-18,
         )
 
-        frame_starts = (
-            np.arange(frame_count, dtype=np.float64)
-            * hop_samples
-            / pcm.sample_rate
-        )
+        frame_starts = np.arange(frame_count, dtype=np.float64) * hop_samples / pcm.sample_rate
 
         frame_centers = (
-            absolute_start_time_seconds
-            + frame_starts
-            + frame_samples / pcm.sample_rate / 2.0
+            absolute_start_time_seconds + frame_starts + frame_samples / pcm.sample_rate / 2.0
         )
 
         rms_prefix = np.concatenate(
@@ -314,9 +298,7 @@ class PcmFeatureTimeline:
         """Measure descriptive PRE/POST changes around one timestamp."""
 
         if time_seconds < self._absolute_start_time_seconds:
-            raise ValueError(
-                "time_seconds precedes PCM feature timeline"
-            )
+            raise ValueError("time_seconds precedes PCM feature timeline")
 
         evidence: list[PcmBoundaryHorizonEvidence] = []
 
@@ -376,24 +358,17 @@ class PcmFeatureTimeline:
         """Return descriptive directional evidence across one local interval."""
 
         if end_seconds < start_seconds:
-            raise ValueError(
-                "end_seconds must not precede start_seconds"
-            )
+            raise ValueError("end_seconds must not precede start_seconds")
 
         if step_seconds <= 0:
-            raise ValueError(
-                "step_seconds must be greater than zero"
-            )
+            raise ValueError("step_seconds must be greater than zero")
 
         evidence: list[PcmDirectionalBoundaryEvidence] = []
 
         index = 0
 
         while True:
-            time_seconds = (
-                start_seconds
-                + index * step_seconds
-            )
+            time_seconds = start_seconds + index * step_seconds
 
             if time_seconds > end_seconds + 1e-9:
                 break
@@ -424,11 +399,7 @@ class PcmFeatureTimeline:
                             energy_change=horizon.energy_change,
                             spectral_change=horizon.spectral_change,
                             direction=direction,
-                            energy_ratio=(
-                                horizon.post_rms + epsilon
-                            ) / (
-                                horizon.pre_rms + epsilon
-                            ),
+                            energy_ratio=(horizon.post_rms + epsilon) / (horizon.pre_rms + epsilon),
                         )
                     )
 
@@ -443,9 +414,7 @@ class PcmFeatureTimeline:
         horizon_seconds: float,
     ) -> PcmBoundaryHorizonEvidence | None:
         if horizon_seconds <= 0:
-            raise ValueError(
-                "horizon_seconds must be greater than zero"
-            )
+            raise ValueError("horizon_seconds must be greater than zero")
 
         pre_start = time_seconds - horizon_seconds
         pre_end = time_seconds
@@ -481,12 +450,8 @@ class PcmFeatureTimeline:
             horizon_seconds=horizon_seconds,
             pre_rms=pre_rms,
             post_rms=post_rms,
-            energy_change=float(
-                min(max(energy_change, 0.0), 1.0)
-            ),
-            spectral_change=float(
-                min(max(spectral_change, 0.0), 1.0)
-            ),
+            energy_change=float(min(max(energy_change, 0.0), 1.0)),
+            spectral_change=float(min(max(spectral_change, 0.0), 1.0)),
         )
 
     def _mean_features(
@@ -517,10 +482,7 @@ class PcmFeatureTimeline:
             return None
 
         rms_sum = self._rms_prefix[right] - self._rms_prefix[left]
-        spectral_sum = (
-            self._spectral_prefix[right]
-            - self._spectral_prefix[left]
-        )
+        spectral_sum = self._spectral_prefix[right] - self._spectral_prefix[left]
 
         count = right - left
 
@@ -555,18 +517,9 @@ class PcmFeatureTimeline:
         ) -> float:
             mask = source > 0.0
             return float(
-                np.sum(
-                    source[mask]
-                    * np.log2(
-                        source[mask]
-                        / np.maximum(target[mask], 1e-18)
-                    )
-                )
+                np.sum(source[mask] * np.log2(source[mask] / np.maximum(target[mask], 1e-18)))
             )
 
-        value = 0.5 * (
-            kl_divergence(p, midpoint)
-            + kl_divergence(q, midpoint)
-        )
+        value = 0.5 * (kl_divergence(p, midpoint) + kl_divergence(q, midpoint))
 
         return min(max(value, 0.0), 1.0)

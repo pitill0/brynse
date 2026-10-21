@@ -612,7 +612,6 @@ def test_multisignal_resolver_observes_routing_context_without_changing_decision
     assert refine_call["decision"] == original
 
 
-
 def test_orchestrator_wires_pcm_authority_into_owned_specialists() -> None:
     from brynse.fade_specialist import FadeSpecialist
     from brynse.orchestrator import (

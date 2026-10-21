@@ -70,7 +70,6 @@ def test_boundary_hypothesis_defaults_to_unresolved_confidence() -> None:
     assert hypothesis.confidence is BoundaryConfidence.UNRESOLVED
 
 
-
 def test_boundary_evidence_accepts_basin_geometry() -> None:
     proposal = BoundaryProposal(
         time_seconds=10.25,
@@ -279,6 +278,7 @@ def test_acoustic_hypothesis_builder_reconciles_basin_and_structural_evidence() 
         }
     ]
 
+
 def test_boundary_hypothesis_exposes_its_basin_geometry() -> None:
     basin = BoundaryProposal(
         time_seconds=10.25,
@@ -312,4 +312,3 @@ def test_boundary_hypothesis_exposes_its_basin_geometry() -> None:
     assert geometry.start_seconds == 10.0
     assert geometry.minimum_seconds == 10.25
     assert geometry.recovery_seconds == 10.7
-

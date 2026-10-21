@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
-from brynse.boundaries import (
-    BoundaryConfidence,
-    BoundaryProposalSource,
-)
-from brynse.models import TemporalSplitDecision, TemporalSplitKind
 from brynse.basin import AdaptiveBasinBoundaryDetector
-from brynse.boundaries import AcousticBoundaryHypothesisBuilder, BoundaryReconciler
-from brynse.shadow import ShadowBoundaryAnalyzer
+from brynse.boundaries import (
+    AcousticBoundaryHypothesisBuilder,
+    BoundaryConfidence,
+    BoundaryHypothesis,
+    BoundaryProposalSource,
+    BoundaryReconciler,
+)
+from brynse.models import (
+    AcousticWindow,
+    DecodedPcm,
+    TemporalSplitDecision,
+    TemporalSplitKind,
+)
+from brynse.shadow import ShadowBoundaryAnalysis, ShadowBoundaryAnalyzer
 from brynse.spectral import FfmpegSpectralDistributionAnalyzer
 from brynse.structural import StructuralBoundaryDetector
 
@@ -65,7 +72,7 @@ class IncomingBoundaryDiscovery:
         self,
         *,
         outgoing_end_seconds: float,
-        analyses,
+        analyses: tuple[ShadowBoundaryAnalysis, ...],
     ) -> float | None:
         high_confidence = tuple(
             (
@@ -79,15 +86,13 @@ class IncomingBoundaryDiscovery:
                         )
                     )
                     is not None
-                    and analysis.hypothesis.time_seconds
-                    < geometry.minimum_seconds
+                    and analysis.hypothesis.time_seconds < geometry.minimum_seconds
                 )
                 else analysis.hypothesis.time_seconds
             )
             for analysis in analyses
             if (
-                analysis.assessment.candidate_confidence
-                is BoundaryConfidence.HIGH
+                analysis.assessment.candidate_confidence is BoundaryConfidence.HIGH
                 and analysis.hypothesis.time_seconds > outgoing_end_seconds
             )
         )
@@ -128,24 +133,21 @@ class IncomingBoundaryDiscovery:
 class IncomingBoundaryAnalyzer:
     """Analyze plausible acoustic hypotheses for a refined incoming edge."""
 
-    def __init__(self, *, analyzer) -> None:
+    def __init__(self, *, analyzer: ShadowBoundaryAnalyzer) -> None:
         self._analyzer = analyzer
 
     def analyze(
         self,
         *,
-        hypotheses,
-        pcm,
+        hypotheses: tuple[BoundaryHypothesis, ...],
+        pcm: DecodedPcm,
         absolute_start_time_seconds: float = 0.0,
         outgoing_end_seconds: float | None = None,
-    ) -> tuple:
+    ) -> tuple[ShadowBoundaryAnalysis, ...]:
         analyses = []
 
         for hypothesis in hypotheses:
-            if (
-                outgoing_end_seconds is not None
-                and hypothesis.time_seconds <= outgoing_end_seconds
-            ):
+            if outgoing_end_seconds is not None and hypothesis.time_seconds <= outgoing_end_seconds:
                 continue
 
             sources = {proposal.source for proposal in hypothesis.proposals}
@@ -175,8 +177,8 @@ class IncomingBoundaryPipeline:
     def __init__(
         self,
         *,
-        hypothesis_builder,
-        incoming_analyzer,
+        hypothesis_builder: AcousticBoundaryHypothesisBuilder,
+        incoming_analyzer: IncomingBoundaryAnalyzer,
         discovery: IncomingBoundaryDiscovery,
         refiner: IncomingBoundaryRefiner,
         on_observation: IncomingObservationCallback | None = None,
@@ -190,9 +192,9 @@ class IncomingBoundaryPipeline:
     def observe_hypotheses(
         self,
         *,
-        window,
-        pcm8,
-    ) -> tuple:
+        window: AcousticWindow,
+        pcm8: DecodedPcm,
+    ) -> tuple[BoundaryHypothesis, ...]:
         """Return reconciled acoustic hypotheses without refining a boundary."""
         return self._hypothesis_builder.build(
             pcm=pcm8,
@@ -202,10 +204,10 @@ class IncomingBoundaryPipeline:
     def analyze_hypotheses(
         self,
         *,
-        hypotheses,
-        window,
-        pcm16,
-    ) -> tuple:
+        hypotheses: tuple[BoundaryHypothesis, ...],
+        window: AcousticWindow,
+        pcm16: DecodedPcm,
+    ) -> tuple[ShadowBoundaryAnalysis, ...]:
         """Analyze supplied hypotheses without selecting an incoming edge."""
         return self._incoming_analyzer.analyze(
             hypotheses=hypotheses,
@@ -218,10 +220,10 @@ class IncomingBoundaryPipeline:
         self,
         *,
         decision: TemporalSplitDecision,
-        window,
-        pcm8,
-        pcm16,
-        hypotheses=None,
+        window: AcousticWindow,
+        pcm8: DecodedPcm,
+        pcm16: DecodedPcm,
+        hypotheses: tuple[BoundaryHypothesis, ...] | None = None,
     ) -> TemporalSplitDecision:
         absolute_start = window.start_time_seconds
         outgoing_end = decision.outgoing_end_seconds

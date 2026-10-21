@@ -16,21 +16,19 @@ def _tone(
     seconds: float,
     amplitude: float,
 ) -> np.ndarray:
-    time = np.arange(
-        round(seconds * SAMPLE_RATE),
-        dtype=np.float64,
-    ) / SAMPLE_RATE
-
-    return amplitude * np.sin(
-        2.0 * math.pi * frequency_hz * time
+    time = (
+        np.arange(
+            round(seconds * SAMPLE_RATE),
+            dtype=np.float64,
+        )
+        / SAMPLE_RATE
     )
+
+    return amplitude * np.sin(2.0 * math.pi * frequency_hz * time)
 
 
 def _pcm(samples: np.ndarray) -> DecodedPcm:
-    encoded = (
-        np.clip(samples, -1.0, 1.0)
-        * 32767.0
-    ).astype("<i2")
+    encoded = (np.clip(samples, -1.0, 1.0) * 32767.0).astype("<i2")
 
     return DecodedPcm(
         sample_rate=SAMPLE_RATE,
@@ -162,14 +160,8 @@ def test_temporal_edge_does_not_require_rising_or_falling_direction() -> None:
     assert rising_result is not None
     assert falling_result is not None
 
-    assert (
-        rising_result.evidence_250ms.direction.value
-        == "rising"
-    )
-    assert (
-        falling_result.evidence_250ms.direction.value
-        == "falling"
-    )
+    assert rising_result.evidence_250ms.direction.value == "rising"
+    assert falling_result.evidence_250ms.direction.value == "falling"
 
 
 def test_temporal_edge_rejects_near_silent_activity() -> None:
@@ -210,7 +202,6 @@ def test_temporal_edge_abstains_without_material_change() -> None:
     )
 
     assert result is None
-
 
 
 def test_temporal_edge_explicit_bounds_can_reach_distant_edge() -> None:

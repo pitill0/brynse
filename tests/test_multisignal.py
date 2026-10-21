@@ -657,15 +657,11 @@ def test_multisignal_acoustic_candidate_resolver_propagates_abstention() -> None
 
     class FailingTemporalResolver:
         def resolve(self, **_):
-            pytest.fail(
-                "temporal resolver must not run after multisignal abstention"
-            )
+            pytest.fail("temporal resolver must not run after multisignal abstention")
 
     class FailingAligner:
         def align(self, **_):
-            pytest.fail(
-                "split aligner must not run after multisignal abstention"
-            )
+            pytest.fail("split aligner must not run after multisignal abstention")
 
     resolver = MultiSignalAcousticCandidateResolver(
         window_extractor=FakeWindowExtractor(),
@@ -775,8 +771,7 @@ def test_multisignal_acoustic_candidate_resolver_composes_product_pipeline() -> 
     class FakeTemporalResolver:
         def resolve(self, **kwargs):
             raise AssertionError(
-                "AMBIGUOUS must not delegate temporal ownership "
-                "to the legacy resolver"
+                "AMBIGUOUS must not delegate temporal ownership to the legacy resolver"
             )
 
     split = SplitDecision(

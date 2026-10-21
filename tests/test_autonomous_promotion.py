@@ -87,11 +87,7 @@ def _analysis(
 
 @pytest.mark.parametrize(
     "confidence",
-    [
-        confidence
-        for confidence in BoundaryConfidence
-        if confidence is not BoundaryConfidence.HIGH
-    ],
+    [confidence for confidence in BoundaryConfidence if confidence is not BoundaryConfidence.HIGH],
 )
 def test_autonomous_promoter_ignores_non_high_observations(
     confidence: BoundaryConfidence,

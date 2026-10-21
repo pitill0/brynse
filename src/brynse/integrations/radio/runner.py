@@ -15,7 +15,10 @@ from typing import BinaryIO
 
 from brynse.acoustic import AcousticWindowExtractor, FfmpegAcousticDecoder
 from brynse.autonomous_promotion import AutonomousBoundaryPromoter
-from brynse.incoming_refinement import build_incoming_boundary_pipeline
+from brynse.incoming_refinement import (
+    IncomingObservationCallback,
+    build_incoming_boundary_pipeline,
+)
 from brynse.integrations.radio.autonomous import AutonomousSegmentState
 from brynse.integrations.radio.capture import RadioSessionCapture
 from brynse.integrations.radio.metadata import MetadataSemanticTracker
@@ -215,7 +218,7 @@ class RippingRunner:
         self,
         codec: str,
         *,
-        on_incoming_observation=None,
+        on_incoming_observation: IncomingObservationCallback | None = None,
         on_routing_observation: RoutingObservationCallback | None = None,
     ) -> BoundaryResolver:
         if codec not in {"aac", "mp3"}:
@@ -252,7 +255,7 @@ class RippingRunner:
         on_track_written: TrackCallback | None = None,
         on_segment_written: SegmentCallback | None = None,
         on_shadow_analysis: ShadowCallback | None = None,
-        on_incoming_observation=None,
+        on_incoming_observation: IncomingObservationCallback | None = None,
         on_routing_observation: RoutingObservationCallback | None = None,
     ) -> RippingRunResult:
         """Run until EOF or stop() is requested."""
@@ -276,9 +279,7 @@ class RippingRunner:
                         directory=config.session_capture_directory,
                         codec=codec,
                         metaint=metaint,
-                        metadata_threshold_seconds=(
-                            config.metadata_threshold_seconds
-                        ),
+                        metadata_threshold_seconds=(config.metadata_threshold_seconds),
                         transient_exclusion=config.transient_exclusion,
                         autonomous_boundaries=config.autonomous_boundaries,
                         source_url=config.url,
@@ -322,23 +323,12 @@ class RippingRunner:
                 source=spool,
             )
             autonomous_promoter = (
-                AutonomousBoundaryPromoter()
-                if config.autonomous_boundaries
-                else None
+                AutonomousBoundaryPromoter() if config.autonomous_boundaries else None
             )
-            autonomous_state = (
-                AutonomousSegmentState()
-                if config.autonomous_boundaries
-                else None
-            )
-            shadow_enabled = (
-                on_shadow_analysis is not None
-                or config.autonomous_boundaries
-            )
+            autonomous_state = AutonomousSegmentState() if config.autonomous_boundaries else None
+            shadow_enabled = on_shadow_analysis is not None or config.autonomous_boundaries
             shadow_observer = (
-                self._shadow_observer_factory(config.ffmpeg_binary)
-                if shadow_enabled
-                else None
+                self._shadow_observer_factory(config.ffmpeg_binary) if shadow_enabled else None
             )
 
             if on_started is not None:
@@ -360,8 +350,7 @@ class RippingRunner:
                         session_capture.write_stream_chunk(chunk)
                     except OSError as exc:
                         raise RippingRunError(
-                            "could not write session stream capture: "
-                            f"{exc}"
+                            f"could not write session stream capture: {exc}"
                         ) from exc
 
                 result = session.feed(chunk)
@@ -375,8 +364,7 @@ class RippingRunner:
                             session_capture.write_metadata_event(event)
                         except OSError as exc:
                             raise RippingRunError(
-                                "could not write session metadata capture: "
-                                f"{exc}"
+                                f"could not write session metadata capture: {exc}"
                             ) from exc
 
                     if on_metadata is not None:
@@ -399,10 +387,7 @@ class RippingRunner:
                     written = output_writer.write_transition(transition)
 
                     materialized_start = output_writer.retained_start_offset
-                    if (
-                        autonomous_state is not None
-                        and materialized_start is not None
-                    ):
+                    if autonomous_state is not None and materialized_start is not None:
                         autonomous_state.observe_materialized_segment(
                             Segment(
                                 start_offset=materialized_start,
@@ -412,7 +397,6 @@ class RippingRunner:
                                 label=transition.incoming.title,
                             )
                         )
-
 
                     retained_start_offset = output_writer.retained_start_offset
                     if retained_start_offset is not None:
@@ -434,9 +418,7 @@ class RippingRunner:
 
                         current_track = session.current_track
                         if current_track is not None:
-                            autonomous_state.observe_known_segment(
-                                current_track.as_segment()
-                            )
+                            autonomous_state.observe_known_segment(current_track.as_segment())
 
                         resolution = autonomous_promoter.promote(
                             analysis=analysis,
@@ -458,16 +440,14 @@ class RippingRunner:
                         ):
                             continue
 
-                        transition = autonomous_state.transition(
+                        segment_transition = autonomous_state.transition(
                             resolution,
                             minimum_open_seconds=_AUTONOMOUS_MIN_OPEN_SECONDS,
                         )
-                        if transition is None:
+                        if segment_transition is None:
                             continue
 
-                        written_segment = output_writer.write_segment_transition(
-                            transition
-                        )
+                        written_segment = output_writer.write_segment_transition(segment_transition)
 
                         retained_start_offset = output_writer.retained_start_offset
                         if retained_start_offset is not None:

@@ -24,13 +24,9 @@ class FadeToFloorEvidence:
     def __post_init__(self) -> None:
         if (
             self.incoming_handoff is not None
-            and self.outgoing.floor_time_seconds
-            > self.incoming_handoff.time_seconds
+            and self.outgoing.floor_time_seconds > self.incoming_handoff.time_seconds
         ):
-            raise ValueError(
-                "fade-to-floor outgoing floor must not follow "
-                "incoming handoff"
-            )
+            raise ValueError("fade-to-floor outgoing floor must not follow incoming handoff")
 
 
 class FadeToFloorDetector:
@@ -40,10 +36,7 @@ class FadeToFloorDetector:
     def _is_supported_handoff(
         hypothesis: BoundaryHypothesis,
     ) -> bool:
-        sources = {
-            proposal.source
-            for proposal in hypothesis.proposals
-        }
+        sources = {proposal.source for proposal in hypothesis.proposals}
 
         return (
             hypothesis.basin_geometry is not None
@@ -61,9 +54,7 @@ class FadeToFloorDetector:
         """Return one conservative fade-to-floor observation, or none."""
 
         supported = tuple(
-            hypothesis
-            for hypothesis in hypotheses
-            if self._is_supported_handoff(hypothesis)
+            hypothesis for hypothesis in hypotheses if self._is_supported_handoff(hypothesis)
         )
 
         observed = tuple(fade.outgoing_fades)
@@ -71,15 +62,8 @@ class FadeToFloorDetector:
         if not observed:
             return ()
 
-        deepest_rms = min(
-            outgoing.floor_rms
-            for outgoing in observed
-        )
-        deepest = tuple(
-            outgoing
-            for outgoing in observed
-            if outgoing.floor_rms == deepest_rms
-        )
+        deepest_rms = min(outgoing.floor_rms for outgoing in observed)
+        deepest = tuple(outgoing for outgoing in observed if outgoing.floor_rms == deepest_rms)
 
         # Equal acoustic floors do not establish unique outgoing authority.
         if len(deepest) != 1:

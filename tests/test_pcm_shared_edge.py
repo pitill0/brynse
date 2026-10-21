@@ -16,21 +16,19 @@ def _tone(
     seconds: float,
     amplitude: float = 0.5,
 ) -> np.ndarray:
-    time = np.arange(
-        round(seconds * SAMPLE_RATE),
-        dtype=np.float64,
-    ) / SAMPLE_RATE
-
-    return amplitude * np.sin(
-        2.0 * math.pi * frequency_hz * time
+    time = (
+        np.arange(
+            round(seconds * SAMPLE_RATE),
+            dtype=np.float64,
+        )
+        / SAMPLE_RATE
     )
+
+    return amplitude * np.sin(2.0 * math.pi * frequency_hz * time)
 
 
 def _pcm(samples: np.ndarray) -> DecodedPcm:
-    encoded = (
-        np.clip(samples, -1.0, 1.0)
-        * 32767.0
-    ).astype("<i2")
+    encoded = (np.clip(samples, -1.0, 1.0) * 32767.0).astype("<i2")
 
     return DecodedPcm(
         sample_rate=SAMPLE_RATE,

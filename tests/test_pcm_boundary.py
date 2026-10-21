@@ -17,21 +17,19 @@ def _tone(
     seconds: float,
     amplitude: float = 0.5,
 ) -> np.ndarray:
-    time = np.arange(
-        round(seconds * SAMPLE_RATE),
-        dtype=np.float64,
-    ) / SAMPLE_RATE
-
-    return amplitude * np.sin(
-        2.0 * math.pi * frequency_hz * time
+    time = (
+        np.arange(
+            round(seconds * SAMPLE_RATE),
+            dtype=np.float64,
+        )
+        / SAMPLE_RATE
     )
+
+    return amplitude * np.sin(2.0 * math.pi * frequency_hz * time)
 
 
 def _pcm(samples: np.ndarray) -> DecodedPcm:
-    encoded = (
-        np.clip(samples, -1.0, 1.0)
-        * 32767.0
-    ).astype("<i2")
+    encoded = (np.clip(samples, -1.0, 1.0) * 32767.0).astype("<i2")
 
     return DecodedPcm(
         sample_rate=SAMPLE_RATE,
@@ -58,10 +56,7 @@ def test_pcm_boundary_observe_scans_local_window() -> None:
         anchor_time_seconds=20.0,
     )
 
-    assert [
-        round(item.time_seconds, 3)
-        for item in observations
-    ] == [
+    assert [round(item.time_seconds, 3) for item in observations] == [
         19.8,
         19.9,
         20.0,
@@ -95,16 +90,9 @@ def test_pcm_boundary_observation_exposes_multihorizon_features() -> None:
         anchor_time_seconds=20.0,
     )
 
-    center = next(
-        item
-        for item in observations
-        if item.time_seconds == pytest.approx(20.0)
-    )
+    center = next(item for item in observations if item.time_seconds == pytest.approx(20.0))
 
-    assert [
-        horizon.horizon_seconds
-        for horizon in center.features.horizons
-    ] == [
+    assert [horizon.horizon_seconds for horizon in center.features.horizons] == [
         0.25,
         0.5,
         1.0,
@@ -112,9 +100,7 @@ def test_pcm_boundary_observation_exposes_multihorizon_features() -> None:
     ]
 
     one_second = next(
-        horizon
-        for horizon in center.features.horizons
-        if horizon.horizon_seconds == 1.0
+        horizon for horizon in center.features.horizons if horizon.horizon_seconds == 1.0
     )
 
     assert one_second.spectral_change > 0.5
@@ -123,14 +109,10 @@ def test_pcm_boundary_observation_exposes_multihorizon_features() -> None:
 
 def test_pcm_boundary_verifier_rejects_invalid_scan_geometry() -> None:
     with pytest.raises(ValueError):
-        PcmBoundaryVerifier(
-            scan_radius_seconds=0.0
-        )
+        PcmBoundaryVerifier(scan_radius_seconds=0.0)
 
     with pytest.raises(ValueError):
-        PcmBoundaryVerifier(
-            scan_step_seconds=0.0
-        )
+        PcmBoundaryVerifier(scan_step_seconds=0.0)
 
 
 def test_pcm_boundary_observe_many_deduplicates_overlapping_windows() -> None:
@@ -150,10 +132,7 @@ def test_pcm_boundary_observe_many_deduplicates_overlapping_windows() -> None:
         anchor_times_seconds=(20.0, 20.1),
     )
 
-    assert [
-        round(item.time_seconds, 3)
-        for item in observations
-    ] == [
+    assert [round(item.time_seconds, 3) for item in observations] == [
         19.8,
         19.9,
         20.0,

@@ -164,7 +164,6 @@ def test_materialized_segment_replaces_current_autonomous_state() -> None:
     assert state.current == materialized
 
 
-
 def test_autonomous_segment_state_rejects_boundary_before_minimum_open_duration() -> None:
     state = AutonomousSegmentState(
         current=Segment(

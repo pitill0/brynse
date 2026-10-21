@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-from brynse.models import Segment
 from brynse.integrations.radio.runner import (
     RippingRunConfig,
     RippingRunError,
@@ -12,6 +11,7 @@ from brynse.integrations.radio.runner import (
     resolve_codec,
     resolve_metaint,
 )
+from brynse.models import Segment
 from brynse.source import BinaryIOStreamSource
 
 
@@ -487,7 +487,6 @@ def test_runner_closes_spool_when_append_fails(
     assert spool.closed is True
 
 
-
 def test_runner_rejects_stale_semantic_transition_before_write(
     tmp_path: Path,
     monkeypatch,
@@ -594,6 +593,7 @@ def test_runner_rejects_stale_semantic_transition_before_write(
     result = runner.run()
 
     assert result.stopped is False
+
 
 def test_runner_does_not_discard_spool_when_track_write_fails(
     tmp_path: Path,
@@ -1175,7 +1175,7 @@ def test_runner_materializes_promoted_autonomous_segment_and_advances_spool(
             return (analysis,)
 
     class FakePromoter:
-        instances: list["FakePromoter"] = []
+        instances: list[FakePromoter] = []
 
         def __init__(self) -> None:
             self.calls: list[dict[str, object]] = []
@@ -1186,7 +1186,7 @@ def test_runner_materializes_promoted_autonomous_segment_and_advances_spool(
             return resolution
 
     class FakeAutonomousState:
-        instances: list["FakeAutonomousState"] = []
+        instances: list[FakeAutonomousState] = []
 
         def __init__(self) -> None:
             self.observed = []
@@ -1206,7 +1206,7 @@ def test_runner_materializes_promoted_autonomous_segment_and_advances_spool(
             return transition
 
     class FakeOutputWriter:
-        instances: list["FakeOutputWriter"] = []
+        instances: list[FakeOutputWriter] = []
 
         def __init__(self, **kwargs) -> None:
             self.segment_transitions = []
@@ -1215,10 +1215,7 @@ def test_runner_materializes_promoted_autonomous_segment_and_advances_spool(
             self.__class__.instances.append(self)
 
         def can_write_boundary_at(self, incoming_start: int) -> bool:
-            return (
-                self.retained_start_offset is None
-                or incoming_start > self.retained_start_offset
-            )
+            return self.retained_start_offset is None or incoming_start > self.retained_start_offset
 
         def can_write_transition(
             self,
@@ -1226,12 +1223,9 @@ def test_runner_materializes_promoted_autonomous_segment_and_advances_spool(
             outgoing_end: int,
             incoming_start: int,
         ) -> bool:
-            return (
-                self.retained_start_offset is None
-                or (
-                    outgoing_end > self.retained_start_offset
-                    and incoming_start > self.retained_start_offset
-                )
+            return self.retained_start_offset is None or (
+                outgoing_end > self.retained_start_offset
+                and incoming_start > self.retained_start_offset
             )
 
         def write_segment_transition(self, value):
@@ -1317,7 +1311,6 @@ def test_runner_ignores_promoted_autonomous_boundary_that_does_not_advance_outpu
     incoming_start: int,
 ) -> None:
     import brynse.integrations.radio.runner as runner_module
-
     from brynse.models import (
         BoundaryCandidate,
         SplitDecision,
@@ -1403,12 +1396,11 @@ def test_runner_ignores_promoted_autonomous_boundary_that_does_not_advance_outpu
             minimum_open_seconds: float = 0.0,
         ):
             raise AssertionError(
-                "stale autonomous boundary must be rejected "
-                "before segment transition construction"
+                "stale autonomous boundary must be rejected before segment transition construction"
             )
 
     class FakeOutputWriter:
-        instances: list["FakeOutputWriter"] = []
+        instances: list[FakeOutputWriter] = []
 
         def __init__(self, **kwargs) -> None:
             self.segment_writes = []
@@ -1427,21 +1419,14 @@ def test_runner_ignores_promoted_autonomous_boundary_that_does_not_advance_outpu
             outgoing_end: int,
             incoming_start: int,
         ) -> bool:
-            return (
-                outgoing_end > 5000
-                and incoming_start > 5000
-            )
+            return outgoing_end > 5000 and incoming_start > 5000
 
         def write_segment_transition(self, transition):
             self.segment_writes.append(transition)
-            raise AssertionError(
-                "stale autonomous boundary must not be materialized"
-            )
+            raise AssertionError("stale autonomous boundary must not be materialized")
 
         def write_transition(self, transition):
-            raise AssertionError(
-                "semantic transition not expected in this test"
-            )
+            raise AssertionError("semantic transition not expected in this test")
 
     monkeypatch.setattr(
         runner_module,
@@ -1589,7 +1574,7 @@ def test_runner_materializes_semantic_transition_before_autonomous_promotion(
             return resolution
 
     class FakeAutonomousState:
-        instances: list["FakeAutonomousState"] = []
+        instances: list[FakeAutonomousState] = []
 
         def __init__(self) -> None:
             self.materialized = []
@@ -1616,10 +1601,7 @@ def test_runner_materializes_semantic_transition_before_autonomous_promotion(
             self.retained_start_offset = None
 
         def can_write_boundary_at(self, incoming_start: int) -> bool:
-            return (
-                self.retained_start_offset is None
-                or incoming_start > self.retained_start_offset
-            )
+            return self.retained_start_offset is None or incoming_start > self.retained_start_offset
 
         def can_write_transition(
             self,
@@ -1627,12 +1609,9 @@ def test_runner_materializes_semantic_transition_before_autonomous_promotion(
             outgoing_end: int,
             incoming_start: int,
         ) -> bool:
-            return (
-                self.retained_start_offset is None
-                or (
-                    outgoing_end > self.retained_start_offset
-                    and incoming_start > self.retained_start_offset
-                )
+            return self.retained_start_offset is None or (
+                outgoing_end > self.retained_start_offset
+                and incoming_start > self.retained_start_offset
             )
 
         def write_transition(self, value):

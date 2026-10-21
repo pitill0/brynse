@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from brynse.integrations.radio.session import SegmentTransition
 from brynse.models import Segment
 from brynse.orchestrator import CandidateResolution
-from brynse.integrations.radio.session import SegmentTransition
 
 
 def untracked_segment_label(time_seconds: float) -> str:

@@ -22,9 +22,7 @@ def _write_session(
     session = tmp_path / "session"
     session.mkdir()
 
-    (session / "stream.icy").write_bytes(
-        b"raw-audio\x00icy-metadata"
-    )
+    (session / "stream.icy").write_bytes(b"raw-audio\x00icy-metadata")
 
     (session / "events.jsonl").write_text(
         json.dumps(
@@ -47,9 +45,7 @@ def _write_session(
                 "metadata_threshold_seconds": 8.0,
                 "transient_exclusion": True,
                 "autonomous_boundaries": False,
-                "source_url": (
-                    "https://example.test/stream"
-                ),
+                "source_url": ("https://example.test/stream"),
                 "source_metadata": {
                     "content-type": "audio/mpeg",
                     "icy-metaint": "32768",
@@ -67,48 +63,27 @@ def test_load_replay_session_restores_capture_contract(
 ) -> None:
     directory = _write_session(tmp_path)
 
-    session = load_replay_session(
-        directory
-    )
+    session = load_replay_session(directory)
 
     assert session.codec == "mp3"
     assert session.metaint == 32768
-    assert (
-        session.metadata_threshold_seconds
-        == 8.0
-    )
+    assert session.metadata_threshold_seconds == 8.0
     assert session.transient_exclusion is True
-    assert (
-        session.autonomous_boundaries
-        is False
-    )
-    assert (
-        session.source_metadata[
-            "icy-metaint"
-        ]
-        == "32768"
-    )
+    assert session.autonomous_boundaries is False
+    assert session.source_metadata["icy-metaint"] == "32768"
 
 
 def test_open_replay_source_reads_exact_captured_bytes(
     tmp_path: Path,
 ) -> None:
     directory = _write_session(tmp_path)
-    session = load_replay_session(
-        directory
-    )
+    session = load_replay_session(directory)
 
     source = open_replay_source(session)
 
     try:
-        assert (
-            source.read(64 * 1024)
-            == b"raw-audio\x00icy-metadata"
-        )
-        assert (
-            source.metadata["icy-metaint"]
-            == "32768"
-        )
+        assert source.read(64 * 1024) == b"raw-audio\x00icy-metadata"
+        assert source.metadata["icy-metaint"] == "32768"
     finally:
         source.close()
 
@@ -117,13 +92,9 @@ def test_captured_events_are_validation_oracle(
     tmp_path: Path,
 ) -> None:
     directory = _write_session(tmp_path)
-    session = load_replay_session(
-        directory
-    )
+    session = load_replay_session(directory)
 
-    assert load_captured_events(
-        session
-    ) == (
+    assert load_captured_events(session) == (
         {
             "title": "Artist - Track",
             "audio_offset": 32768,
@@ -164,10 +135,7 @@ def test_validate_replayed_events_accepts_exact_match() -> None:
 def test_validate_replayed_events_rejects_divergence() -> None:
     with pytest.raises(
         ReplaySessionError,
-        match=(
-            "replayed metadata timeline "
-            "does not match capture"
-        ),
+        match=("replayed metadata timeline does not match capture"),
     ):
         validate_replayed_events(
             captured=(
@@ -191,9 +159,7 @@ def test_replay_session_rejects_metaint_mismatch(
     tmp_path: Path,
 ) -> None:
     directory = _write_session(tmp_path)
-    manifest_path = (
-        directory / "manifest.json"
-    )
+    manifest_path = directory / "manifest.json"
 
     manifest = json.loads(
         manifest_path.read_text(
@@ -218,9 +184,7 @@ def test_replay_session_requires_complete_bundle(
     tmp_path: Path,
 ) -> None:
     directory = _write_session(tmp_path)
-    (
-        directory / "events.jsonl"
-    ).unlink()
+    (directory / "events.jsonl").unlink()
 
     with pytest.raises(
         ReplaySessionError,

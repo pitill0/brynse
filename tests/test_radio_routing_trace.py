@@ -357,23 +357,15 @@ def test_routing_trace_record_preserves_router_v2_assessments() -> None:
     record = cli._routing_trace_record(observation)
 
     assert record["fade_routing_candidate"] is fade_routing.legacy_candidate
-    assert (
-        record["fade_routing_two_sided_support"]
-        is fade_routing.has_two_sided_support
+    assert record["fade_routing_two_sided_support"] is fade_routing.has_two_sided_support
+    assert record["fade_routing_outgoing_association"] is (
+        fade_routing.outgoing_association is not None
     )
-    assert (
-        record["fade_routing_outgoing_association"]
-        is (fade_routing.outgoing_association is not None)
-    )
-    assert (
-        record["fade_routing_incoming_association"]
-        is (fade_routing.incoming_association is not None)
+    assert record["fade_routing_incoming_association"] is (
+        fade_routing.incoming_association is not None
     )
 
-    assert (
-        record["interstitial_routing_candidate"]
-        is interstitial_routing.legacy_candidate
-    )
+    assert record["interstitial_routing_candidate"] is interstitial_routing.legacy_candidate
     assert record["interstitial_routing_handoff_count"] == len(
         interstitial_routing.routing_handoffs
     )
@@ -390,9 +382,7 @@ def test_routing_trace_record_preserves_router_v2_assessments() -> None:
     )
 
     expected_ownership = (
-        None
-        if bounded_insert_routing.ownership is None
-        else bounded_insert_routing.ownership.value
+        None if bounded_insert_routing.ownership is None else bounded_insert_routing.ownership.value
     )
 
     assert record["bounded_insert_ownership"] == expected_ownership
@@ -405,13 +395,8 @@ def test_routing_trace_record_preserves_router_v2_assessments() -> None:
         is bounded_insert_routing.asymmetric_assessment.candidate
     )
 
-    assert (
-        record["hard_cut_fallback_eligible"]
-        is hard_cut_routing.fallback_eligible
-    )
-    assert record["hard_cut_supported_handoff_count"] == len(
-        hard_cut_routing.supported_handoffs
-    )
+    assert record["hard_cut_fallback_eligible"] is hard_cut_routing.fallback_eligible
+    assert record["hard_cut_supported_handoff_count"] == len(hard_cut_routing.supported_handoffs)
 
 
 def test_routing_trace_record_preserves_fade_rise_diagnostics() -> None:
@@ -485,7 +470,6 @@ def test_run_stream_writes_routing_trace(monkeypatch, tmp_path) -> None:
     assert json.loads(lines[0]) == cli._routing_trace_record(observation)
 
 
-
 def test_routing_trace_record_exposes_acoustic_island_evidence() -> None:
     from brynse.acoustic_island import AcousticIslandEvidence
 
@@ -519,9 +503,7 @@ def test_routing_trace_record_exposes_acoustic_island_evidence() -> None:
             "terminal_decay_start_seconds": outgoing.start_time_seconds,
             "terminal_decay_floor_seconds": outgoing.floor_time_seconds,
             "source_reset_start_seconds": incoming.start_time_seconds,
-            "source_reset_established_seconds": (
-                incoming.established_time_seconds
-            ),
+            "source_reset_established_seconds": (incoming.established_time_seconds),
             "observed_region_left_seconds": None,
             "observed_region_right_seconds": None,
         }

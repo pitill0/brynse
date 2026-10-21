@@ -32,18 +32,11 @@ def test_session_capture_preserves_exact_raw_stream_bytes(
 ) -> None:
     capture = _capture(tmp_path)
 
-    capture.write_stream_chunk(
-        b"audio-one\\x00metadata"
-    )
-    capture.write_stream_chunk(
-        b"audio-two"
-    )
+    capture.write_stream_chunk(b"audio-one\\x00metadata")
+    capture.write_stream_chunk(b"audio-two")
     capture.close()
 
-    assert (
-        capture.stream_path.read_bytes()
-        == b"audio-one\\x00metadataaudio-two"
-    )
+    assert capture.stream_path.read_bytes() == b"audio-one\\x00metadataaudio-two"
 
 
 def test_session_capture_records_resolved_metadata_events(
@@ -136,9 +129,7 @@ def test_radio_cli_accepts_session_capture_path() -> None:
         ]
     )
 
-    assert args.session_capture == Path(
-        "/tmp/session"
-    )
+    assert args.session_capture == Path("/tmp/session")
 
 
 def test_ripping_run_config_disables_capture_by_default(

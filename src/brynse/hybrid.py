@@ -311,11 +311,7 @@ class HybridAcousticSplitResolver:
             semantic_time_seconds=semantic_time_seconds,
         ):
             lead = semantic_time_seconds - basin.center_time_seconds
-            if not (
-                self._crossfade_incoming_min_lead
-                <= lead
-                <= self._crossfade_incoming_max_lead
-            ):
+            if not (self._crossfade_incoming_min_lead <= lead <= self._crossfade_incoming_max_lead):
                 continue
 
             eligible.append((lead, basin))
@@ -395,8 +391,7 @@ class HybridAcousticSplitResolver:
     ) -> _QuietBasin | None:
         eligible = [
             (
-                self._basin_base_score(basin)
-                * (1.0 + min(basin.width_seconds, 0.75)),
+                self._basin_base_score(basin) * (1.0 + min(basin.width_seconds, 0.75)),
                 lead,
                 basin,
             )
@@ -441,23 +436,14 @@ class HybridAcousticSplitResolver:
             self._edge_span_levels,
             len(levels) - self._persistence_span_levels,
         ):
-            before = statistics.mean(
-                rms_values[index - self._edge_span_levels : index]
-            )
-            immediate = statistics.mean(
-                rms_values[index : index + self._edge_span_levels]
-            )
-            persistent = statistics.mean(
-                rms_values[index : index + self._persistence_span_levels]
-            )
+            before = statistics.mean(rms_values[index - self._edge_span_levels : index])
+            immediate = statistics.mean(rms_values[index : index + self._edge_span_levels])
+            persistent = statistics.mean(rms_values[index : index + self._persistence_span_levels])
             if before <= 0:
                 continue
 
             rise = CrossfadeRiseEvidence(
-                time_seconds=(
-                    window.start_time_seconds
-                    + levels[index].start_time_seconds
-                ),
+                time_seconds=(window.start_time_seconds + levels[index].start_time_seconds),
                 jump_ratio=immediate / before,
                 persistence_ratio=persistent / before,
                 after_global_ratio=persistent / global_median,
@@ -481,12 +467,7 @@ class HybridAcousticSplitResolver:
             return 0.0
 
         smoothed = [
-            statistics.median(
-                rms_values[
-                    max(0, index - 1) :
-                    min(len(rms_values), index + 2)
-                ]
-            )
+            statistics.median(rms_values[max(0, index - 1) : min(len(rms_values), index + 2)])
             for index in range(len(rms_values))
         ]
 
@@ -512,10 +493,7 @@ class HybridAcousticSplitResolver:
         if len(levels) < 2:
             return ()
 
-        durations = [
-            level.end_time_seconds - level.start_time_seconds
-            for level in levels
-        ]
+        durations = [level.end_time_seconds - level.start_time_seconds for level in levels]
         level_seconds = statistics.median(durations)
         if level_seconds <= 0:
             return ()
@@ -525,18 +503,10 @@ class HybridAcousticSplitResolver:
             round(self._fade_observation_seconds / level_seconds),
         )
 
-        absolute_times = [
-            window.start_time_seconds + level.start_time_seconds
-            for level in levels
-        ]
+        absolute_times = [window.start_time_seconds + level.start_time_seconds for level in levels]
         rms_values = [level.rms for level in levels]
         smoothed = [
-            statistics.median(
-                rms_values[
-                    max(0, index - 1) :
-                    min(len(rms_values), index + 2)
-                ]
-            )
+            statistics.median(rms_values[max(0, index - 1) : min(len(rms_values), index + 2)])
             for index in range(len(rms_values))
         ]
 
@@ -556,8 +526,7 @@ class HybridAcousticSplitResolver:
             if (
                 segment_start is not None
                 and floor_index is not None
-                and floor_index - segment_start
-                >= self._edge_span_levels
+                and floor_index - segment_start >= self._edge_span_levels
             ):
                 segments.append((segment_start, floor_index))
 
@@ -574,7 +543,8 @@ class HybridAcousticSplitResolver:
                     floor_index = index
                 continue
 
-            assert floor_index is not None
+            if floor_index is None:
+                raise AssertionError("floor index is required")
 
             if current < smoothed[floor_index]:
                 floor_index = index
@@ -638,8 +608,7 @@ class HybridAcousticSplitResolver:
                 for rise in rises
                 if (
                     rise.time_seconds > floor_time
-                    and rise.time_seconds - floor_time
-                    <= self._fade_observation_seconds
+                    and rise.time_seconds - floor_time <= self._fade_observation_seconds
                 )
             ]
             rise_time = (
@@ -696,10 +665,7 @@ class HybridAcousticSplitResolver:
             incoming = min(
                 eligible,
                 key=lambda item: (
-                    abs(
-                        item.established_time_seconds
-                        - anchor_time
-                    ),
+                    abs(item.established_time_seconds - anchor_time),
                     -item.ascent_consistency,
                     -item.ascent_ratio,
                     item.start_time_seconds,
@@ -745,10 +711,7 @@ class HybridAcousticSplitResolver:
         if len(levels) < 2:
             return ()
 
-        durations = [
-            level.end_time_seconds - level.start_time_seconds
-            for level in levels
-        ]
+        durations = [level.end_time_seconds - level.start_time_seconds for level in levels]
         level_seconds = statistics.median(durations)
         if level_seconds <= 0:
             return ()
@@ -758,18 +721,10 @@ class HybridAcousticSplitResolver:
             round(self._fade_observation_seconds / level_seconds),
         )
 
-        absolute_times = [
-            window.start_time_seconds + level.start_time_seconds
-            for level in levels
-        ]
+        absolute_times = [window.start_time_seconds + level.start_time_seconds for level in levels]
         rms_values = [level.rms for level in levels]
         smoothed = [
-            statistics.median(
-                rms_values[
-                    max(0, index - 1) :
-                    min(len(rms_values), index + 2)
-                ]
-            )
+            statistics.median(rms_values[max(0, index - 1) : min(len(rms_values), index + 2)])
             for index in range(len(rms_values))
         ]
 
@@ -786,8 +741,7 @@ class HybridAcousticSplitResolver:
                 segment_start is not None
                 and peak_index is not None
                 and segment_end is not None
-                and segment_end - segment_start
-                >= self._edge_span_levels
+                and segment_end - segment_start >= self._edge_span_levels
             ):
                 segments.append(
                     (
@@ -812,7 +766,8 @@ class HybridAcousticSplitResolver:
                     segment_end = index
                 continue
 
-            assert peak_index is not None
+            if peak_index is None:
+                raise AssertionError("peak index is required")
 
             start_level = smoothed[segment_start]
 
@@ -872,12 +827,7 @@ class HybridAcousticSplitResolver:
                 len(levels),
                 established_index + self._persistence_span_levels,
             )
-            persistence_values = [
-                level.rms
-                for level in levels[
-                    established_index:persistence_end
-                ]
-            ]
+            persistence_values = [level.rms for level in levels[established_index:persistence_end]]
             if not persistence_values:
                 continue
 
@@ -889,22 +839,17 @@ class HybridAcousticSplitResolver:
                     established_time_seconds=absolute_times[established_index],
                     start_rms=start_rms,
                     established_rms=established_rms,
-                    ascent_ratio=(
-                        established_rms / max(start_rms, 1e-9)
-                    ),
+                    ascent_ratio=(established_rms / max(start_rms, 1e-9)),
                     ascent_consistency=self._ascent_consistency(
                         rms_values[
-                            start_index :
-                            min(
+                            start_index : min(
                                 raw_end_index,
                                 start_index + lookahead_levels,
                             )
                             + 1
                         ]
                     ),
-                    persistence_ratio=(
-                        persistence / max(start_rms, 1e-9)
-                    ),
+                    persistence_ratio=(persistence / max(start_rms, 1e-9)),
                 )
             )
 
@@ -923,10 +868,7 @@ class HybridAcousticSplitResolver:
                 profile=profile,
                 window=window,
             )
-            if (
-                rise.time_seconds - semantic_time_seconds
-                >= self._crossfade_min_delay
-            )
+            if (rise.time_seconds - semantic_time_seconds >= self._crossfade_min_delay)
         )
 
         if not qualifying:

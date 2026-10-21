@@ -5,6 +5,9 @@ from __future__ import annotations
 import statistics
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Protocol
+
+from brynse.models import DecodedPcm
 
 
 class BoundaryProposalSource(StrEnum):
@@ -98,10 +101,7 @@ class BoundaryHypothesis:
         for item in self.evidence:
             if item.proposal.source is not BoundaryProposalSource.BASIN:
                 continue
-            if (
-                item.basin_start_seconds is None
-                or item.basin_recovery_seconds is None
-            ):
+            if item.basin_start_seconds is None or item.basin_recovery_seconds is None:
                 continue
             return BasinGeometry(
                 start_seconds=item.basin_start_seconds,
@@ -171,14 +171,25 @@ class BoundaryReconciler:
         return tuple(hypotheses)
 
 
+class _BoundaryEvidenceDetector(Protocol):
+    """Structural contract for acoustic evidence providers."""
+
+    def detect_evidence(
+        self,
+        *,
+        pcm: DecodedPcm,
+        absolute_start_time_seconds: float = 0.0,
+    ) -> tuple[BoundaryEvidence, ...]: ...
+
+
 class AcousticBoundaryHypothesisBuilder:
     """Build reconciled acoustic hypotheses from independent detectors."""
 
     def __init__(
         self,
         *,
-        basin_detector,
-        structural_detector,
+        basin_detector: _BoundaryEvidenceDetector,
+        structural_detector: _BoundaryEvidenceDetector,
         reconciler: BoundaryReconciler | None = None,
     ) -> None:
         self._basin_detector = basin_detector
@@ -188,7 +199,7 @@ class AcousticBoundaryHypothesisBuilder:
     def build(
         self,
         *,
-        pcm,
+        pcm: DecodedPcm,
         absolute_start_time_seconds: float = 0.0,
     ) -> tuple[BoundaryHypothesis, ...]:
         evidence = (

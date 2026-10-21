@@ -99,10 +99,7 @@ class SessionOutputWriter:
         if current_start is None:
             return True
 
-        return (
-            outgoing_end > current_start
-            and incoming_start > current_start
-        )
+        return outgoing_end > current_start and incoming_start > current_start
 
     def write_segment_transition(
         self,
