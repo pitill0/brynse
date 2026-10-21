@@ -9,9 +9,24 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
-from brynse.boundaries import BoundaryConfidence, BoundaryProposalSource
+from brynse.acoustic_island import AcousticIslandEvidence
+from brynse.boundaries import (
+    BasinGeometry,
+    BoundaryConfidence,
+    BoundaryHypothesis,
+    BoundaryProposalSource,
+)
+from brynse.bounded_insert import (
+    BoundedInsertAsymmetricRegionEvidence,
+    BoundedInsertRegionEvidence,
+)
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
-from brynse.pcm_temporal_edge import PcmTemporalSearchBounds
+from brynse.pcm_temporal_edge import (
+    PcmTemporalSearchBounds,
+    PcmVerifiedTemporalEdge,
+)
+from brynse.shadow import ShadowBoundaryAnalysis
+from brynse.transition_evidence import FadeRoutingEvidence
 from brynse.transition_router import (
     BoundedInsertOwnership,
     BoundedInsertRoutingProvenance,
@@ -54,7 +69,7 @@ class TransitionSpecialistResult:
 
 def _append_pcm_handoff_times(
     times: list[float],
-    handoff,
+    handoff: BoundaryHypothesis | None,
 ) -> None:
     if handoff is None:
         return
@@ -108,7 +123,7 @@ def _append_pcm_handoff_times(
 
 def _append_pcm_fade_times(
     times: list[float],
-    fade,
+    fade: object | None,
 ) -> None:
     if fade is None:
         return
@@ -256,11 +271,11 @@ def _pcm_bounds(
 
 def _verify_owned_temporal_decision(
     *,
-    verifier,
+    verifier: Any,
     observation: TransitionSpecialistInput,
     decision: TemporalSplitDecision,
-    outgoing_extra_times=(),
-    incoming_extra_times=(),
+    outgoing_extra_times: tuple[float, ...] | list[float] = (),
+    incoming_extra_times: tuple[float, ...] | list[float] = (),
     verify_outgoing: bool = True,
     verify_incoming: bool = True,
     outgoing_ceiling_seconds: float | None = None,
@@ -292,7 +307,7 @@ def _verify_owned_temporal_decision(
         *,
         provisional: float,
         times: list[float],
-    ):
+    ) -> PcmVerifiedTemporalEdge | None:
         bounds = _pcm_bounds(times)
         kwargs = {}
 
@@ -470,7 +485,7 @@ class HardCutSpecialist:
     def __init__(
         self,
         *,
-        temporal_edge_verifier=None,
+        temporal_edge_verifier: Any = None,
     ) -> None:
         self._temporal_edge_verifier = temporal_edge_verifier
 
@@ -657,7 +672,7 @@ class HardCutSpecialist:
         *,
         selected_time_seconds: float,
         reference_time_seconds: float,
-        hypotheses,
+        hypotheses: tuple[BoundaryHypothesis, ...],
     ) -> float:
         geometries = tuple(
             (
@@ -768,9 +783,9 @@ class HardCutSpecialist:
     @staticmethod
     def _hypothesis_for_geometry(
         *,
-        geometry,
-        geometries,
-    ):
+        geometry: BasinGeometry,
+        geometries: tuple[tuple[BoundaryHypothesis, BasinGeometry], ...],
+    ) -> BoundaryHypothesis | None:
         for hypothesis, candidate in geometries:
             if candidate is geometry:
                 return hypothesis
@@ -778,7 +793,9 @@ class HardCutSpecialist:
         return None
 
     @staticmethod
-    def _proposal_sources(hypothesis):
+    def _proposal_sources(
+        hypothesis: BoundaryHypothesis | None,
+    ) -> set[BoundaryProposalSource] | None:
         proposals = getattr(
             hypothesis,
             "proposals",
@@ -794,8 +811,8 @@ class HardCutSpecialist:
     def _containing_geometry(
         *,
         time_seconds: float,
-        geometries,
-    ):
+        geometries: tuple[tuple[BoundaryHypothesis, BasinGeometry], ...],
+    ) -> BasinGeometry | None:
         containing = tuple(
             geometry
             for _, geometry in geometries
@@ -817,8 +834,8 @@ class HardCutSpecialist:
 def _refine_acoustic_island_left_edge(
     *,
     decision: TemporalSplitDecision,
-    island,
-    region,
+    island: AcousticIslandEvidence,
+    region: BoundedInsertRegionEvidence,
 ) -> TemporalSplitDecision | None:
     """Retract one owned insert left edge from acoustic-island evidence.
 
@@ -859,7 +876,7 @@ def _refine_acoustic_island_left_edge(
 
 
 def _interstitial_left_structure_precedes_basin(
-    handoff,
+    handoff: BoundaryHypothesis,
 ) -> bool:
     """Return whether structural support lies wholly before the handoff basin."""
 
@@ -914,8 +931,8 @@ class InterstitialSpecialist:
     def __init__(
         self,
         *,
-        incoming_pipeline,
-        temporal_edge_verifier=None,
+        incoming_pipeline: Any,
+        temporal_edge_verifier: Any = None,
     ) -> None:
         self._incoming_pipeline = incoming_pipeline
         self._temporal_edge_verifier = temporal_edge_verifier
@@ -942,8 +959,8 @@ class InterstitialSpecialist:
         if result.temporal is None:
             return result
 
-        outgoing_extra_times = ()
-        incoming_extra_times = ()
+        outgoing_extra_times: tuple[float, ...] = ()
+        incoming_extra_times: tuple[float, ...] = ()
 
         semantic_roles = observation.semantic_roles
 
@@ -1279,7 +1296,7 @@ class InterstitialSpecialist:
             pcm16=observation.pcm16,
         )
 
-        outgoing = self._discover_outgoing(
+        discovered_outgoing = self._discover_outgoing(
             selected_time_seconds=boundary,
             incoming_start_seconds=refined.incoming_start_seconds,
             analyses=analyses,
@@ -1290,7 +1307,7 @@ class InterstitialSpecialist:
             ),
         )
 
-        if outgoing is None:
+        if discovered_outgoing is None:
             terminal_refined = self._refine_terminal_reference_basin_fade(
                 decision=refined,
                 observation=observation,
@@ -1307,7 +1324,7 @@ class InterstitialSpecialist:
 
         final = TemporalSplitDecision(
             kind=TemporalSplitKind.EXCLUSION,
-            outgoing_end_seconds=outgoing,
+            outgoing_end_seconds=discovered_outgoing,
             incoming_start_seconds=refined.incoming_start_seconds,
         )
 
@@ -1458,7 +1475,7 @@ class InterstitialSpecialist:
         *,
         decision: TemporalSplitDecision,
         reference_time_seconds: float,
-        hypotheses,
+        hypotheses: tuple[BoundaryHypothesis, ...],
     ) -> TemporalSplitDecision | None:
         from brynse.boundaries import BoundaryProposalSource
 
@@ -1572,10 +1589,10 @@ class InterstitialSpecialist:
     def _recover_supported_exclusion(
         *,
         selected_time_seconds: float,
-        hypotheses,
-        supported_handoffs=None,
-        outgoing_handoff=None,
-        incoming_handoff=None,
+        hypotheses: tuple[BoundaryHypothesis, ...],
+        supported_handoffs: tuple[BoundaryHypothesis, ...] | None = None,
+        outgoing_handoff: BoundaryHypothesis | None = None,
+        incoming_handoff: BoundaryHypothesis | None = None,
     ) -> TemporalSplitDecision | None:
         from brynse.boundaries import BoundaryProposalSource
 
@@ -1613,9 +1630,12 @@ class InterstitialSpecialist:
             left = before[-1]
             right = after[0]
 
+        if left is None or right is None:
+            return None
+
         if supported_handoffs is None:
 
-            def supported(hypothesis) -> bool:
+            def supported(hypothesis: BoundaryHypothesis) -> bool:
                 sources = {proposal.source for proposal in hypothesis.proposals}
 
                 return (
@@ -1625,10 +1645,16 @@ class InterstitialSpecialist:
                 )
         else:
 
-            def supported(hypothesis) -> bool:
+            def supported(hypothesis: BoundaryHypothesis) -> bool:
                 return hypothesis in supported_handoffs
 
         if not supported(left) or not supported(right):
+            return None
+
+        left_geometry = left.basin_geometry
+        right_geometry = right.basin_geometry
+
+        if left_geometry is None or right_geometry is None:
             return None
 
         if left.time_seconds >= right.time_seconds:
@@ -1640,14 +1666,14 @@ class InterstitialSpecialist:
         if left_distance <= right_distance:
             outgoing = min(
                 left.time_seconds,
-                left.basin_geometry.recovery_seconds,
+                left_geometry.recovery_seconds,
             )
         else:
             outgoing = selected_time_seconds
 
         incoming = max(
             right.time_seconds,
-            right.basin_geometry.recovery_seconds,
+            right_geometry.recovery_seconds,
         )
 
         if outgoing >= incoming:
@@ -1664,8 +1690,8 @@ class InterstitialSpecialist:
         *,
         selected_time_seconds: float,
         incoming_start_seconds: float,
-        analyses,
-        outgoing_handoff=None,
+        analyses: tuple[ShadowBoundaryAnalysis, ...],
+        outgoing_handoff: BoundaryHypothesis | None = None,
     ) -> float | None:
         if outgoing_handoff is not None:
             matching = tuple(
@@ -1712,16 +1738,18 @@ class BoundedInsertSpecialist:
     def __init__(
         self,
         *,
-        temporal_edge_verifier=None,
+        temporal_edge_verifier: Any = None,
     ) -> None:
         self._temporal_edge_verifier = temporal_edge_verifier
 
     @staticmethod
-    def _proposal_sources(hypothesis):
+    def _proposal_sources(
+        hypothesis: BoundaryHypothesis,
+    ) -> set[BoundaryProposalSource]:
         return {proposal.source for proposal in hypothesis.proposals}
 
     @classmethod
-    def _is_supported_edge(cls, hypothesis) -> bool:
+    def _is_supported_edge(cls, hypothesis: BoundaryHypothesis) -> bool:
         from brynse.boundaries import BoundaryProposalSource
 
         sources = cls._proposal_sources(hypothesis)
@@ -1733,7 +1761,7 @@ class BoundedInsertSpecialist:
         )
 
     @classmethod
-    def _is_structural_only(cls, hypothesis) -> bool:
+    def _is_structural_only(cls, hypothesis: BoundaryHypothesis) -> bool:
         from brynse.boundaries import BoundaryProposalSource
 
         return cls._proposal_sources(hypothesis) == {BoundaryProposalSource.STRUCTURAL}
@@ -1741,8 +1769,8 @@ class BoundedInsertSpecialist:
     @classmethod
     def propose_structural_bridge_cut(
         cls,
-        region,
-    ):
+        region: BoundedInsertRegionEvidence,
+    ) -> TemporalSplitDecision | None:
         """Collapse one structural bridge that owns the semantic handoff."""
         interior = region.interior_hypotheses
 
@@ -1781,10 +1809,10 @@ class BoundedInsertSpecialist:
     def propose_symmetric_outer_extent(
         cls,
         *,
-        region,
-        hypotheses,
-        semantic_roles=None,
-    ):
+        region: BoundedInsertRegionEvidence,
+        hypotheses: tuple[BoundaryHypothesis, ...],
+        semantic_roles: TransitionSemanticRoles | None = None,
+    ) -> TemporalSplitDecision | None:
         """Resolve symmetric outer geometry inside already assigned roles."""
         anchor = region.left
 
@@ -1845,11 +1873,11 @@ class BoundedInsertSpecialist:
 
     @staticmethod
     def propose_symmetric_phase_aware(
-        region,
+        region: BoundedInsertRegionEvidence,
         *,
-        reference_time_seconds=None,
-        semantic_roles=None,
-    ):
+        reference_time_seconds: float | None = None,
+        semantic_roles: TransitionSemanticRoles | None = None,
+    ) -> TemporalSplitDecision | None:
         """Propose a phase-aware symmetric exclusion without applying it."""
         if reference_time_seconds is None:
             reference_time_seconds = region.reference_time_seconds
@@ -1899,7 +1927,10 @@ class BoundedInsertSpecialist:
         )
 
         if len(later_reference_basins) == 1:
-            outgoing = later_reference_basins[0].basin_recovery_seconds
+            recovery_seconds = later_reference_basins[0].basin_recovery_seconds
+
+            if recovery_seconds is not None:
+                outgoing = recovery_seconds
 
         incoming = region.right.time_seconds
 
@@ -1917,9 +1948,9 @@ class BoundedInsertSpecialist:
         cls,
         *,
         decision: TemporalSplitDecision,
-        region,
+        region: BoundedInsertRegionEvidence,
         observation: TransitionSpecialistInput,
-        semantic_roles=None,
+        semantic_roles: TransitionSemanticRoles | None = None,
     ) -> TemporalSplitDecision | None:
         """Recover a terminal outgoing fade before a symmetric insert.
 
@@ -2035,6 +2066,9 @@ class BoundedInsertSpecialist:
 
         predecessor_geometry = predecessor.basin_geometry
 
+        if predecessor_geometry is None:
+            return None
+
         if predecessor_geometry.recovery_seconds >= left_geometry.start_seconds:
             return None
 
@@ -2079,11 +2113,11 @@ class BoundedInsertSpecialist:
     def propose_asymmetric_outer_extent(
         cls,
         *,
-        asymmetric_region,
-        symmetric_regions,
-        hypotheses,
-        semantic_roles=None,
-    ):
+        asymmetric_region: BoundedInsertAsymmetricRegionEvidence,
+        symmetric_regions: tuple[BoundedInsertRegionEvidence, ...],
+        hypotheses: tuple[BoundaryHypothesis, ...],
+        semantic_roles: TransitionSemanticRoles | None = None,
+    ) -> TemporalSplitDecision | None:
         """Resolve asymmetric exterior geometry inside assigned roles."""
         anchor = asymmetric_region.primary
 
@@ -2302,9 +2336,9 @@ class BoundedInsertSpecialist:
 
         if ownership is BoundedInsertOwnership.ASYMMETRIC:
             if provenance is not None:
-                region = provenance.asymmetric_region
+                owned_asymmetric_region = provenance.asymmetric_region
 
-                if region is None:
+                if owned_asymmetric_region is None:
                     return TransitionSpecialistResult(
                         temporal=None,
                     )
@@ -2314,9 +2348,12 @@ class BoundedInsertSpecialist:
                         temporal=None,
                     )
 
-                region = asymmetric[0]
+                owned_asymmetric_region = asymmetric[0]
 
-            if semantic_roles is not None and semantic_roles.inserted_region is not region:
+            if (
+                semantic_roles is not None
+                and semantic_roles.inserted_region is not owned_asymmetric_region
+            ):
                 return TransitionSpecialistResult(
                     temporal=None,
                 )
@@ -2325,7 +2362,7 @@ class BoundedInsertSpecialist:
 
             if observation.routing.fade.rise is None:
                 proposal = self.propose_asymmetric_outer_extent(
-                    asymmetric_region=region,
+                    asymmetric_region=owned_asymmetric_region,
                     symmetric_regions=symmetric,
                     hypotheses=observation.routing.hypotheses,
                     semantic_roles=semantic_roles,
@@ -2337,7 +2374,7 @@ class BoundedInsertSpecialist:
                 )
 
             return self._resolve_asymmetric_fallback(
-                region,
+                owned_asymmetric_region,
                 fade=observation.routing.fade,
             )
 
@@ -2360,7 +2397,7 @@ class BoundedInsertSpecialist:
 
     @staticmethod
     def _resolve_symmetric_fallback(
-        region,
+        region: BoundedInsertRegionEvidence,
     ) -> TransitionSpecialistResult:
         outgoing = region.left.time_seconds
         incoming = region.right.time_seconds
@@ -2380,9 +2417,9 @@ class BoundedInsertSpecialist:
 
     @staticmethod
     def _resolve_asymmetric_fallback(
-        region,
+        region: BoundedInsertAsymmetricRegionEvidence,
         *,
-        fade=None,
+        fade: FadeRoutingEvidence | None = None,
     ) -> TransitionSpecialistResult:
         primary_geometry = region.primary_edge.basin_geometry
 
@@ -2413,7 +2450,9 @@ class BoundedInsertSpecialist:
         if len(basin_proposal_times) == 1 and structural_proposals:
             strongest_structural = max(
                 structural_proposals,
-                key=lambda proposal: proposal.strength,
+                key=lambda proposal: (
+                    proposal.strength if proposal.strength is not None else float("-inf")
+                ),
             )
             basin_time = basin_proposal_times[0]
 
@@ -2490,7 +2529,7 @@ class LegacyAmbiguousSpecialist:
     def __init__(
         self,
         *,
-        shared_edge_verifier=None,
+        shared_edge_verifier: Any = None,
     ) -> None:
         self._shared_edge_verifier = shared_edge_verifier
 
@@ -2529,11 +2568,11 @@ class RoutedTransitionResolver:
         self,
         *,
         router: TransitionRouter,
-        hard_cut,
-        fade,
-        interstitial,
-        bounded_insert,
-        ambiguous,
+        hard_cut: TransitionSpecialist,
+        fade: TransitionSpecialist,
+        interstitial: TransitionSpecialist,
+        bounded_insert: TransitionSpecialist,
+        ambiguous: TransitionSpecialist,
     ) -> None:
         self._router = router
         self._specialists = {
