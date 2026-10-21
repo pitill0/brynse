@@ -15,7 +15,10 @@ from typing import BinaryIO
 
 from brynse.acoustic import AcousticWindowExtractor, FfmpegAcousticDecoder
 from brynse.autonomous_promotion import AutonomousBoundaryPromoter
-from brynse.incoming_refinement import build_incoming_boundary_pipeline
+from brynse.incoming_refinement import (
+    IncomingObservationCallback,
+    build_incoming_boundary_pipeline,
+)
 from brynse.integrations.radio.autonomous import AutonomousSegmentState
 from brynse.integrations.radio.capture import RadioSessionCapture
 from brynse.integrations.radio.metadata import MetadataSemanticTracker
@@ -215,7 +218,7 @@ class RippingRunner:
         self,
         codec: str,
         *,
-        on_incoming_observation=None,
+        on_incoming_observation: IncomingObservationCallback | None = None,
         on_routing_observation: RoutingObservationCallback | None = None,
     ) -> BoundaryResolver:
         if codec not in {"aac", "mp3"}:
@@ -252,7 +255,7 @@ class RippingRunner:
         on_track_written: TrackCallback | None = None,
         on_segment_written: SegmentCallback | None = None,
         on_shadow_analysis: ShadowCallback | None = None,
-        on_incoming_observation=None,
+        on_incoming_observation: IncomingObservationCallback | None = None,
         on_routing_observation: RoutingObservationCallback | None = None,
     ) -> RippingRunResult:
         """Run until EOF or stop() is requested."""
@@ -437,14 +440,14 @@ class RippingRunner:
                         ):
                             continue
 
-                        transition = autonomous_state.transition(
+                        segment_transition = autonomous_state.transition(
                             resolution,
                             minimum_open_seconds=_AUTONOMOUS_MIN_OPEN_SECONDS,
                         )
-                        if transition is None:
+                        if segment_transition is None:
                             continue
 
-                        written_segment = output_writer.write_segment_transition(transition)
+                        written_segment = output_writer.write_segment_transition(segment_transition)
 
                         retained_start_offset = output_writer.retained_start_offset
                         if retained_start_offset is not None:

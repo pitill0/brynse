@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from brynse.boundaries import BoundaryHypothesis
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
+from brynse.pcm_temporal_edge import PcmTemporalEdgeVerifier
 from brynse.transition_evidence import (
     IncomingFadeEvidence,
     OutgoingFadeEvidence,
@@ -14,6 +15,7 @@ from brynse.transition_router import (
     OutgoingFadeRoutingAssociation,
 )
 from brynse.transition_specialists import (
+    TransitionSpecialistInput,
     TransitionSpecialistResult,
     _verify_owned_temporal_decision,
 )
@@ -36,14 +38,14 @@ class FadeSpecialist:
     def __init__(
         self,
         *,
-        temporal_edge_verifier=None,
+        temporal_edge_verifier: PcmTemporalEdgeVerifier | None = None,
     ) -> None:
         self._temporal_edge_verifier = temporal_edge_verifier
 
     def resolve(
-        self=None,
+        self: FadeSpecialist | None = None,
         *,
-        observation,
+        observation: TransitionSpecialistInput,
     ) -> TransitionSpecialistResult:
         """Resolve one fade transition, then verify owned edges against PCM."""
 
@@ -58,8 +60,8 @@ class FadeSpecialist:
         if result.temporal is None or verifier is None:
             return result
 
-        outgoing_extra = []
-        incoming_extra = []
+        outgoing_extra: list[float] = []
+        incoming_extra: list[float] = []
 
         diagnostics = result.diagnostics
 
@@ -136,7 +138,7 @@ class FadeSpecialist:
     def _resolve_geometry(
         cls,
         *,
-        observation,
+        observation: TransitionSpecialistInput,
     ) -> TransitionSpecialistResult:
         """Resolve one fade transition from already observed fade evidence."""
 

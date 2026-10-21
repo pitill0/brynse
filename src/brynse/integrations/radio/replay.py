@@ -25,6 +25,7 @@ from brynse.integrations.radio.runner import (
     RippingRunError,
     RippingRunner,
 )
+from brynse.orchestrator import TransitionRoutingObservation
 from brynse.source import BinaryIOStreamSource, StreamSource
 
 _SCHEMA_VERSION = 1
@@ -268,14 +269,14 @@ def validate_replayed_events(
             len(replayed),
         )
 
-    captured_item = captured[mismatch_index] if mismatch_index < len(captured) else None
-    replayed_item = replayed[mismatch_index] if mismatch_index < len(replayed) else None
+    captured_mismatch_item = captured[mismatch_index] if mismatch_index < len(captured) else None
+    replayed_mismatch_item = replayed[mismatch_index] if mismatch_index < len(replayed) else None
 
     raise ReplaySessionError(
         "replayed metadata timeline does not match capture: "
         f"index={mismatch_index} "
-        f"captured={captured_item!r} "
-        f"replayed={replayed_item!r}"
+        f"captured={captured_mismatch_item!r} "
+        f"replayed={replayed_mismatch_item!r}"
     )
 
 
@@ -335,7 +336,7 @@ def _run(args: argparse.Namespace) -> int:
                 f"could not open replay routing trace {args.routing_trace}: {exc}"
             ) from exc
 
-        def write_routing(observation) -> None:
+        def write_routing(observation: TransitionRoutingObservation) -> None:
             if routing_trace is None:
                 raise ReplaySessionError("replay routing trace is not open")
 

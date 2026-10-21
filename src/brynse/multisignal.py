@@ -21,6 +21,7 @@ from brynse.models import (
     TemporalSplitKind,
 )
 from brynse.temporal_variability import TemporalVariabilityAnalyzer
+from brynse.transition_evidence import FadeRoutingEvidence
 
 
 @dataclass(frozen=True)
@@ -297,7 +298,7 @@ class MultiSignalTemporalResolver:
         profile: Any,
         window: Any,
         semantic_time_seconds: float,
-    ):
+    ) -> FadeRoutingEvidence:
         """Return descriptive fade evidence without resolving temporal boundaries."""
         return self._hybrid.observe_fade_routing_evidence(
             profile=profile,

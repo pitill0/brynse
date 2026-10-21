@@ -225,7 +225,7 @@ class MultiSignalAcousticCandidateResolver:
         candidate_resolver: MultiSignalCandidateResolver | None = None,
         temporal_resolver: MultiSignalTemporalResolver | None = None,
         split_aligner: TemporalSplitAligner | None = None,
-        incoming_refiner=None,
+        incoming_refiner: object | None = None,
         transition_router: TransitionRouter | None = None,
         on_routing_context: Callable[[TransitionRoutingContext], None] | None = None,
         on_routing_observation: Callable[[TransitionRoutingObservation], None] | None = None,

@@ -8,6 +8,7 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from brynse.incoming_refinement import IncomingBoundaryObservation
 from brynse.integrations.radio.models import TimedMetadataEvent
 from brynse.integrations.radio.runner import (
     RippingRunConfig,
@@ -19,6 +20,9 @@ from brynse.integrations.radio.runner import (
     resolve_metaint,
 )
 from brynse.integrations.radio.session_output import WrittenSegment, WrittenTrack
+from brynse.orchestrator import TransitionRoutingObservation
+from brynse.pcm_boundary import PcmBoundaryObservation
+from brynse.shadow import ShadowBoundaryAnalysis
 from brynse.source import StreamSource
 
 
@@ -115,7 +119,9 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise CliError("--ffmpeg must not be empty")
 
 
-def _routing_trace_record(observation) -> dict[str, object]:
+def _routing_trace_record(
+    observation: TransitionRoutingObservation,
+) -> dict[str, object]:
     context = observation.context
     evidence = context.evidence
     temporal = observation.temporal
@@ -132,7 +138,7 @@ def _routing_trace_record(observation) -> dict[str, object]:
 
     pcm_boundary_scan = observation.pcm_boundary_scan
 
-    def pcm_boundary_detail(item):
+    def pcm_boundary_detail(item: PcmBoundaryObservation) -> dict[str, object]:
         return {
             "time_seconds": item.time_seconds,
             "horizons": [
@@ -498,12 +504,26 @@ def _routing_trace_record(observation) -> dict[str, object]:
                         for item in region.right_edge.evidence
                     ],
                 },
-                "left_basin_start_seconds": (region.left_geometry.start_seconds),
-                "left_basin_minimum_seconds": (region.left_geometry.minimum_seconds),
-                "left_basin_recovery_seconds": (region.left_geometry.recovery_seconds),
-                "right_basin_start_seconds": (region.right_geometry.start_seconds),
-                "right_basin_minimum_seconds": (region.right_geometry.minimum_seconds),
-                "right_basin_recovery_seconds": (region.right_geometry.recovery_seconds),
+                "left_basin_start_seconds": (
+                    None if region.left_geometry is None else region.left_geometry.start_seconds
+                ),
+                "left_basin_minimum_seconds": (
+                    None if region.left_geometry is None else region.left_geometry.minimum_seconds
+                ),
+                "left_basin_recovery_seconds": (
+                    None if region.left_geometry is None else region.left_geometry.recovery_seconds
+                ),
+                "right_basin_start_seconds": (
+                    None if region.right_geometry is None else region.right_geometry.start_seconds
+                ),
+                "right_basin_minimum_seconds": (
+                    None if region.right_geometry is None else region.right_geometry.minimum_seconds
+                ),
+                "right_basin_recovery_seconds": (
+                    None
+                    if region.right_geometry is None
+                    else region.right_geometry.recovery_seconds
+                ),
             }
             for region in context.bounded_insert_regions
         ],
@@ -552,7 +572,7 @@ def _run_stream(args: argparse.Namespace) -> int:
     def print_segment_written(written: WrittenSegment) -> None:
         print(f"autonomous written: {written.path}", flush=True)
 
-    def print_incoming(observation) -> None:
+    def print_incoming(observation: IncomingBoundaryObservation) -> None:
         selected = (
             "-"
             if observation.selected_time_seconds is None
@@ -583,7 +603,7 @@ def _run_stream(args: argparse.Namespace) -> int:
                 flush=True,
             )
 
-    def print_shadow(analysis) -> None:
+    def print_shadow(analysis: ShadowBoundaryAnalysis) -> None:
         sources = ",".join(
             sorted(proposal.source.value for proposal in analysis.hypothesis.proposals)
         )
@@ -605,7 +625,7 @@ def _run_stream(args: argparse.Namespace) -> int:
         except OSError as exc:
             raise CliError(f"could not open routing trace {args.routing_trace}: {exc}") from exc
 
-        def write_routing(observation) -> None:
+        def write_routing(observation: TransitionRoutingObservation) -> None:
             if routing_trace is None:
                 raise CliError("routing trace is not open")
             routing_trace.write(
