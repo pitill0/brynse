@@ -484,10 +484,8 @@ class DefaultTransitionRouter:
         if symmetric.candidate:
             ownership = BoundedInsertOwnership.SYMMETRIC
 
-            symmetric_regions = getattr(
-                context,
-                "bounded_insert_regions",
-                (),
+            symmetric_regions: tuple[BoundedInsertRegionEvidence, ...] = getattr(
+                context, "bounded_insert_regions", ()
             )
 
             if getattr(symmetric, "unique_region", False) and len(symmetric_regions) == 1:
@@ -496,10 +494,8 @@ class DefaultTransitionRouter:
         elif asymmetric.candidate:
             ownership = BoundedInsertOwnership.ASYMMETRIC
 
-            asymmetric_regions = getattr(
-                context,
-                "bounded_insert_asymmetric_regions",
-                (),
+            asymmetric_regions: tuple[BoundedInsertAsymmetricRegionEvidence, ...] = getattr(
+                context, "bounded_insert_asymmetric_regions", ()
             )
 
             if getattr(asymmetric, "unique_region", False) and len(asymmetric_regions) == 1:
@@ -910,15 +906,15 @@ class DefaultTransitionRouter:
         their identity defensible.  Missing exterior identity remains unknown.
         """
 
-        region = provenance.owned_region
-
-        if region is None:
+        if provenance.owned_region is None:
             return None
 
-        def proposal_sources(hypothesis):
+        def proposal_sources(
+            hypothesis: BoundaryHypothesis,
+        ) -> set[BoundaryProposalSource]:
             return {proposal.source for proposal in hypothesis.proposals}
 
-        def supported(hypothesis) -> bool:
+        def supported(hypothesis: BoundaryHypothesis) -> bool:
             sources = proposal_sources(hypothesis)
 
             return (
@@ -927,7 +923,7 @@ class DefaultTransitionRouter:
                 and hypothesis.basin_geometry is not None
             )
 
-        def structural_only(hypothesis) -> bool:
+        def structural_only(hypothesis: BoundaryHypothesis) -> bool:
             return proposal_sources(hypothesis) == {BoundaryProposalSource.STRUCTURAL}
 
         ordered = tuple(
@@ -938,13 +934,20 @@ class DefaultTransitionRouter:
         )
 
         if provenance.ownership is BoundedInsertOwnership.SYMMETRIC:
-            outgoing = None
-            incoming = region.right
+            symmetric_region = provenance.symmetric_region
+            if symmetric_region is None:
+                return None
+
+            outgoing: BoundaryHypothesis | None = None
+            incoming: BoundaryHypothesis | None = symmetric_region.right
 
             previous_supported = tuple(
                 hypothesis
                 for hypothesis in ordered
-                if (hypothesis.time_seconds < region.left.time_seconds and supported(hypothesis))
+                if (
+                    hypothesis.time_seconds < symmetric_region.left.time_seconds
+                    and supported(hypothesis)
+                )
             )
 
             predecessor = previous_supported[-1] if previous_supported else None
@@ -958,12 +961,14 @@ class DefaultTransitionRouter:
                     if (
                         predecessor.time_seconds
                         < hypothesis.time_seconds
-                        < region.left.time_seconds
+                        < symmetric_region.left.time_seconds
                     )
                 )
             )
 
-            def unique_owned_outgoing_fade(hypothesis):
+            def unique_owned_outgoing_fade(
+                hypothesis: BoundaryHypothesis,
+            ) -> OutgoingFadeEvidence | None:
                 geometry = hypothesis.basin_geometry
 
                 if geometry is None:
@@ -989,12 +994,12 @@ class DefaultTransitionRouter:
             if association is not None:
                 candidate = association.hypothesis
 
-                if candidate is region.left:
+                if candidate is symmetric_region.left:
                     outgoing = candidate
 
                     if predecessor is not None and not predecessor_intervening:
                         predecessor_fade = unique_owned_outgoing_fade(predecessor)
-                        left_fade = unique_owned_outgoing_fade(region.left)
+                        left_fade = unique_owned_outgoing_fade(symmetric_region.left)
 
                         if (
                             predecessor_fade is not None
@@ -1004,14 +1009,16 @@ class DefaultTransitionRouter:
                         ):
                             outgoing = predecessor
 
-                elif candidate.time_seconds < region.left.time_seconds and supported(candidate):
+                elif candidate.time_seconds < symmetric_region.left.time_seconds and supported(
+                    candidate
+                ):
                     intervening = tuple(
                         hypothesis
                         for hypothesis in ordered
                         if (
                             candidate.time_seconds
                             < hypothesis.time_seconds
-                            < region.left.time_seconds
+                            < symmetric_region.left.time_seconds
                         )
                     )
 
@@ -1028,18 +1035,25 @@ class DefaultTransitionRouter:
 
             return TransitionSemanticRoles(
                 outgoing_handoff=outgoing,
-                inserted_region=region,
+                inserted_region=symmetric_region,
                 incoming_handoff=incoming,
             )
 
         if provenance.ownership is BoundedInsertOwnership.ASYMMETRIC:
+            asymmetric_region = provenance.asymmetric_region
+            if asymmetric_region is None:
+                return None
+
             outgoing = None
             incoming = None
 
             previous_supported = tuple(
                 hypothesis
                 for hypothesis in ordered
-                if (hypothesis.time_seconds < region.primary.time_seconds and supported(hypothesis))
+                if (
+                    hypothesis.time_seconds < asymmetric_region.primary.time_seconds
+                    and supported(hypothesis)
+                )
             )
 
             if previous_supported:
@@ -1051,7 +1065,7 @@ class DefaultTransitionRouter:
                     if (
                         predecessor.time_seconds
                         < hypothesis.time_seconds
-                        < region.primary.time_seconds
+                        < asymmetric_region.primary.time_seconds
                     )
                 )
 
@@ -1061,7 +1075,7 @@ class DefaultTransitionRouter:
             matching_outer = tuple(
                 candidate
                 for candidate in context.bounded_insert_regions
-                if candidate.left is region.primary
+                if candidate.left is asymmetric_region.primary
             )
 
             if len(matching_outer) == 1:
@@ -1069,12 +1083,12 @@ class DefaultTransitionRouter:
 
             return TransitionSemanticRoles(
                 outgoing_handoff=outgoing,
-                inserted_region=region,
+                inserted_region=asymmetric_region,
                 incoming_handoff=incoming,
             )
 
         return TransitionSemanticRoles(
-            inserted_region=region,
+            inserted_region=provenance.owned_region,
         )
 
     @staticmethod
@@ -1135,7 +1149,9 @@ class DefaultTransitionRouter:
 
             geometries = tuple(context.fade.geometries)
 
-            def unique_supported_owner(time_seconds: float):
+            def unique_supported_owner(
+                time_seconds: float,
+            ) -> BoundaryHypothesis | None:
                 owners = tuple(
                     hypothesis
                     for hypothesis in supported
@@ -1240,7 +1256,7 @@ class DefaultTransitionRouter:
                     if len(witnesses) == 1:
                         mixed_left.append(geometry)
 
-                mixed_right_owners = []
+                mixed_right_owners: list[BoundaryHypothesis] = []
 
                 for geometry in geometries:
                     incoming_start = geometry.incoming.start_time_seconds
@@ -1281,7 +1297,7 @@ class DefaultTransitionRouter:
                     incoming_handoff=routing_handoffs[1],
                 )
 
-            outgoing = (
+            outgoing_handoff = (
                 fade.outgoing_association.hypothesis
                 if (
                     fade.outgoing_association is not None
@@ -1289,7 +1305,7 @@ class DefaultTransitionRouter:
                 )
                 else None
             )
-            incoming = (
+            incoming_handoff = (
                 fade.incoming_association.hypothesis
                 if (
                     fade.incoming_association is not None
@@ -1298,23 +1314,23 @@ class DefaultTransitionRouter:
                 else None
             )
 
-            if outgoing is not None and incoming is None:
+            if outgoing_handoff is not None and incoming_handoff is None:
                 if len(context.bounded_insert_regions) == 1:
                     region = context.bounded_insert_regions[0]
 
-                    if region.left is outgoing and region.right in supported:
+                    if region.left is outgoing_handoff and region.right in supported:
                         return TransitionSemanticRoles(
-                            outgoing_handoff=outgoing,
+                            outgoing_handoff=outgoing_handoff,
                             incoming_handoff=region.right,
                         )
 
                 return TransitionSemanticRoles(
-                    outgoing_handoff=outgoing,
+                    outgoing_handoff=outgoing_handoff,
                 )
 
-            if incoming is not None and outgoing is None:
+            if incoming_handoff is not None and outgoing_handoff is None:
                 return TransitionSemanticRoles(
-                    incoming_handoff=incoming,
+                    incoming_handoff=incoming_handoff,
                 )
 
             return None
