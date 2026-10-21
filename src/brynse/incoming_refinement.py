@@ -80,15 +80,13 @@ class IncomingBoundaryDiscovery:
                         )
                     )
                     is not None
-                    and analysis.hypothesis.time_seconds
-                    < geometry.minimum_seconds
+                    and analysis.hypothesis.time_seconds < geometry.minimum_seconds
                 )
                 else analysis.hypothesis.time_seconds
             )
             for analysis in analyses
             if (
-                analysis.assessment.candidate_confidence
-                is BoundaryConfidence.HIGH
+                analysis.assessment.candidate_confidence is BoundaryConfidence.HIGH
                 and analysis.hypothesis.time_seconds > outgoing_end_seconds
             )
         )
@@ -143,10 +141,7 @@ class IncomingBoundaryAnalyzer:
         analyses = []
 
         for hypothesis in hypotheses:
-            if (
-                outgoing_end_seconds is not None
-                and hypothesis.time_seconds <= outgoing_end_seconds
-            ):
+            if outgoing_end_seconds is not None and hypothesis.time_seconds <= outgoing_end_seconds:
                 continue
 
             sources = {proposal.source for proposal in hypothesis.proposals}

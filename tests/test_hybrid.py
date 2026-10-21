@@ -364,10 +364,7 @@ def test_hybrid_resolver_composes_fade_routing_evidence_without_boundaries() -> 
     assert evidence.rise.time_seconds == pytest.approx(431.15)
     assert evidence.basins
 
-    assert any(
-        basin.center_time_seconds == pytest.approx(426.75)
-        for basin in evidence.basins
-    )
+    assert any(basin.center_time_seconds == pytest.approx(426.75) for basin in evidence.basins)
 
     assert not hasattr(evidence, "incoming_start_seconds")
     assert not hasattr(evidence, "outgoing_end_seconds")
@@ -392,10 +389,7 @@ def test_hybrid_observes_strong_energy_rise_before_semantic_reference() -> None:
     )
 
     assert rises
-    assert any(
-        rise.time_seconds == pytest.approx(104.15)
-        for rise in rises
-    )
+    assert any(rise.time_seconds == pytest.approx(104.15) for rise in rises)
 
 
 def test_crossfade_rise_keeps_existing_post_semantic_policy() -> None:
@@ -421,19 +415,13 @@ def test_crossfade_rise_keeps_existing_post_semantic_policy() -> None:
     )
 
     assert generic
-    assert any(
-        rise.time_seconds == pytest.approx(104.15)
-        for rise in generic
-    )
+    assert any(rise.time_seconds == pytest.approx(104.15) for rise in generic)
     assert crossfade is None
 
 
 def test_hybrid_observes_outgoing_fade_before_strong_rise() -> None:
     values = [1000.0] * 200
-    values[40:100] = [
-        1200.0 - index * (1020.0 / 59)
-        for index in range(60)
-    ]
+    values[40:100] = [1200.0 - index * (1020.0 / 59) for index in range(60)]
     values[100:117] = [3600.0] * 17
 
     evidence = HybridAcousticSplitResolver().observe_outgoing_fades(
@@ -460,10 +448,7 @@ def test_hybrid_observes_outgoing_fade_before_strong_rise() -> None:
 
 def test_fade_routing_evidence_exposes_outgoing_fade_without_changing_boundaries() -> None:
     values = [1000.0] * 200
-    values[40:100] = [
-        1200.0 - index * (1020.0 / 59)
-        for index in range(60)
-    ]
+    values[40:100] = [1200.0 - index * (1020.0 / 59) for index in range(60)]
     values[100:117] = [3600.0] * 17
 
     evidence = HybridAcousticSplitResolver().observe_fade_routing_evidence(
@@ -484,10 +469,7 @@ def test_fade_routing_evidence_exposes_outgoing_fade_without_changing_boundaries
 
 def test_outgoing_fade_rejects_fluctuating_energy() -> None:
     values = [1000.0] * 200
-    values[40:100] = [
-        1200.0 if index % 2 == 0 else 300.0
-        for index in range(60)
-    ]
+    values[40:100] = [1200.0 if index % 2 == 0 else 300.0 for index in range(60)]
     values[99] = 180.0
     values[100:117] = [3600.0] * 17
 
@@ -500,18 +482,13 @@ def test_outgoing_fade_rejects_fluctuating_energy() -> None:
     )
 
     assert not any(
-        fade.start_time_seconds <= 102.0
-        and fade.floor_time_seconds >= 104.9
-        for fade in evidence
+        fade.start_time_seconds <= 102.0 and fade.floor_time_seconds >= 104.9 for fade in evidence
     )
 
 
 def test_hybrid_observes_gradual_incoming_fade() -> None:
     values = [180.0] * 200
-    values[40:100] = [
-        180.0 + index * (1020.0 / 59)
-        for index in range(60)
-    ]
+    values[40:100] = [180.0 + index * (1020.0 / 59) for index in range(60)]
     values[100:120] = [1200.0] * 20
 
     evidence = HybridAcousticSplitResolver().observe_incoming_fades(
@@ -536,10 +513,7 @@ def test_hybrid_observes_gradual_incoming_fade() -> None:
 
 def test_incoming_fade_consistency_distinguishes_fluctuating_energy() -> None:
     values = [180.0] * 200
-    values[40:100] = [
-        300.0 if index % 2 == 0 else 1200.0
-        for index in range(60)
-    ]
+    values[40:100] = [300.0 if index % 2 == 0 else 1200.0 for index in range(60)]
     values[100:120] = [1200.0] * 20
 
     evidence = HybridAcousticSplitResolver().observe_incoming_fades(
@@ -561,17 +535,11 @@ def test_incoming_fade_consistency_distinguishes_fluctuating_energy() -> None:
 def test_incoming_fade_observer_emits_distinct_ascending_regions() -> None:
     values = [180.0] * 200
 
-    values[40:60] = [
-        180.0 + index * (620.0 / 19)
-        for index in range(20)
-    ]
+    values[40:60] = [180.0 + index * (620.0 / 19) for index in range(20)]
     values[60:80] = [800.0] * 20
     values[80:100] = [180.0] * 20
 
-    values[120:140] = [
-        180.0 + index * (1020.0 / 19)
-        for index in range(20)
-    ]
+    values[120:140] = [180.0 + index * (1020.0 / 19) for index in range(20)]
     values[140:160] = [1200.0] * 20
 
     evidence = HybridAcousticSplitResolver().observe_incoming_fades(
@@ -589,10 +557,7 @@ def test_incoming_fade_observer_emits_distinct_ascending_regions() -> None:
 
 def test_fade_routing_evidence_exposes_incoming_fades_descriptively() -> None:
     values = [180.0] * 200
-    values[40:100] = [
-        180.0 + index * (1020.0 / 59)
-        for index in range(60)
-    ]
+    values[40:100] = [180.0 + index * (1020.0 / 59) for index in range(60)]
     values[100:120] = [1200.0] * 20
 
     evidence = HybridAcousticSplitResolver().observe_fade_routing_evidence(
@@ -658,10 +623,7 @@ def test_fade_geometry_reconciles_incoming_nearest_outgoing_rise() -> None:
 
 def test_fade_routing_evidence_exposes_reconciled_geometry() -> None:
     values = [1000.0] * 200
-    values[40:100] = [
-        1200.0 - index * (1020.0 / 59)
-        for index in range(60)
-    ]
+    values[40:100] = [1200.0 - index * (1020.0 / 59) for index in range(60)]
     values[100:117] = [3600.0] * 17
 
     evidence = HybridAcousticSplitResolver().observe_fade_routing_evidence(
@@ -684,13 +646,9 @@ def test_fade_routing_evidence_exposes_reconciled_geometry() -> None:
     assert not hasattr(geometry, "outgoing_end_seconds")
 
 
-
 def test_outgoing_fade_exists_without_following_rise() -> None:
     values = [1200.0] * 200
-    values[40:100] = [
-        1200.0 - index * (1020.0 / 59)
-        for index in range(60)
-    ]
+    values[40:100] = [1200.0 - index * (1020.0 / 59) for index in range(60)]
     values[100:] = [180.0] * 100
 
     evidence = HybridAcousticSplitResolver().observe_outgoing_fades(
@@ -718,10 +676,7 @@ def test_outgoing_fade_exists_without_following_rise() -> None:
 
 def test_outgoing_fade_segment_stops_before_following_jingle_rise() -> None:
     values = [1200.0] * 200
-    values[40:100] = [
-        1200.0 - index * (1020.0 / 59)
-        for index in range(60)
-    ]
+    values[40:100] = [1200.0 - index * (1020.0 / 59) for index in range(60)]
     values[100:117] = [3600.0] * 17
     values[117:] = [1400.0] * 83
 
@@ -771,10 +726,7 @@ def test_outgoing_fade_merges_internal_recoveries_into_one_region() -> None:
     relevant = [
         item
         for item in evidence
-        if (
-            item.start_time_seconds <= 102.1
-            and item.floor_time_seconds >= 105.8
-        )
+        if (item.start_time_seconds <= 102.1 and item.floor_time_seconds >= 105.8)
     ]
 
     assert len(relevant) == 1
@@ -792,10 +744,7 @@ def test_outgoing_fade_merges_internal_recoveries_into_one_region() -> None:
 def test_outgoing_fade_handles_macro_region_longer_than_observation_window() -> None:
     values = [1400.0] * 400
 
-    values[40:260] = [
-        1400.0 - index * (1200.0 / 219)
-        for index in range(220)
-    ]
+    values[40:260] = [1400.0 - index * (1200.0 / 219) for index in range(220)]
     values[260:277] = [3600.0] * 17
 
     evidence = HybridAcousticSplitResolver().observe_outgoing_fades(
@@ -817,9 +766,7 @@ def test_outgoing_fade_handles_macro_region_longer_than_observation_window() -> 
     assert fade.rise_time_seconds == pytest.approx(113.0)
 
     # Geometry is intentionally bounded by fade_observation_seconds.
-    duration = (
-        fade.floor_time_seconds - fade.start_time_seconds
-    )
+    duration = fade.floor_time_seconds - fade.start_time_seconds
     assert duration == pytest.approx(8.1)
 
     assert fade.start_time_seconds < fade.floor_time_seconds

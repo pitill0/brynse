@@ -135,10 +135,7 @@ class BoundedInsertRegionEvidence:
         if left_geometry is None or right_geometry is None:
             return None
 
-        return (
-            right_geometry.start_seconds
-            - left_geometry.recovery_seconds
-        )
+        return right_geometry.start_seconds - left_geometry.recovery_seconds
 
     @property
     def reference_inside_left_basin(self) -> bool:
@@ -148,11 +145,7 @@ class BoundedInsertRegionEvidence:
         if geometry is None:
             return False
 
-        return (
-            geometry.start_seconds
-            <= self.reference_time_seconds
-            <= geometry.recovery_seconds
-        )
+        return geometry.start_seconds <= self.reference_time_seconds <= geometry.recovery_seconds
 
     @property
     def reference_inside_right_basin(self) -> bool:
@@ -162,11 +155,7 @@ class BoundedInsertRegionEvidence:
         if geometry is None:
             return False
 
-        return (
-            geometry.start_seconds
-            <= self.reference_time_seconds
-            <= geometry.recovery_seconds
-        )
+        return geometry.start_seconds <= self.reference_time_seconds <= geometry.recovery_seconds
 
     @property
     def reference_offset_from_left_support_seconds(self) -> float:
@@ -207,11 +196,7 @@ class BoundedInsertRegionDiscovery:
         if proposals is None or geometry is None:
             return False
 
-        sources = {
-            proposal.source
-            for proposal in proposals
-            if hasattr(proposal, "source")
-        }
+        sources = {proposal.source for proposal in proposals if hasattr(proposal, "source")}
 
         return {
             BoundaryProposalSource.BASIN,
@@ -229,17 +214,11 @@ class BoundedInsertRegionDiscovery:
         right_geometry = right.basin_geometry
 
         if left_geometry is None or right_geometry is None:
-            raise AssertionError('both basin geometries are required')
+            raise AssertionError("both basin geometries are required")
 
-        between_supports = (
-            left.time_seconds
-            <= reference_time_seconds
-            <= right.time_seconds
-        )
+        between_supports = left.time_seconds <= reference_time_seconds <= right.time_seconds
         inside_left_basin = (
-            left_geometry.start_seconds
-            <= reference_time_seconds
-            <= left_geometry.recovery_seconds
+            left_geometry.start_seconds <= reference_time_seconds <= left_geometry.recovery_seconds
         )
         inside_right_basin = (
             right_geometry.start_seconds
@@ -270,10 +249,7 @@ class BoundedInsertRegionDiscovery:
         if sources == {BoundaryProposalSource.STRUCTURAL}:
             return True
 
-        return (
-            sources == {BoundaryProposalSource.BASIN}
-            and geometry is not None
-        )
+        return sources == {BoundaryProposalSource.BASIN} and geometry is not None
 
     def discover_asymmetric(
         self,
@@ -324,27 +300,14 @@ class BoundedInsertRegionDiscovery:
             interior = tuple(
                 hypothesis
                 for hypothesis in ordered
-                if (
-                    primary.time_seconds
-                    < hypothesis.time_seconds
-                    < complementary.time_seconds
-                )
+                if (primary.time_seconds < hypothesis.time_seconds < complementary.time_seconds)
             )
 
-            if any(
-                self._is_supported_edge(hypothesis)
-                for hypothesis in interior
-            ):
+            if any(self._is_supported_edge(hypothesis) for hypothesis in interior):
                 continue
 
-            primary_distance = (
-                reference_time_seconds
-                - primary.time_seconds
-            )
-            complementary_distance = (
-                complementary.time_seconds
-                - reference_time_seconds
-            )
+            primary_distance = reference_time_seconds - primary.time_seconds
+            complementary_distance = complementary.time_seconds - reference_time_seconds
 
             if complementary_distance >= primary_distance:
                 continue
@@ -378,9 +341,7 @@ class BoundedInsertRegionDiscovery:
         )
 
         supported = tuple(
-            hypothesis
-            for hypothesis in ordered
-            if self._is_supported_edge(hypothesis)
+            hypothesis for hypothesis in ordered if self._is_supported_edge(hypothesis)
         )
 
         regions = []
@@ -396,11 +357,7 @@ class BoundedInsertRegionDiscovery:
             interior = tuple(
                 hypothesis
                 for hypothesis in ordered
-                if (
-                    left.time_seconds
-                    < hypothesis.time_seconds
-                    < right.time_seconds
-                )
+                if (left.time_seconds < hypothesis.time_seconds < right.time_seconds)
             )
 
             regions.append(

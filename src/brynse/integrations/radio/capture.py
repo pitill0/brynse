@@ -35,19 +35,13 @@ class RadioSessionCapture:
         source_metadata: Mapping[str, str],
     ) -> None:
         if codec not in {"mp3", "aac"}:
-            raise ValueError(
-                f"unsupported capture codec: {codec!r}"
-            )
+            raise ValueError(f"unsupported capture codec: {codec!r}")
 
         if metaint <= 0:
-            raise ValueError(
-                "metaint must be greater than zero"
-            )
+            raise ValueError("metaint must be greater than zero")
 
         if metadata_threshold_seconds <= 0:
-            raise ValueError(
-                "metadata_threshold_seconds must be greater than zero"
-            )
+            raise ValueError("metadata_threshold_seconds must be greater than zero")
 
         self._directory = directory
         self._stream_path = directory / "stream.icy"
@@ -71,27 +65,18 @@ class RadioSessionCapture:
 
         if existing:
             raise FileExistsError(
-                "session capture already contains: "
-                + ", ".join(
-                    str(path)
-                    for path in existing
-                )
+                "session capture already contains: " + ", ".join(str(path) for path in existing)
             )
 
         manifest = {
             "schema_version": _SCHEMA_VERSION,
             "codec": codec,
             "metaint": metaint,
-            "metadata_threshold_seconds": (
-                metadata_threshold_seconds
-            ),
+            "metadata_threshold_seconds": (metadata_threshold_seconds),
             "transient_exclusion": transient_exclusion,
             "autonomous_boundaries": autonomous_boundaries,
             "source_url": source_url,
-            "source_metadata": {
-                str(key): str(value)
-                for key, value in source_metadata.items()
-            },
+            "source_metadata": {str(key): str(value) for key, value in source_metadata.items()},
         }
 
         self._manifest_path.write_text(
@@ -147,9 +132,7 @@ class RadioSessionCapture:
         """Append bytes exactly as returned by StreamSource.read()."""
 
         if self._closed:
-            raise RuntimeError(
-                "session capture is closed"
-            )
+            raise RuntimeError("session capture is closed")
 
         if not chunk:
             return
@@ -157,9 +140,7 @@ class RadioSessionCapture:
         written = self._stream.write(chunk)
 
         if written != len(chunk):
-            raise OSError(
-                "session capture did not write the complete stream chunk"
-            )
+            raise OSError("session capture did not write the complete stream chunk")
 
     def write_metadata_event(
         self,
@@ -168,18 +149,14 @@ class RadioSessionCapture:
         """Record one normal-pipeline metadata observation."""
 
         if self._closed:
-            raise RuntimeError(
-                "session capture is closed"
-            )
+            raise RuntimeError("session capture is closed")
 
         self._events.write(
             json.dumps(
                 {
                     "title": event.title,
                     "audio_offset": event.audio_offset,
-                    "audio_time_seconds": (
-                        event.audio_time_seconds
-                    ),
+                    "audio_time_seconds": (event.audio_time_seconds),
                 },
                 sort_keys=True,
             )

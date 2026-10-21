@@ -139,22 +139,14 @@ def _owned_pcm_edge_times(
     roles = observation.semantic_roles
 
     if roles is not None:
-        handoff = (
-            roles.outgoing_handoff
-            if edge == "outgoing"
-            else roles.incoming_handoff
-        )
+        handoff = roles.outgoing_handoff if edge == "outgoing" else roles.incoming_handoff
 
         _append_pcm_handoff_times(
             times,
             handoff,
         )
 
-        edge_fade = (
-            roles.outgoing_edge_fade
-            if edge == "outgoing"
-            else roles.incoming_edge_fade
-        )
+        edge_fade = roles.outgoing_edge_fade if edge == "outgoing" else roles.incoming_edge_fade
 
         _append_pcm_fade_times(
             times,
@@ -290,14 +282,10 @@ def _verify_owned_temporal_decision(
     )
 
     outgoing_times.extend(
-        float(value)
-        for value in outgoing_extra_times
-        if isinstance(value, (int, float))
+        float(value) for value in outgoing_extra_times if isinstance(value, (int, float))
     )
     incoming_times.extend(
-        float(value)
-        for value in incoming_extra_times
-        if isinstance(value, (int, float))
+        float(value) for value in incoming_extra_times if isinstance(value, (int, float))
     )
 
     def verify_edge(
@@ -399,10 +387,7 @@ def _verify_owned_temporal_decision(
     if not valid:
         return decision
 
-    if (
-        outgoing == decision.outgoing_end_seconds
-        and incoming == decision.incoming_start_seconds
-    ):
+    if outgoing == decision.outgoing_end_seconds and incoming == decision.incoming_start_seconds:
         return decision
 
     return replace(
@@ -459,10 +444,7 @@ def _recover_later_reference_basin_hard_cut(
     if geometry is None:
         return decision
 
-    sources = {
-        proposal.source
-        for proposal in region.right_edge.proposals
-    }
+    sources = {proposal.source for proposal in region.right_edge.proposals}
 
     if sources != {
         BoundaryProposalSource.BASIN,
@@ -558,9 +540,7 @@ class HardCutSpecialist:
     ) -> TransitionSpecialistResult:
         boundary = self._resolve_boundary(
             selected_time_seconds=observation.selected.time_seconds,
-            reference_time_seconds=(
-                observation.routing.reference_time_seconds
-            ),
+            reference_time_seconds=(observation.routing.reference_time_seconds),
             hypotheses=observation.routing.hypotheses,
         )
 
@@ -606,9 +586,7 @@ class HardCutSpecialist:
             return None
 
         selected_time_seconds = observation.selected.time_seconds
-        reference_time_seconds = (
-            observation.routing.reference_time_seconds
-        )
+        reference_time_seconds = observation.routing.reference_time_seconds
 
         recovery_candidates = tuple(
             (
@@ -618,13 +596,11 @@ class HardCutSpecialist:
             for hypothesis in observation.routing.hypotheses
             if (
                 hypothesis.basin_geometry is not None
-                and hypothesis.basin_geometry.recovery_seconds
-                == boundary
+                and hypothesis.basin_geometry.recovery_seconds == boundary
                 and hypothesis.basin_geometry.start_seconds
                 <= selected_time_seconds
                 <= hypothesis.basin_geometry.recovery_seconds
-                and selected_time_seconds
-                >= hypothesis.basin_geometry.minimum_seconds
+                and selected_time_seconds >= hypothesis.basin_geometry.minimum_seconds
             )
         )
 
@@ -648,8 +624,7 @@ class HardCutSpecialist:
             outgoing_fade
             for outgoing_fade in fade.outgoing_fades
             if (
-                outgoing_fade.start_time_seconds
-                < outgoing_fade.floor_time_seconds
+                outgoing_fade.start_time_seconds < outgoing_fade.floor_time_seconds
                 and geometry.minimum_seconds
                 <= outgoing_fade.floor_time_seconds
                 < geometry.recovery_seconds
@@ -699,10 +674,7 @@ class HardCutSpecialist:
         )
 
         if selected_geometry is not None:
-            if (
-                selected_time_seconds
-                >= selected_geometry.minimum_seconds
-            ):
+            if selected_time_seconds >= selected_geometry.minimum_seconds:
                 return selected_geometry.recovery_seconds
 
             selected_hypothesis = cls._hypothesis_for_geometry(
@@ -715,21 +687,16 @@ class HardCutSpecialist:
 
             if (
                 selected_sources is not None
-                and BoundaryProposalSource.STRUCTURAL
-                in selected_sources
-                and reference_time_seconds
-                >= selected_geometry.recovery_seconds
+                and BoundaryProposalSource.STRUCTURAL in selected_sources
+                and reference_time_seconds >= selected_geometry.recovery_seconds
             ):
                 return selected_geometry.recovery_seconds
 
             if (
                 selected_sources is not None
-                and BoundaryProposalSource.BASIN
-                in selected_sources
-                and BoundaryProposalSource.STRUCTURAL
-                not in selected_sources
-                and selected_time_seconds
-                < selected_geometry.minimum_seconds
+                and BoundaryProposalSource.BASIN in selected_sources
+                and BoundaryProposalSource.STRUCTURAL not in selected_sources
+                and selected_time_seconds < selected_geometry.minimum_seconds
                 and selected_geometry.start_seconds
                 <= reference_time_seconds
                 <= selected_geometry.minimum_seconds
@@ -751,10 +718,7 @@ class HardCutSpecialist:
         )
 
         if reference_geometry is not None:
-            if (
-                reference_time_seconds
-                <= reference_geometry.minimum_seconds
-            ):
+            if reference_time_seconds <= reference_geometry.minimum_seconds:
                 reference_hypothesis = cls._hypothesis_for_geometry(
                     geometry=reference_geometry,
                     geometries=geometries,
@@ -765,10 +729,8 @@ class HardCutSpecialist:
 
                 if (
                     reference_sources is not None
-                    and BoundaryProposalSource.BASIN
-                    in reference_sources
-                    and BoundaryProposalSource.STRUCTURAL
-                    not in reference_sources
+                    and BoundaryProposalSource.BASIN in reference_sources
+                    and BoundaryProposalSource.STRUCTURAL not in reference_sources
                 ):
                     return reference_time_seconds
 
@@ -780,10 +742,8 @@ class HardCutSpecialist:
             geometry
             for _, geometry in geometries
             if (
-                selected_time_seconds
-                < geometry.start_seconds
-                and geometry.recovery_seconds
-                < reference_time_seconds
+                selected_time_seconds < geometry.start_seconds
+                and geometry.recovery_seconds < reference_time_seconds
             )
         )
 
@@ -797,10 +757,7 @@ class HardCutSpecialist:
             hypothesis = min(
                 hypotheses,
                 key=lambda item: (
-                    abs(
-                        item.time_seconds
-                        - reference_time_seconds
-                    ),
+                    abs(item.time_seconds - reference_time_seconds),
                     item.time_seconds,
                 ),
             )
@@ -831,11 +788,7 @@ class HardCutSpecialist:
         if proposals is None:
             return None
 
-        return {
-            proposal.source
-            for proposal in proposals
-            if hasattr(proposal, "source")
-        }
+        return {proposal.source for proposal in proposals if hasattr(proposal, "source")}
 
     @staticmethod
     def _containing_geometry(
@@ -846,11 +799,7 @@ class HardCutSpecialist:
         containing = tuple(
             geometry
             for _, geometry in geometries
-            if (
-                geometry.start_seconds
-                <= time_seconds
-                <= geometry.recovery_seconds
-            )
+            if (geometry.start_seconds <= time_seconds <= geometry.recovery_seconds)
         )
 
         if not containing:
@@ -859,10 +808,7 @@ class HardCutSpecialist:
         return min(
             containing,
             key=lambda geometry: (
-                abs(
-                    geometry.minimum_seconds
-                    - time_seconds
-                ),
+                abs(geometry.minimum_seconds - time_seconds),
                 geometry.minimum_seconds,
             ),
         )
@@ -912,7 +858,6 @@ def _refine_acoustic_island_left_edge(
     )
 
 
-
 def _interstitial_left_structure_precedes_basin(
     handoff,
 ) -> bool:
@@ -953,12 +898,8 @@ def _interstitial_left_structure_precedes_basin(
         == "structural"
     )
 
-    return (
-        bool(structural_times)
-        and all(
-            value < geometry.start_seconds
-            for value in structural_times
-        )
+    return bool(structural_times) and all(
+        value < geometry.start_seconds for value in structural_times
     )
 
 
@@ -1018,19 +959,14 @@ class InterstitialSpecialist:
                 region is not None
                 and semantic_roles.inserted_region is region
                 and semantic_roles.outgoing_handoff is region.left
-                and semantic_roles.incoming_handoff
-                is island.incoming_handoff
+                and semantic_roles.incoming_handoff is island.incoming_handoff
             ):
-                reference = (
-                    observation.routing.reference_time_seconds
-                )
+                reference = observation.routing.reference_time_seconds
 
                 outgoing_extra_times = (reference,)
                 incoming_extra_times = (reference,)
 
-                if _interstitial_left_structure_precedes_basin(
-                    semantic_roles.outgoing_handoff
-                ):
+                if _interstitial_left_structure_precedes_basin(semantic_roles.outgoing_handoff):
                     outgoing_extra_times = (
                         reference,
                         island.incoming_handoff.time_seconds,
@@ -1052,18 +988,14 @@ class InterstitialSpecialist:
                 and island.source_reset is not None
                 and semantic_roles.inserted_region is region
                 and semantic_roles.outgoing_handoff is region.left
-                and semantic_roles.incoming_handoff
-                is island.incoming_handoff
+                and semantic_roles.incoming_handoff is island.incoming_handoff
             ):
                 semantic_outgoing = min(
                     island.terminal_decay.floor_time_seconds,
                     island.source_reset.start_time_seconds,
                 )
 
-                if (
-                    result.temporal.outgoing_end_seconds
-                    == semantic_outgoing
-                ):
+                if result.temporal.outgoing_end_seconds == semantic_outgoing:
                     outgoing_ceiling_seconds = semantic_outgoing
 
         verified = _verify_owned_temporal_decision(
@@ -1093,10 +1025,7 @@ class InterstitialSpecialist:
         semantic_roles = observation.semantic_roles
         fade_assessment = observation.fade_assessment
 
-        if (
-            semantic_roles is not None
-            and semantic_roles.acoustic_island is not None
-        ):
+        if semantic_roles is not None and semantic_roles.acoustic_island is not None:
             island = semantic_roles.acoustic_island
             region = island.observed_region
 
@@ -1104,8 +1033,7 @@ class InterstitialSpecialist:
                 region is None
                 and island.terminal_decay is not None
                 and island.source_reset is not None
-                and semantic_roles.incoming_handoff
-                is island.incoming_handoff
+                and semantic_roles.incoming_handoff is island.incoming_handoff
             ):
                 outgoing = min(
                     island.terminal_decay.floor_time_seconds,
@@ -1133,15 +1061,12 @@ class InterstitialSpecialist:
                 and island.source_reset is not None
                 and semantic_roles.inserted_region is region
                 and semantic_roles.outgoing_handoff is region.left
-                and semantic_roles.incoming_handoff
-                is island.incoming_handoff
+                and semantic_roles.incoming_handoff is island.incoming_handoff
             ):
                 initial_island = TemporalSplitDecision(
                     kind=TemporalSplitKind.EXCLUSION,
                     outgoing_end_seconds=region.left.time_seconds,
-                    incoming_start_seconds=(
-                        island.incoming_handoff.time_seconds
-                    ),
+                    incoming_start_seconds=(island.incoming_handoff.time_seconds),
                 )
 
                 refined_island = _refine_acoustic_island_left_edge(
@@ -1160,12 +1085,8 @@ class InterstitialSpecialist:
             and semantic_roles.outgoing_edge_fade is not None
             and semantic_roles.incoming_edge_fade is not None
         ):
-            outgoing = (
-                semantic_roles.outgoing_edge_fade.floor_time_seconds
-            )
-            incoming = (
-                semantic_roles.incoming_edge_fade.start_time_seconds
-            )
+            outgoing = semantic_roles.outgoing_edge_fade.floor_time_seconds
+            incoming = semantic_roles.incoming_edge_fade.start_time_seconds
 
             if incoming == outgoing:
                 kind = TemporalSplitKind.HARD_CUT
@@ -1195,10 +1116,7 @@ class InterstitialSpecialist:
             incoming_geometry = incoming_handoff.basin_geometry
 
             if incoming_geometry is not None:
-                outgoing = (
-                    semantic_roles.outgoing_edge_fade
-                    .floor_time_seconds
-                )
+                outgoing = semantic_roles.outgoing_edge_fade.floor_time_seconds
                 incoming = max(
                     incoming_handoff.time_seconds,
                     incoming_geometry.recovery_seconds,
@@ -1216,8 +1134,7 @@ class InterstitialSpecialist:
         if (
             semantic_roles is not None
             and semantic_roles.outgoing_handoff is not None
-            and semantic_roles.outgoing_handoff
-            is semantic_roles.incoming_handoff
+            and semantic_roles.outgoing_handoff is semantic_roles.incoming_handoff
             and fade_assessment is not None
             and fade_assessment.outgoing_association is not None
             and fade_assessment.incoming_association is not None
@@ -1230,12 +1147,8 @@ class InterstitialSpecialist:
                 outgoing_association.hypothesis is shared
                 and incoming_association.hypothesis is shared
             ):
-                outgoing = (
-                    outgoing_association.fade.floor_time_seconds
-                )
-                incoming = (
-                    incoming_association.fade.start_time_seconds
-                )
+                outgoing = outgoing_association.fade.floor_time_seconds
+                incoming = incoming_association.fade.start_time_seconds
 
                 if incoming == outgoing:
                     kind = TemporalSplitKind.HARD_CUT
@@ -1283,14 +1196,10 @@ class InterstitialSpecialist:
                     else None
                 ),
                 outgoing_handoff=(
-                    semantic_roles.outgoing_handoff
-                    if semantic_roles is not None
-                    else None
+                    semantic_roles.outgoing_handoff if semantic_roles is not None else None
                 ),
                 incoming_handoff=(
-                    semantic_roles.incoming_handoff
-                    if semantic_roles is not None
-                    else None
+                    semantic_roles.incoming_handoff if semantic_roles is not None else None
                 ),
             )
 
@@ -1318,16 +1227,13 @@ class InterstitialSpecialist:
             semantic_roles is not None
             and semantic_roles.outgoing_handoff is not None
             and semantic_roles.incoming_handoff is not None
-            and semantic_roles.outgoing_handoff
-            is not semantic_roles.incoming_handoff
+            and semantic_roles.outgoing_handoff is not semantic_roles.incoming_handoff
             and observation.interstitial_assessment is not None
         ):
             recovered = self._recover_supported_exclusion(
                 selected_time_seconds=boundary,
                 hypotheses=observation.routing.hypotheses,
-                supported_handoffs=(
-                    observation.interstitial_assessment.supported_handoffs
-                ),
+                supported_handoffs=(observation.interstitial_assessment.supported_handoffs),
                 outgoing_handoff=semantic_roles.outgoing_handoff,
                 incoming_handoff=semantic_roles.incoming_handoff,
             )
@@ -1342,9 +1248,7 @@ class InterstitialSpecialist:
 
         phase_refined = self._refine_dominant_incoming_basin(
             decision=refined,
-            reference_time_seconds=(
-                observation.routing.reference_time_seconds
-            ),
+            reference_time_seconds=(observation.routing.reference_time_seconds),
             hypotheses=observation.routing.hypotheses,
         )
 
@@ -1392,11 +1296,7 @@ class InterstitialSpecialist:
                 observation=observation,
             )
 
-            terminal_decision = (
-                terminal_refined
-                if terminal_refined is not None
-                else refined
-            )
+            terminal_decision = terminal_refined if terminal_refined is not None else refined
 
             return TransitionSpecialistResult(
                 temporal=self._verify_pcm_exclusion(
@@ -1460,9 +1360,7 @@ class InterstitialSpecialist:
 
             return TemporalSplitDecision(
                 kind=TemporalSplitKind.EXCLUSION,
-                outgoing_end_seconds=(
-                    matching_fades[0].floor_time_seconds
-                ),
+                outgoing_end_seconds=(matching_fades[0].floor_time_seconds),
                 incoming_start_seconds=decision.incoming_start_seconds,
             )
 
@@ -1524,14 +1422,8 @@ class InterstitialSpecialist:
             )
         )
 
-        left_peak = (
-            bool(left_strengths)
-            and max(left_strengths) == context_peak
-        )
-        right_peak = (
-            bool(right_strengths)
-            and max(right_strengths) == context_peak
-        )
+        left_peak = bool(left_strengths) and max(left_strengths) == context_peak
+        right_peak = bool(right_strengths) and max(right_strengths) == context_peak
 
         if not left_peak or right_peak:
             return None
@@ -1597,10 +1489,7 @@ class InterstitialSpecialist:
             if geometry is None:
                 continue
 
-            if (
-                geometry.recovery_seconds
-                != decision.incoming_start_seconds
-            ):
+            if geometry.recovery_seconds != decision.incoming_start_seconds:
                 continue
 
             strengths = tuple(
@@ -1611,8 +1500,7 @@ class InterstitialSpecialist:
                     (),
                 )
                 if (
-                    proposal.source
-                    is BoundaryProposalSource.STRUCTURAL
+                    proposal.source is BoundaryProposalSource.STRUCTURAL
                     and proposal.strength is not None
                 )
             )
@@ -1642,25 +1530,17 @@ class InterstitialSpecialist:
                 "proposals",
                 (),
             )
-            if (
-                proposal.source
-                is BoundaryProposalSource.BASIN
-            )
+            if (proposal.source is BoundaryProposalSource.BASIN)
         )
 
         if len(basin_proposal_times) != 1:
             return None
 
-        if (
-            reference_time_seconds
-            < basin_proposal_times[0]
-        ):
+        if reference_time_seconds < basin_proposal_times[0]:
             return None
 
         if not (
-            decision.outgoing_end_seconds
-            < geometry.start_seconds
-            < decision.incoming_start_seconds
+            decision.outgoing_end_seconds < geometry.start_seconds < decision.incoming_start_seconds
         ):
             return None
 
@@ -1672,8 +1552,7 @@ class InterstitialSpecialist:
                 (),
             )
             if (
-                proposal.source
-                is BoundaryProposalSource.STRUCTURAL
+                proposal.source is BoundaryProposalSource.STRUCTURAL
                 and proposal.strength == context_peak
             )
         )
@@ -1735,11 +1614,9 @@ class InterstitialSpecialist:
             right = after[0]
 
         if supported_handoffs is None:
+
             def supported(hypothesis) -> bool:
-                sources = {
-                    proposal.source
-                    for proposal in hypothesis.proposals
-                }
+                sources = {proposal.source for proposal in hypothesis.proposals}
 
                 return (
                     hypothesis.basin_geometry is not None
@@ -1747,6 +1624,7 @@ class InterstitialSpecialist:
                     and BoundaryProposalSource.STRUCTURAL in sources
                 )
         else:
+
             def supported(hypothesis) -> bool:
                 return hypothesis in supported_handoffs
 
@@ -1756,14 +1634,8 @@ class InterstitialSpecialist:
         if left.time_seconds >= right.time_seconds:
             return None
 
-        left_distance = (
-            selected_time_seconds
-            - left.time_seconds
-        )
-        right_distance = (
-            right.time_seconds
-            - selected_time_seconds
-        )
+        left_distance = selected_time_seconds - left.time_seconds
+        right_distance = right.time_seconds - selected_time_seconds
 
         if left_distance <= right_distance:
             outgoing = min(
@@ -1797,9 +1669,7 @@ class InterstitialSpecialist:
     ) -> float | None:
         if outgoing_handoff is not None:
             matching = tuple(
-                analysis
-                for analysis in analyses
-                if analysis.hypothesis is outgoing_handoff
+                analysis for analysis in analyses if analysis.hypothesis is outgoing_handoff
             )
 
             if len(matching) != 1:
@@ -1807,10 +1677,7 @@ class InterstitialSpecialist:
 
             analysis = matching[0]
 
-            if (
-                analysis.assessment.candidate_confidence
-                is not BoundaryConfidence.HIGH
-            ):
+            if analysis.assessment.candidate_confidence is not BoundaryConfidence.HIGH:
                 return None
 
             if analysis.hypothesis.time_seconds >= incoming_start_seconds:
@@ -1822,10 +1689,8 @@ class InterstitialSpecialist:
             analysis.hypothesis.time_seconds
             for analysis in analyses
             if (
-                analysis.assessment.candidate_confidence
-                is BoundaryConfidence.HIGH
-                and analysis.hypothesis.time_seconds
-                < incoming_start_seconds
+                analysis.assessment.candidate_confidence is BoundaryConfidence.HIGH
+                and analysis.hypothesis.time_seconds < incoming_start_seconds
             )
         )
 
@@ -1853,10 +1718,7 @@ class BoundedInsertSpecialist:
 
     @staticmethod
     def _proposal_sources(hypothesis):
-        return {
-            proposal.source
-            for proposal in hypothesis.proposals
-        }
+        return {proposal.source for proposal in hypothesis.proposals}
 
     @classmethod
     def _is_supported_edge(cls, hypothesis) -> bool:
@@ -1874,9 +1736,7 @@ class BoundedInsertSpecialist:
     def _is_structural_only(cls, hypothesis) -> bool:
         from brynse.boundaries import BoundaryProposalSource
 
-        return cls._proposal_sources(hypothesis) == {
-            BoundaryProposalSource.STRUCTURAL
-        }
+        return cls._proposal_sources(hypothesis) == {BoundaryProposalSource.STRUCTURAL}
 
     @classmethod
     def propose_structural_bridge_cut(
@@ -1901,10 +1761,7 @@ class BoundedInsertSpecialist:
                 region.right,
             ),
             key=lambda hypothesis: (
-                abs(
-                    hypothesis.time_seconds
-                    - region.reference_time_seconds
-                ),
+                abs(hypothesis.time_seconds - region.reference_time_seconds),
                 hypothesis.time_seconds,
             ),
         )
@@ -1965,20 +1822,13 @@ class BoundedInsertSpecialist:
         interior = tuple(
             hypothesis
             for hypothesis in hypotheses
-            if (
-                predecessor.time_seconds
-                < hypothesis.time_seconds
-                < anchor.time_seconds
-            )
+            if (predecessor.time_seconds < hypothesis.time_seconds < anchor.time_seconds)
         )
 
         if not interior:
             return None
 
-        if not all(
-            cls._is_structural_only(hypothesis)
-            for hypothesis in interior
-        ):
+        if not all(cls._is_structural_only(hypothesis) for hypothesis in interior):
             return None
 
         outgoing = predecessor.time_seconds
@@ -2041,8 +1891,7 @@ class BoundedInsertSpecialist:
             if (
                 evidence.basin_start_seconds is not None
                 and evidence.basin_recovery_seconds is not None
-                and evidence.proposal.time_seconds
-                > region.left.time_seconds
+                and evidence.proposal.time_seconds > region.left.time_seconds
                 and evidence.basin_start_seconds
                 <= reference_time_seconds
                 <= evidence.basin_recovery_seconds
@@ -2050,10 +1899,7 @@ class BoundedInsertSpecialist:
         )
 
         if len(later_reference_basins) == 1:
-            outgoing = (
-                later_reference_basins[0]
-                .basin_recovery_seconds
-            )
+            outgoing = later_reference_basins[0].basin_recovery_seconds
 
         incoming = region.right.time_seconds
 
@@ -2099,15 +1945,10 @@ class BoundedInsertSpecialist:
         if len(region.interior_hypotheses) != 1:
             return None
 
-        if not cls._is_structural_only(
-            region.interior_hypotheses[0]
-        ):
+        if not cls._is_structural_only(region.interior_hypotheses[0]):
             return None
 
-        if (
-            region.reference_inside_left_basin
-            or region.reference_inside_right_basin
-        ):
+        if region.reference_inside_left_basin or region.reference_inside_right_basin:
             return None
 
         if not (
@@ -2122,10 +1963,7 @@ class BoundedInsertSpecialist:
         if left_geometry is None:
             return None
 
-        if (
-            decision.outgoing_end_seconds
-            != left_geometry.recovery_seconds
-        ):
+        if decision.outgoing_end_seconds != left_geometry.recovery_seconds:
             return None
 
         structural_strengths = tuple(
@@ -2133,8 +1971,7 @@ class BoundedInsertSpecialist:
             for hypothesis in observation.routing.hypotheses
             for proposal in hypothesis.proposals
             if (
-                proposal.source
-                is BoundaryProposalSource.STRUCTURAL
+                proposal.source is BoundaryProposalSource.STRUCTURAL
                 and proposal.strength is not None
             )
         )
@@ -2148,8 +1985,7 @@ class BoundedInsertSpecialist:
             proposal.strength
             for proposal in region.left_edge.proposals
             if (
-                proposal.source
-                is BoundaryProposalSource.STRUCTURAL
+                proposal.source is BoundaryProposalSource.STRUCTURAL
                 and proposal.strength is not None
             )
         )
@@ -2157,20 +1993,13 @@ class BoundedInsertSpecialist:
             proposal.strength
             for proposal in region.right_edge.proposals
             if (
-                proposal.source
-                is BoundaryProposalSource.STRUCTURAL
+                proposal.source is BoundaryProposalSource.STRUCTURAL
                 and proposal.strength is not None
             )
         )
 
-        left_peak = (
-            bool(left_strengths)
-            and max(left_strengths) == context_peak
-        )
-        right_peak = (
-            bool(right_strengths)
-            and max(right_strengths) == context_peak
-        )
+        left_peak = bool(left_strengths) and max(left_strengths) == context_peak
+        right_peak = bool(right_strengths) and max(right_strengths) == context_peak
 
         if left_peak or right_peak:
             return None
@@ -2206,10 +2035,7 @@ class BoundedInsertSpecialist:
 
         predecessor_geometry = predecessor.basin_geometry
 
-        if (
-            predecessor_geometry.recovery_seconds
-            >= left_geometry.start_seconds
-        ):
+        if predecessor_geometry.recovery_seconds >= left_geometry.start_seconds:
             return None
 
         matching_fades = tuple(
@@ -2312,17 +2138,10 @@ class BoundedInsertSpecialist:
         interior = tuple(
             hypothesis
             for hypothesis in ordered
-            if (
-                predecessor.time_seconds
-                < hypothesis.time_seconds
-                < anchor.time_seconds
-            )
+            if (predecessor.time_seconds < hypothesis.time_seconds < anchor.time_seconds)
         )
 
-        if not all(
-            cls._is_structural_only(hypothesis)
-            for hypothesis in interior
-        ):
+        if not all(cls._is_structural_only(hypothesis) for hypothesis in interior):
             return None
 
         outgoing = predecessor.time_seconds
@@ -2352,27 +2171,18 @@ class BoundedInsertSpecialist:
         outgoing_ceiling_seconds = None
         semantic_roles = observation.semantic_roles
 
-        inserted_region = (
-            None
-            if semantic_roles is None
-            else semantic_roles.inserted_region
-        )
+        inserted_region = None if semantic_roles is None else semantic_roles.inserted_region
         inserted_region_left = (
-            None
-            if inserted_region is None
-            else getattr(inserted_region, "left", None)
+            None if inserted_region is None else getattr(inserted_region, "left", None)
         )
 
         if (
             semantic_roles is not None
             and semantic_roles.outgoing_handoff is not None
             and inserted_region_left is not None
-            and semantic_roles.outgoing_handoff
-            is inserted_region_left
+            and semantic_roles.outgoing_handoff is inserted_region_left
         ):
-            outgoing_ceiling_seconds = (
-                semantic_roles.outgoing_handoff.time_seconds
-            )
+            outgoing_ceiling_seconds = semantic_roles.outgoing_handoff.time_seconds
 
         verified = _verify_owned_temporal_decision(
             verifier=self._temporal_edge_verifier,
@@ -2396,9 +2206,7 @@ class BoundedInsertSpecialist:
     ) -> TransitionSpecialistResult:
         """Resolve the complete bounded-insert provisional geometry."""
         symmetric = observation.routing.bounded_insert_regions
-        asymmetric = (
-            observation.routing.bounded_insert_asymmetric_regions
-        )
+        asymmetric = observation.routing.bounded_insert_asymmetric_regions
         ownership = observation.bounded_insert_ownership
         provenance = observation.bounded_insert_assessment
         semantic_roles = observation.semantic_roles
@@ -2422,10 +2230,7 @@ class BoundedInsertSpecialist:
 
                 region = symmetric[0]
 
-            if (
-                semantic_roles is not None
-                and semantic_roles.inserted_region is not region
-            ):
+            if semantic_roles is not None and semantic_roles.inserted_region is not region:
                 return TransitionSpecialistResult(
                     temporal=None,
                 )
@@ -2470,33 +2275,23 @@ class BoundedInsertSpecialist:
 
             proposal = self.propose_symmetric_phase_aware(
                 region,
-                reference_time_seconds=(
-                    observation.routing.reference_time_seconds
-                ),
+                reference_time_seconds=(observation.routing.reference_time_seconds),
                 semantic_roles=semantic_roles,
             )
 
             if proposal is not None:
-                terminal_refined = (
-                    self._refine_symmetric_predecessor_terminal_fade(
-                        decision=proposal,
-                        region=region,
-                        observation=observation,
-                        semantic_roles=semantic_roles,
-                    )
+                terminal_refined = self._refine_symmetric_predecessor_terminal_fade(
+                    decision=proposal,
+                    region=region,
+                    observation=observation,
+                    semantic_roles=semantic_roles,
                 )
 
-                resolved = (
-                    terminal_refined
-                    if terminal_refined is not None
-                    else proposal
-                )
+                resolved = terminal_refined if terminal_refined is not None else proposal
 
                 return finalize_symmetric(resolved)
 
-            fallback = self._resolve_symmetric_fallback(
-                region
-            )
+            fallback = self._resolve_symmetric_fallback(region)
 
             if fallback.temporal is None:
                 return fallback
@@ -2521,10 +2316,7 @@ class BoundedInsertSpecialist:
 
                 region = asymmetric[0]
 
-            if (
-                semantic_roles is not None
-                and semantic_roles.inserted_region is not region
-            ):
+            if semantic_roles is not None and semantic_roles.inserted_region is not region:
                 return TransitionSpecialistResult(
                     temporal=None,
                 )
@@ -2552,9 +2344,7 @@ class BoundedInsertSpecialist:
         # Compatibility path for direct specialist use without
         # Router provenance.  Preserve the pre-Phase-2 behavior.
         if len(symmetric) == 1:
-            return self._resolve_symmetric_fallback(
-                symmetric[0]
-            )
+            return self._resolve_symmetric_fallback(symmetric[0])
 
         if symmetric:
             return TransitionSpecialistResult(
@@ -2566,9 +2356,7 @@ class BoundedInsertSpecialist:
                 temporal=None,
             )
 
-        return self._resolve_asymmetric_fallback(
-            asymmetric[0]
-        )
+        return self._resolve_asymmetric_fallback(asymmetric[0])
 
     @staticmethod
     def _resolve_symmetric_fallback(
@@ -2617,16 +2405,12 @@ class BoundedInsertSpecialist:
             proposal
             for proposal in region.primary.proposals
             if (
-                proposal.source
-                is BoundaryProposalSource.STRUCTURAL
+                proposal.source is BoundaryProposalSource.STRUCTURAL
                 and proposal.strength is not None
             )
         )
 
-        if (
-            len(basin_proposal_times) == 1
-            and structural_proposals
-        ):
+        if len(basin_proposal_times) == 1 and structural_proposals:
             strongest_structural = max(
                 structural_proposals,
                 key=lambda proposal: proposal.strength,
@@ -2652,11 +2436,7 @@ class BoundedInsertSpecialist:
         # remains unchanged, and direct/legacy specialist use
         # receives fade=None and therefore preserves its existing
         # fallback behavior.
-        if (
-            fade is not None
-            and fade.rise is None
-            and len(structural_proposals) == 1
-        ):
+        if fade is not None and fade.rise is None and len(structural_proposals) == 1:
             structural = structural_proposals[0]
 
             if structural.time_seconds < primary_geometry.start_seconds:
@@ -2672,9 +2452,7 @@ class BoundedInsertSpecialist:
                 if incoming_phase_reaches_basin:
                     outgoing = structural.time_seconds
 
-        complementary_geometry = (
-            region.complementary_edge.basin_geometry
-        )
+        complementary_geometry = region.complementary_edge.basin_geometry
 
         incoming = (
             region.complementary.time_seconds
@@ -2727,9 +2505,7 @@ class LegacyAmbiguousSpecialist:
         if self._shared_edge_verifier is not None:
             verified = self._shared_edge_verifier.verify(
                 pcm=observation.pcm16,
-                absolute_start_time_seconds=(
-                    observation.window.start_time_seconds
-                ),
+                absolute_start_time_seconds=(observation.window.start_time_seconds),
                 provisional_time_seconds=boundary,
             )
 
@@ -2805,9 +2581,7 @@ class RoutedTransitionResolver:
             )
 
             if not isinstance(route, TransitionRoute):
-                raise TypeError(
-                    "transition router route() must return TransitionRoute"
-                )
+                raise TypeError("transition router route() must return TransitionRoute")
 
             kind = route.kind
             bounded_insert_ownership = route.bounded_insert_ownership
@@ -2841,38 +2615,26 @@ class RoutedTransitionResolver:
                         context=observation.routing,
                     )
 
-        if (
-            kind is TransitionKind.BOUNDED_INSERT
-            and bounded_insert_ownership is not None
-        ):
+        if kind is TransitionKind.BOUNDED_INSERT and bounded_insert_ownership is not None:
             routed_observation = replace(
                 observation,
                 bounded_insert_ownership=bounded_insert_ownership,
                 bounded_insert_assessment=bounded_insert_assessment,
             )
 
-        if (
-            kind is TransitionKind.HARD_CUT
-            and hard_cut_assessment is not None
-        ):
+        if kind is TransitionKind.HARD_CUT and hard_cut_assessment is not None:
             routed_observation = replace(
                 routed_observation,
                 hard_cut_assessment=hard_cut_assessment,
             )
 
-        if (
-            kind is TransitionKind.FADE
-            and fade_assessment is not None
-        ):
+        if kind is TransitionKind.FADE and fade_assessment is not None:
             routed_observation = replace(
                 routed_observation,
                 fade_assessment=fade_assessment,
             )
 
-        if (
-            kind is TransitionKind.INTERSTITIAL
-            and interstitial_assessment is not None
-        ):
+        if kind is TransitionKind.INTERSTITIAL and interstitial_assessment is not None:
             routed_observation = replace(
                 routed_observation,
                 interstitial_assessment=interstitial_assessment,

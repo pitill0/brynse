@@ -110,7 +110,6 @@ def test_transition_routing_context_carries_no_resolved_boundary() -> None:
     assert not hasattr(context, "outgoing_end_seconds")
 
 
-
 def test_transition_route_carries_ownership_without_temporal_boundary() -> None:
     route = TransitionRoute(
         kind=TransitionKind.BOUNDED_INSERT,
@@ -118,10 +117,7 @@ def test_transition_route_carries_ownership_without_temporal_boundary() -> None:
     )
 
     assert route.kind is TransitionKind.BOUNDED_INSERT
-    assert (
-        route.bounded_insert_ownership
-        is BoundedInsertOwnership.ASYMMETRIC
-    )
+    assert route.bounded_insert_ownership is BoundedInsertOwnership.ASYMMETRIC
     assert not hasattr(route, "incoming_start_seconds")
     assert not hasattr(route, "outgoing_end_seconds")
 
@@ -197,10 +193,7 @@ def test_default_transition_router_classify_matches_route_kind() -> None:
     route = router.route(context=context)
 
     assert route.kind is TransitionKind.BOUNDED_INSERT
-    assert (
-        route.bounded_insert_ownership
-        is BoundedInsertOwnership.ASYMMETRIC
-    )
+    assert route.bounded_insert_ownership is BoundedInsertOwnership.ASYMMETRIC
     assert route.fade_assessment is not None
     assert route.fade_assessment.legacy_candidate is False
     assert router.classify(context=context) is route.kind
@@ -1406,7 +1399,6 @@ def test_default_transition_router_prefers_interstitial_when_fade_lacks_two_side
     assert result is TransitionKind.INTERSTITIAL
 
 
-
 def test_fade_interstitial_conflict_prefers_two_sided_fade_owner() -> None:
     from brynse.transition_evidence import (
         IncomingFadeEvidence,
@@ -1607,6 +1599,7 @@ def test_fade_interstitial_conflict_prefers_interstitial_without_complete_fade_o
         )
         is TransitionKind.INTERSTITIAL
     )
+
 
 def test_default_transition_router_keeps_unresolved_context_ambiguous() -> None:
     from brynse.transition_router import DefaultTransitionRouter
@@ -2238,9 +2231,12 @@ def test_transition_router_does_not_absorb_fade_without_right_edge_geometry() ->
     router = DefaultTransitionRouter()
 
     assert region.right_geometry is None
-    assert router._has_interstitial_absorbed_right_edge_fade(
-        context=context,
-    ) is False
+    assert (
+        router._has_interstitial_absorbed_right_edge_fade(
+            context=context,
+        )
+        is False
+    )
 
 
 def test_bounded_insert_shadow_accepts_unique_non_dominant_region() -> None:
@@ -2900,10 +2896,7 @@ def test_live_asymmetric_failures_receive_router_ownership(
     assert assessment.unique_region is True
     assert assessment.primary_is_context_structural_peak is True
 
-    assert (
-        router.classify(context=context)
-        is TransitionKind.BOUNDED_INSERT
-    )
+    assert router.classify(context=context) is TransitionKind.BOUNDED_INSERT
 
 
 def test_bounded_insert_roles_preserve_symmetric_region_and_outer_edges() -> None:
@@ -3367,10 +3360,7 @@ def test_bounded_insert_routing_provenance_preserves_symmetric_region() -> None:
     assert route.kind is TransitionKind.BOUNDED_INSERT
     assert route.bounded_insert is not None
     assert route.bounded_insert is not provenance
-    assert (
-        route.bounded_insert.ownership
-        is BoundedInsertOwnership.SYMMETRIC
-    )
+    assert route.bounded_insert.ownership is BoundedInsertOwnership.SYMMETRIC
     assert route.bounded_insert.symmetric_region is region
 
 
@@ -3539,8 +3529,6 @@ def test_phase3_symmetric_bounded_insert_rejects_reference_after_right_support()
     assert assessment.right_is_context_structural_peak is False
 
 
-
-
 def test_phase4_symmetric_accepts_single_structural_interior_before_dominant_right_edge() -> None:
     left = _bounded_insert_edge(
         100.0,
@@ -3589,14 +3577,12 @@ def test_phase4_symmetric_accepts_single_structural_interior_before_dominant_rig
     assert assessment.left_is_context_structural_peak is False
     assert assessment.right_is_context_structural_peak is True
     assert assessment.structural_only_interior_count == 1
-    assert (
-        router.classify(context=context)
-        is TransitionKind.BOUNDED_INSERT
-    )
+    assert router.classify(context=context) is TransitionKind.BOUNDED_INSERT
 
 
-def test_phase4_symmetric_rejects_multiple_structural_interiors_before_dominant_right_edge(
-) -> None:
+def test_phase4_symmetric_rejects_multiple_structural_interiors_before_dominant_right_edge() -> (
+    None
+):
     left = _bounded_insert_edge(
         100.0,
         basin_start_seconds=99.5,
@@ -3659,11 +3645,7 @@ def test_phase4_symmetric_rejects_multiple_structural_interiors_before_dominant_
     assert assessment.left_is_context_structural_peak is False
     assert assessment.right_is_context_structural_peak is True
     assert assessment.structural_only_interior_count == 2
-    assert (
-        router.classify(context=context)
-        is not TransitionKind.BOUNDED_INSERT
-    )
-
+    assert router.classify(context=context) is not TransitionKind.BOUNDED_INSERT
 
 
 def test_phase4_symmetric_rejects_mixed_interior_families() -> None:
@@ -3801,7 +3783,6 @@ def test_phase4_symmetric_accepts_structural_only_interior() -> None:
     assert result.candidate is True
 
 
-
 def test_interstitial_roles_use_bracketing_reconciled_edge_geometry() -> None:
     from types import SimpleNamespace
 
@@ -3880,7 +3861,6 @@ def test_interstitial_roles_use_bracketing_reconciled_edge_geometry() -> None:
     assert roles.incoming_handoff is later_handoff
     assert roles.outgoing_edge_fade is left_outgoing
     assert roles.incoming_edge_fade is right_incoming
-
 
 
 def test_interstitial_roles_reject_unowned_bracketing_fade_geometry() -> None:
@@ -3967,7 +3947,6 @@ def test_interstitial_roles_reject_unowned_bracketing_fade_geometry() -> None:
     assert roles.incoming_edge_fade is None
 
 
-
 def test_interstitial_roles_use_unique_region_bracketing_reference() -> None:
     from brynse.bounded_insert import BoundedInsertRegionEvidence
     from brynse.transition_evidence import TransitionEvidenceState
@@ -4033,7 +4012,6 @@ def test_interstitial_roles_use_unique_region_bracketing_reference() -> None:
     assert roles.inserted_region is region
 
 
-
 def test_interstitial_roles_reject_region_after_reference() -> None:
     from brynse.bounded_insert import BoundedInsertRegionEvidence
     from brynse.transition_evidence import TransitionEvidenceState
@@ -4085,7 +4063,6 @@ def test_interstitial_roles_reject_region_after_reference() -> None:
     )
 
     assert roles is None
-
 
 
 def test_interstitial_roles_use_mixed_completed_fade_and_handoff() -> None:
@@ -4197,7 +4174,6 @@ def test_interstitial_roles_use_mixed_completed_fade_and_handoff() -> None:
     assert roles.incoming_handoff is incoming_handoff
 
 
-
 def test_interstitial_mixed_topology_yields_to_observed_region() -> None:
     from types import SimpleNamespace
 
@@ -4297,7 +4273,6 @@ def test_interstitial_mixed_topology_yields_to_observed_region() -> None:
 
     assert roles is not None
     assert roles.outgoing_edge_fade is None
-
 
 
 def test_transition_routing_context_preserves_acoustic_island_evidence() -> None:

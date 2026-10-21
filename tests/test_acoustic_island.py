@@ -74,9 +74,9 @@ def _incoming(*, start: float, established: float, ascent_ratio: float, persiste
 def test_evidence_never_exposes_temporal_decision_fields() -> None:
     right = _supported_handoff(time_seconds=110.0, basin_start=109.5, basin_recovery=110.5)
     evidence = AcousticIslandEvidence(incoming_handoff=right, observed_region=SimpleNamespace())
-    assert not hasattr(evidence, 'outgoing_end_seconds')
-    assert not hasattr(evidence, 'incoming_start_seconds')
-    assert not hasattr(evidence, 'kind')
+    assert not hasattr(evidence, "outgoing_end_seconds")
+    assert not hasattr(evidence, "incoming_start_seconds")
+    assert not hasattr(evidence, "kind")
 
 
 def test_evidence_requires_region_or_complete_reset_pair() -> None:
@@ -208,7 +208,6 @@ def test_detector_rejects_non_bracketing_region() -> None:
         bounded_insert_regions=(region,),
     )
     assert result == ()
-
 
 
 def test_detector_observes_long_terminal_reset_chain() -> None:

@@ -1,5 +1,3 @@
-
-
 def test_build_orchestrator_propagates_routing_observation_callback(tmp_path) -> None:
     from brynse.integrations.radio.runner import RippingRunConfig, RippingRunner
 

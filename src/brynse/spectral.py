@@ -151,10 +151,7 @@ class FfmpegSpectralDistributionAnalyzer:
         if not payload:
             raise SpectralAnalysisError("spectral analysis received an empty PCM block")
 
-        filtergraph = (
-            "aspectralstats=win_size=2048:overlap=0.5,"
-            "ametadata=mode=print:file=-"
-        )
+        filtergraph = "aspectralstats=win_size=2048:overlap=0.5,ametadata=mode=print:file=-"
         command = [
             self._ffmpeg_binary,
             "-hide_banner",

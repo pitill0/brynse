@@ -29,22 +29,19 @@ def _tone(
     seconds: float,
     amplitude: float = 0.5,
 ) -> np.ndarray:
-    t = np.arange(
-        round(seconds * SAMPLE_RATE),
-        dtype=np.float64,
-    ) / SAMPLE_RATE
-
-    return amplitude * np.sin(
-        2.0 * math.pi * frequency_hz * t
+    t = (
+        np.arange(
+            round(seconds * SAMPLE_RATE),
+            dtype=np.float64,
+        )
+        / SAMPLE_RATE
     )
+
+    return amplitude * np.sin(2.0 * math.pi * frequency_hz * t)
 
 
 def _horizon(features, seconds: float):
-    return next(
-        item
-        for item in features.horizons
-        if item.horizon_seconds == seconds
-    )
+    return next(item for item in features.horizons if item.horizon_seconds == seconds)
 
 
 def test_pcm_feature_timeline_stable_tone_has_small_changes() -> None:
@@ -153,10 +150,7 @@ def test_pcm_feature_timeline_measure_many_reuses_precomputed_features() -> None
         absolute_start_time_seconds=100.0,
     )
 
-    times = tuple(
-        102.0 + index * 0.01
-        for index in range(600)
-    )
+    times = tuple(102.0 + index * 0.01 for index in range(600))
 
     measured = timeline.measure_many(
         times_seconds=times,
@@ -183,10 +177,7 @@ def test_pcm_feature_timeline_requires_signed_16_bit_pcm() -> None:
 def test_pcm_feature_module_does_not_depend_on_subprocesses() -> None:
     import brynse.pcm_features as pcm_features
 
-    source = (
-        __import__("inspect")
-        .getsource(pcm_features)
-    )
+    source = __import__("inspect").getsource(pcm_features)
 
     assert "subprocess" not in source
 
@@ -217,14 +208,8 @@ def test_pcm_directional_candidates_detect_falling_edge() -> None:
     )
 
     assert candidates
-    assert all(
-        item.direction.value == "falling"
-        for item in candidates
-    )
-    assert all(
-        item.energy_ratio < 1.0
-        for item in candidates
-    )
+    assert all(item.direction.value == "falling" for item in candidates)
+    assert all(item.energy_ratio < 1.0 for item in candidates)
 
 
 def test_pcm_directional_candidates_detect_rising_edge() -> None:
@@ -253,14 +238,8 @@ def test_pcm_directional_candidates_detect_rising_edge() -> None:
     )
 
     assert candidates
-    assert all(
-        item.direction.value == "rising"
-        for item in candidates
-    )
-    assert all(
-        item.energy_ratio > 1.0
-        for item in candidates
-    )
+    assert all(item.direction.value == "rising" for item in candidates)
+    assert all(item.energy_ratio > 1.0 for item in candidates)
 
 
 def test_pcm_directional_candidates_keep_spectral_change_separate() -> None:

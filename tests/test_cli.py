@@ -468,11 +468,7 @@ def test_cli_reports_written_autonomous_segment(
 
         def run(self, **kwargs: object) -> object:
             on_segment_written = kwargs["on_segment_written"]
-            on_segment_written(
-                SimpleNamespace(
-                    path=tmp_path / "untracked_000000123456.mp3"
-                )
-            )
+            on_segment_written(SimpleNamespace(path=tmp_path / "untracked_000000123456.mp3"))
             return SimpleNamespace(
                 codec="mp3",
                 metaint=16000,
@@ -495,8 +491,4 @@ def test_cli_reports_written_autonomous_segment(
     captured = capsys.readouterr()
 
     assert result == 0
-    assert (
-        f"autonomous written: "
-        f"{tmp_path / 'untracked_000000123456.mp3'}"
-        in captured.out
-    )
+    assert f"autonomous written: {tmp_path / 'untracked_000000123456.mp3'}" in captured.out

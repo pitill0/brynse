@@ -39,14 +39,10 @@ class PcmBoundaryVerifier:
         scan_step_seconds: float = 0.1,
     ) -> None:
         if scan_radius_seconds <= 0:
-            raise ValueError(
-                "scan_radius_seconds must be greater than zero"
-            )
+            raise ValueError("scan_radius_seconds must be greater than zero")
 
         if scan_step_seconds <= 0:
-            raise ValueError(
-                "scan_step_seconds must be greater than zero"
-            )
+            raise ValueError("scan_step_seconds must be greater than zero")
 
         self._scan_radius_seconds = scan_radius_seconds
         self._scan_step_seconds = scan_step_seconds
@@ -80,17 +76,10 @@ class PcmBoundaryVerifier:
         """
 
         if absolute_start_time_seconds < 0:
-            raise ValueError(
-                "absolute_start_time_seconds must be non-negative"
-            )
+            raise ValueError("absolute_start_time_seconds must be non-negative")
 
-        if any(
-            anchor < absolute_start_time_seconds
-            for anchor in anchor_times_seconds
-        ):
-            raise ValueError(
-                "anchor time precedes decoded PCM"
-            )
+        if any(anchor < absolute_start_time_seconds for anchor in anchor_times_seconds):
+            raise ValueError("anchor time precedes decoded PCM")
 
         scan_times: dict[float, float] = {}
 
@@ -104,10 +93,7 @@ class PcmBoundaryVerifier:
             index = 0
 
             while True:
-                time_seconds = (
-                    start
-                    + index * self._scan_step_seconds
-                )
+                time_seconds = start + index * self._scan_step_seconds
 
                 if time_seconds > stop + 1e-9:
                     break
@@ -122,10 +108,7 @@ class PcmBoundaryVerifier:
         )
 
         measured = timeline.measure_many(
-            times_seconds=tuple(
-                scan_times[key]
-                for key in sorted(scan_times)
-            ),
+            times_seconds=tuple(scan_times[key] for key in sorted(scan_times)),
         )
 
         return tuple(

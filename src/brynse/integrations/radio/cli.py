@@ -76,8 +76,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--session-capture",
         type=Path,
         help=(
-            "Capture the exact raw ICY input and resolved metadata "
-            "for deterministic offline replay"
+            "Capture the exact raw ICY input and resolved metadata for deterministic offline replay"
         ),
     )
     return parser
@@ -128,11 +127,7 @@ def _routing_trace_record(observation) -> dict[str, object]:
     interstitial_routing = observation.interstitial_routing
     hard_cut_routing = observation.hard_cut_routing
     route = observation.route
-    semantic_roles = (
-        None
-        if route is None
-        else route.semantic_roles
-    )
+    semantic_roles = None if route is None else route.semantic_roles
     fade_rise = context.fade.rise
 
     pcm_boundary_scan = observation.pcm_boundary_scan
@@ -173,9 +168,7 @@ def _routing_trace_record(observation) -> dict[str, object]:
         hypotheses_detail.append(
             {
                 "time_seconds": hypothesis.time_seconds,
-                "sources": sorted(
-                    proposal.source.value for proposal in hypothesis.proposals
-                ),
+                "sources": sorted(proposal.source.value for proposal in hypothesis.proposals),
                 "proposals_detail": [
                     {
                         "time_seconds": proposal.time_seconds,
@@ -200,15 +193,9 @@ def _routing_trace_record(observation) -> dict[str, object]:
                     for item in hypothesis.evidence
                 ],
                 "confidence": hypothesis.confidence.value,
-                "basin_start_seconds": (
-                    None if geometry is None else geometry.start_seconds
-                ),
-                "basin_minimum_seconds": (
-                    None if geometry is None else geometry.minimum_seconds
-                ),
-                "basin_recovery_seconds": (
-                    None if geometry is None else geometry.recovery_seconds
-                ),
+                "basin_start_seconds": (None if geometry is None else geometry.start_seconds),
+                "basin_minimum_seconds": (None if geometry is None else geometry.minimum_seconds),
+                "basin_recovery_seconds": (None if geometry is None else geometry.recovery_seconds),
             }
         )
 
@@ -240,23 +227,15 @@ def _routing_trace_record(observation) -> dict[str, object]:
 
     acoustic_islands_detail = [
         {
-            "incoming_handoff_seconds": (
-                island.incoming_handoff.time_seconds
-            ),
+            "incoming_handoff_seconds": (island.incoming_handoff.time_seconds),
             "terminal_decay_start_seconds": (
-                None
-                if island.terminal_decay is None
-                else island.terminal_decay.start_time_seconds
+                None if island.terminal_decay is None else island.terminal_decay.start_time_seconds
             ),
             "terminal_decay_floor_seconds": (
-                None
-                if island.terminal_decay is None
-                else island.terminal_decay.floor_time_seconds
+                None if island.terminal_decay is None else island.terminal_decay.floor_time_seconds
             ),
             "source_reset_start_seconds": (
-                None
-                if island.source_reset is None
-                else island.source_reset.start_time_seconds
+                None if island.source_reset is None else island.source_reset.start_time_seconds
             ),
             "source_reset_established_seconds": (
                 None
@@ -264,9 +243,7 @@ def _routing_trace_record(observation) -> dict[str, object]:
                 else island.source_reset.established_time_seconds
             ),
             "observed_region_left_seconds": (
-                None
-                if island.observed_region is None
-                else island.observed_region.left.time_seconds
+                None if island.observed_region is None else island.observed_region.left.time_seconds
             ),
             "observed_region_right_seconds": (
                 None
@@ -284,12 +261,8 @@ def _routing_trace_record(observation) -> dict[str, object]:
             "separation_seconds": round(geometry.separation_seconds, 6),
             "overlap_seconds": round(geometry.overlap_seconds, 6),
             "gap_seconds": round(geometry.gap_seconds, 6),
-            "outgoing_descent_consistency": (
-                geometry.outgoing.descent_consistency
-            ),
-            "incoming_ascent_consistency": (
-                geometry.incoming.ascent_consistency
-            ),
+            "outgoing_descent_consistency": (geometry.outgoing.descent_consistency),
+            "incoming_ascent_consistency": (geometry.incoming.ascent_consistency),
         }
         for geometry in context.fade.geometries
     ]
@@ -301,18 +274,12 @@ def _routing_trace_record(observation) -> dict[str, object]:
         "acoustic_island_detail": acoustic_islands_detail,
         "semantic_outgoing_handoff_seconds": (
             None
-            if (
-                semantic_roles is None
-                or semantic_roles.outgoing_handoff is None
-            )
+            if (semantic_roles is None or semantic_roles.outgoing_handoff is None)
             else semantic_roles.outgoing_handoff.time_seconds
         ),
         "semantic_incoming_handoff_seconds": (
             None
-            if (
-                semantic_roles is None
-                or semantic_roles.incoming_handoff is None
-            )
+            if (semantic_roles is None or semantic_roles.incoming_handoff is None)
             else semantic_roles.incoming_handoff.time_seconds
         ),
         "semantic_inserted_region_kind": (
@@ -325,73 +292,44 @@ def _routing_trace_record(observation) -> dict[str, object]:
             )
             else route.bounded_insert_ownership.value
         ),
-        "fade_routing_candidate": (
-            None
-            if fade_routing is None
-            else fade_routing.legacy_candidate
-        ),
+        "fade_routing_candidate": (None if fade_routing is None else fade_routing.legacy_candidate),
         "fade_routing_two_sided_support": (
-            None
-            if fade_routing is None
-            else fade_routing.has_two_sided_support
+            None if fade_routing is None else fade_routing.has_two_sided_support
         ),
         "fade_routing_outgoing_association": (
-            None
-            if fade_routing is None
-            else fade_routing.outgoing_association is not None
+            None if fade_routing is None else fade_routing.outgoing_association is not None
         ),
         "fade_routing_incoming_association": (
-            None
-            if fade_routing is None
-            else fade_routing.incoming_association is not None
+            None if fade_routing is None else fade_routing.incoming_association is not None
         ),
         "fade_routing_outgoing_support_seconds": (
             None
-            if (
-                fade_routing is None
-                or fade_routing.outgoing_association is None
-            )
+            if (fade_routing is None or fade_routing.outgoing_association is None)
             else fade_routing.outgoing_association.hypothesis.time_seconds
         ),
         "fade_routing_incoming_support_seconds": (
             None
-            if (
-                fade_routing is None
-                or fade_routing.incoming_association is None
-            )
+            if (fade_routing is None or fade_routing.incoming_association is None)
             else fade_routing.incoming_association.hypothesis.time_seconds
         ),
         "interstitial_routing_candidate": (
-            None
-            if interstitial_routing is None
-            else interstitial_routing.legacy_candidate
+            None if interstitial_routing is None else interstitial_routing.legacy_candidate
         ),
         "interstitial_routing_handoff_count": (
-            None
-            if interstitial_routing is None
-            else len(interstitial_routing.routing_handoffs)
+            None if interstitial_routing is None else len(interstitial_routing.routing_handoffs)
         ),
         "interstitial_supported_handoff_count": (
-            None
-            if interstitial_routing is None
-            else len(interstitial_routing.supported_handoffs)
+            None if interstitial_routing is None else len(interstitial_routing.supported_handoffs)
         ),
         "interstitial_absorbed_right_edge_fade": (
-            None
-            if interstitial_routing is None
-            else interstitial_routing.absorbed_right_edge_fade
+            None if interstitial_routing is None else interstitial_routing.absorbed_right_edge_fade
         ),
         "interstitial_terminal_fade_support": (
-            None
-            if interstitial_routing is None
-            else interstitial_routing.has_terminal_fade_support
+            None if interstitial_routing is None else interstitial_routing.has_terminal_fade_support
         ),
         "bounded_insert_ownership": (
             None
-            if (
-                bounded_insert_routing is None
-                or bounded_insert_routing.ownership is None
-            )
+            if (bounded_insert_routing is None or bounded_insert_routing.ownership is None)
             else bounded_insert_routing.ownership.value
         ),
         "bounded_insert_symmetric_candidate": (
@@ -405,43 +343,22 @@ def _routing_trace_record(observation) -> dict[str, object]:
             else bounded_insert_routing.asymmetric_assessment.candidate
         ),
         "hard_cut_fallback_eligible": (
-            None
-            if hard_cut_routing is None
-            else hard_cut_routing.fallback_eligible
+            None if hard_cut_routing is None else hard_cut_routing.fallback_eligible
         ),
         "hard_cut_supported_handoff_count": (
-            None
-            if hard_cut_routing is None
-            else len(hard_cut_routing.supported_handoffs)
+            None if hard_cut_routing is None else len(hard_cut_routing.supported_handoffs)
         ),
         "temporal_kind": temporal.kind.value,
         "incoming_start_seconds": temporal.incoming_start_seconds,
         "outgoing_end_seconds": temporal.outgoing_end_seconds,
         "pcm_boundary_scan_count": len(pcm_boundary_scan),
-        "pcm_boundary_scan_detail": [
-            pcm_boundary_detail(item)
-            for item in pcm_boundary_scan
-        ],
+        "pcm_boundary_scan_detail": [pcm_boundary_detail(item) for item in pcm_boundary_scan],
         "fade_rise": fade_rise is not None,
-        "fade_rise_time_seconds": (
-            None
-            if fade_rise is None
-            else fade_rise.time_seconds
-        ),
-        "fade_rise_jump_ratio": (
-            None
-            if fade_rise is None
-            else fade_rise.jump_ratio
-        ),
-        "fade_rise_persistence_ratio": (
-            None
-            if fade_rise is None
-            else fade_rise.persistence_ratio
-        ),
+        "fade_rise_time_seconds": (None if fade_rise is None else fade_rise.time_seconds),
+        "fade_rise_jump_ratio": (None if fade_rise is None else fade_rise.jump_ratio),
+        "fade_rise_persistence_ratio": (None if fade_rise is None else fade_rise.persistence_ratio),
         "fade_rise_after_global_ratio": (
-            None
-            if fade_rise is None
-            else fade_rise.after_global_ratio
+            None if fade_rise is None else fade_rise.after_global_ratio
         ),
         "fade_basins": len(context.fade.basins),
         "fade_outgoing_count": len(context.fade.outgoing_fades),
@@ -449,14 +366,10 @@ def _routing_trace_record(observation) -> dict[str, object]:
         "fade_geometry_count": len(context.fade.geometries),
         "fade_outgoing_selected": outgoing_selection is not None,
         "fade_outgoing_selected_floor_seconds": (
-            None
-            if outgoing_selection is None
-            else outgoing_selection.fade.floor_time_seconds
+            None if outgoing_selection is None else outgoing_selection.fade.floor_time_seconds
         ),
         "fade_outgoing_selected_support_seconds": (
-            None
-            if outgoing_selection is None
-            else outgoing_selection.hypothesis.time_seconds
+            None if outgoing_selection is None else outgoing_selection.hypothesis.time_seconds
         ),
         "fade_outgoing_selected_distance_seconds": (
             None
@@ -465,19 +378,13 @@ def _routing_trace_record(observation) -> dict[str, object]:
         ),
         "fade_incoming_selected": incoming_selection is not None,
         "fade_incoming_selected_start_seconds": (
-            None
-            if incoming_selection is None
-            else incoming_selection.fade.start_time_seconds
+            None if incoming_selection is None else incoming_selection.fade.start_time_seconds
         ),
         "fade_incoming_selected_established_seconds": (
-            None
-            if incoming_selection is None
-            else incoming_selection.fade.established_time_seconds
+            None if incoming_selection is None else incoming_selection.fade.established_time_seconds
         ),
         "fade_incoming_selected_support_seconds": (
-            None
-            if incoming_selection is None
-            else incoming_selection.hypothesis.time_seconds
+            None if incoming_selection is None else incoming_selection.hypothesis.time_seconds
         ),
         "fade_incoming_selected_distance_seconds": (
             None
@@ -491,42 +398,27 @@ def _routing_trace_record(observation) -> dict[str, object]:
         "hypotheses_detail": hypotheses_detail,
         "bounded_insert_count": len(context.bounded_insert_regions),
         "bounded_insert_routing_candidate": (
-            None
-            if bounded_insert is None
-            else bounded_insert.candidate
+            None if bounded_insert is None else bounded_insert.candidate
         ),
         "bounded_insert_routing_related_region_count": (
-            None
-            if bounded_insert is None
-            else bounded_insert.related_region_count
+            None if bounded_insert is None else bounded_insert.related_region_count
         ),
         "bounded_insert_routing_unique_region": (
-            None
-            if bounded_insert is None
-            else bounded_insert.unique_region
+            None if bounded_insert is None else bounded_insert.unique_region
         ),
         "bounded_insert_routing_left_structural_peak": (
-            None
-            if bounded_insert is None
-            else bounded_insert.left_is_context_structural_peak
+            None if bounded_insert is None else bounded_insert.left_is_context_structural_peak
         ),
         "bounded_insert_routing_right_structural_peak": (
-            None
-            if bounded_insert is None
-            else bounded_insert.right_is_context_structural_peak
+            None if bounded_insert is None else bounded_insert.right_is_context_structural_peak
         ),
         "bounded_insert_routing_reference_precedes_left": (
             None
             if bounded_insert is None
-            else (
-                bounded_insert
-                .reference_precedes_left_support_inside_basin
-            )
+            else (bounded_insert.reference_precedes_left_support_inside_basin)
         ),
         "bounded_insert_routing_structural_only_interior_count": (
-            None
-            if bounded_insert is None
-            else bounded_insert.structural_only_interior_count
+            None if bounded_insert is None else bounded_insert.structural_only_interior_count
         ),
         "bounded_insert_detail": [
             {
@@ -535,12 +427,8 @@ def _routing_trace_record(observation) -> dict[str, object]:
                 "right_support_seconds": region.right.time_seconds,
                 "support_span_seconds": region.support_span_seconds,
                 "acoustic_gap_seconds": region.acoustic_gap_seconds,
-                "reference_inside_left_basin": (
-                    region.reference_inside_left_basin
-                ),
-                "reference_inside_right_basin": (
-                    region.reference_inside_right_basin
-                ),
+                "reference_inside_left_basin": (region.reference_inside_left_basin),
+                "reference_inside_right_basin": (region.reference_inside_right_basin),
                 "reference_offset_from_left_support_seconds": (
                     region.reference_offset_from_left_support_seconds
                 ),
@@ -548,15 +436,12 @@ def _routing_trace_record(observation) -> dict[str, object]:
                     region.reference_offset_to_right_support_seconds
                 ),
                 "interior_hypotheses": len(region.interior_hypotheses),
-                "structural_only_interior_count": (
-                    region.structural_only_interior_count
-                ),
+                "structural_only_interior_count": (region.structural_only_interior_count),
                 "interior_hypotheses_detail": [
                     {
                         "time_seconds": hypothesis.time_seconds,
                         "sources": sorted(
-                            proposal.source.value
-                            for proposal in hypothesis.proposals
+                            proposal.source.value for proposal in hypothesis.proposals
                         ),
                     }
                     for hypothesis in region.interior_hypotheses
@@ -578,9 +463,7 @@ def _routing_trace_record(observation) -> dict[str, object]:
                             "proposal_strength": item.proposal.strength,
                             "basin_depth": item.basin_depth,
                             "basin_start_seconds": item.basin_start_seconds,
-                            "basin_recovery_seconds": (
-                                item.basin_recovery_seconds
-                            ),
+                            "basin_recovery_seconds": (item.basin_recovery_seconds),
                             "local_change": item.local_change,
                             "persistent_change": item.persistent_change,
                             "structural_novelty": item.structural_novelty,
@@ -606,9 +489,7 @@ def _routing_trace_record(observation) -> dict[str, object]:
                             "proposal_strength": item.proposal.strength,
                             "basin_depth": item.basin_depth,
                             "basin_start_seconds": item.basin_start_seconds,
-                            "basin_recovery_seconds": (
-                                item.basin_recovery_seconds
-                            ),
+                            "basin_recovery_seconds": (item.basin_recovery_seconds),
                             "local_change": item.local_change,
                             "persistent_change": item.persistent_change,
                             "structural_novelty": item.structural_novelty,
@@ -617,24 +498,12 @@ def _routing_trace_record(observation) -> dict[str, object]:
                         for item in region.right_edge.evidence
                     ],
                 },
-                "left_basin_start_seconds": (
-                    region.left_geometry.start_seconds
-                ),
-                "left_basin_minimum_seconds": (
-                    region.left_geometry.minimum_seconds
-                ),
-                "left_basin_recovery_seconds": (
-                    region.left_geometry.recovery_seconds
-                ),
-                "right_basin_start_seconds": (
-                    region.right_geometry.start_seconds
-                ),
-                "right_basin_minimum_seconds": (
-                    region.right_geometry.minimum_seconds
-                ),
-                "right_basin_recovery_seconds": (
-                    region.right_geometry.recovery_seconds
-                ),
+                "left_basin_start_seconds": (region.left_geometry.start_seconds),
+                "left_basin_minimum_seconds": (region.left_geometry.minimum_seconds),
+                "left_basin_recovery_seconds": (region.left_geometry.recovery_seconds),
+                "right_basin_start_seconds": (region.right_geometry.start_seconds),
+                "right_basin_minimum_seconds": (region.right_geometry.minimum_seconds),
+                "right_basin_recovery_seconds": (region.right_geometry.recovery_seconds),
             }
             for region in context.bounded_insert_regions
         ],
@@ -682,7 +551,6 @@ def _run_stream(args: argparse.Namespace) -> int:
 
     def print_segment_written(written: WrittenSegment) -> None:
         print(f"autonomous written: {written.path}", flush=True)
-
 
     def print_incoming(observation) -> None:
         selected = (
@@ -735,13 +603,11 @@ def _run_stream(args: argparse.Namespace) -> int:
         try:
             routing_trace = args.routing_trace.open("w", encoding="utf-8")
         except OSError as exc:
-            raise CliError(
-                f"could not open routing trace {args.routing_trace}: {exc}"
-            ) from exc
+            raise CliError(f"could not open routing trace {args.routing_trace}: {exc}") from exc
 
         def write_routing(observation) -> None:
             if routing_trace is None:
-                raise CliError('routing trace is not open')
+                raise CliError("routing trace is not open")
             routing_trace.write(
                 json.dumps(
                     _routing_trace_record(observation),

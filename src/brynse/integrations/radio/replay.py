@@ -66,9 +66,7 @@ def load_replay_session(
         manifest_path,
     ):
         if not path.is_file():
-            raise ReplaySessionError(
-                f"replay session is missing {path.name}: {path}"
-            )
+            raise ReplaySessionError(f"replay session is missing {path.name}: {path}")
 
     try:
         raw_manifest = json.loads(
@@ -77,46 +75,27 @@ def load_replay_session(
             )
         )
     except (OSError, json.JSONDecodeError) as exc:
-        raise ReplaySessionError(
-            f"could not read replay manifest {manifest_path}: {exc}"
-        ) from exc
+        raise ReplaySessionError(f"could not read replay manifest {manifest_path}: {exc}") from exc
 
     if not isinstance(raw_manifest, dict):
-        raise ReplaySessionError(
-            "replay manifest must contain a JSON object"
-        )
+        raise ReplaySessionError("replay manifest must contain a JSON object")
 
-    schema_version = raw_manifest.get(
-        "schema_version"
-    )
+    schema_version = raw_manifest.get("schema_version")
 
     if schema_version != _SCHEMA_VERSION:
-        raise ReplaySessionError(
-            "unsupported replay schema version: "
-            f"{schema_version!r}"
-        )
+        raise ReplaySessionError(f"unsupported replay schema version: {schema_version!r}")
 
     codec = raw_manifest.get("codec")
 
     if codec not in {"mp3", "aac"}:
-        raise ReplaySessionError(
-            f"unsupported replay codec: {codec!r}"
-        )
+        raise ReplaySessionError(f"unsupported replay codec: {codec!r}")
 
     metaint = raw_manifest.get("metaint")
 
-    if (
-        not isinstance(metaint, int)
-        or isinstance(metaint, bool)
-        or metaint <= 0
-    ):
-        raise ReplaySessionError(
-            f"invalid replay metaint: {metaint!r}"
-        )
+    if not isinstance(metaint, int) or isinstance(metaint, bool) or metaint <= 0:
+        raise ReplaySessionError(f"invalid replay metaint: {metaint!r}")
 
-    metadata_threshold_seconds = raw_manifest.get(
-        "metadata_threshold_seconds"
-    )
+    metadata_threshold_seconds = raw_manifest.get("metadata_threshold_seconds")
 
     if (
         not isinstance(
@@ -130,76 +109,49 @@ def load_replay_session(
         or metadata_threshold_seconds <= 0
     ):
         raise ReplaySessionError(
-            "invalid replay metadata threshold: "
-            f"{metadata_threshold_seconds!r}"
+            f"invalid replay metadata threshold: {metadata_threshold_seconds!r}"
         )
 
-    transient_exclusion = raw_manifest.get(
-        "transient_exclusion"
-    )
-    autonomous_boundaries = raw_manifest.get(
-        "autonomous_boundaries"
-    )
+    transient_exclusion = raw_manifest.get("transient_exclusion")
+    autonomous_boundaries = raw_manifest.get("autonomous_boundaries")
 
     if not isinstance(
         transient_exclusion,
         bool,
     ):
-        raise ReplaySessionError(
-            "replay transient_exclusion must be boolean"
-        )
+        raise ReplaySessionError("replay transient_exclusion must be boolean")
 
     if not isinstance(
         autonomous_boundaries,
         bool,
     ):
-        raise ReplaySessionError(
-            "replay autonomous_boundaries must be boolean"
-        )
+        raise ReplaySessionError("replay autonomous_boundaries must be boolean")
 
     source_url = raw_manifest.get("source_url")
 
-    if (
-        not isinstance(source_url, str)
-        or not source_url
-    ):
-        raise ReplaySessionError(
-            "replay source_url must be a non-empty string"
-        )
+    if not isinstance(source_url, str) or not source_url:
+        raise ReplaySessionError("replay source_url must be a non-empty string")
 
-    raw_metadata = raw_manifest.get(
-        "source_metadata"
-    )
+    raw_metadata = raw_manifest.get("source_metadata")
 
     if not isinstance(raw_metadata, dict):
-        raise ReplaySessionError(
-            "replay source_metadata must be a JSON object"
-        )
+        raise ReplaySessionError("replay source_metadata must be a JSON object")
 
     source_metadata = {}
 
     for key, value in raw_metadata.items():
         if not isinstance(key, str):
-            raise ReplaySessionError(
-                "replay source_metadata keys must be strings"
-            )
+            raise ReplaySessionError("replay source_metadata keys must be strings")
 
         if not isinstance(value, str):
-            raise ReplaySessionError(
-                "replay source_metadata values must be strings"
-            )
+            raise ReplaySessionError("replay source_metadata values must be strings")
 
         source_metadata[key] = value
 
-    captured_metaint = source_metadata.get(
-        "icy-metaint"
-    )
+    captured_metaint = source_metadata.get("icy-metaint")
 
     if captured_metaint != str(metaint):
-        raise ReplaySessionError(
-            "manifest metaint does not match captured "
-            "icy-metaint metadata"
-        )
+        raise ReplaySessionError("manifest metaint does not match captured icy-metaint metadata")
 
     return ReplaySession(
         directory=directory,
@@ -208,9 +160,7 @@ def load_replay_session(
         manifest_path=manifest_path,
         codec=codec,
         metaint=metaint,
-        metadata_threshold_seconds=float(
-            metadata_threshold_seconds
-        ),
+        metadata_threshold_seconds=float(metadata_threshold_seconds),
         transient_exclusion=transient_exclusion,
         autonomous_boundaries=autonomous_boundaries,
         source_url=source_url,
@@ -224,13 +174,10 @@ def open_replay_source(
     """Open the exact captured ICY byte stream."""
 
     try:
-        stream: BinaryIO = session.stream_path.open(
-            "rb"
-        )
+        stream: BinaryIO = session.stream_path.open("rb")
     except OSError as exc:
         raise ReplaySessionError(
-            f"could not open replay stream "
-            f"{session.stream_path}: {exc}"
+            f"could not open replay stream {session.stream_path}: {exc}"
         ) from exc
 
     return BinaryIOStreamSource(
@@ -252,8 +199,7 @@ def load_captured_events(
         ).splitlines()
     except OSError as exc:
         raise ReplaySessionError(
-            f"could not read captured events "
-            f"{session.events_path}: {exc}"
+            f"could not read captured events {session.events_path}: {exc}"
         ) from exc
 
     for line_number, line in enumerate(
@@ -267,15 +213,11 @@ def load_captured_events(
             record = json.loads(line)
         except json.JSONDecodeError as exc:
             raise ReplaySessionError(
-                "invalid captured event JSON at "
-                f"line {line_number}: {exc}"
+                f"invalid captured event JSON at line {line_number}: {exc}"
             ) from exc
 
         if not isinstance(record, dict):
-            raise ReplaySessionError(
-                "captured event must be a JSON object "
-                f"at line {line_number}"
-            )
+            raise ReplaySessionError(f"captured event must be a JSON object at line {line_number}")
 
         records.append(record)
 
@@ -290,9 +232,7 @@ def replay_event_record(
     return {
         "title": event.title,
         "audio_offset": event.audio_offset,
-        "audio_time_seconds": (
-            event.audio_time_seconds
-        ),
+        "audio_time_seconds": (event.audio_time_seconds),
     }
 
 
@@ -328,16 +268,8 @@ def validate_replayed_events(
             len(replayed),
         )
 
-    captured_item = (
-        captured[mismatch_index]
-        if mismatch_index < len(captured)
-        else None
-    )
-    replayed_item = (
-        replayed[mismatch_index]
-        if mismatch_index < len(replayed)
-        else None
-    )
+    captured_item = captured[mismatch_index] if mismatch_index < len(captured) else None
+    replayed_item = replayed[mismatch_index] if mismatch_index < len(replayed) else None
 
     raise ReplaySessionError(
         "replayed metadata timeline does not match capture: "
@@ -351,17 +283,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="brynse-radio-replay",
         description=(
-            "Replay an exact captured Brynse ICY session "
-            "through the normal radio pipeline."
+            "Replay an exact captured Brynse ICY session through the normal radio pipeline."
         ),
     )
     parser.add_argument(
         "session",
         type=Path,
-        help=(
-            "Captured session directory containing "
-            "stream.icy, events.jsonl and manifest.json"
-        ),
+        help=("Captured session directory containing stream.icy, events.jsonl and manifest.json"),
     )
     parser.add_argument(
         "--output",
@@ -383,16 +311,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _run(args: argparse.Namespace) -> int:
-    session = load_replay_session(
-        args.session
-    )
+    session = load_replay_session(args.session)
 
-    captured_events = load_captured_events(
-        session
-    )
-    replayed_events: list[
-        dict[str, object]
-    ] = []
+    captured_events = load_captured_events(session)
+    replayed_events: list[dict[str, object]] = []
 
     routing_trace = None
     write_routing = None
@@ -404,27 +326,22 @@ def _run(args: argparse.Namespace) -> int:
         )
 
         try:
-            routing_trace = (
-                args.routing_trace.open(
-                    "w",
-                    encoding="utf-8",
-                )
+            routing_trace = args.routing_trace.open(
+                "w",
+                encoding="utf-8",
             )
         except OSError as exc:
             raise ReplaySessionError(
-                "could not open replay routing trace "
-                f"{args.routing_trace}: {exc}"
+                f"could not open replay routing trace {args.routing_trace}: {exc}"
             ) from exc
 
         def write_routing(observation) -> None:
             if routing_trace is None:
-                raise ReplaySessionError('replay routing trace is not open')
+                raise ReplaySessionError("replay routing trace is not open")
 
             routing_trace.write(
                 json.dumps(
-                    _routing_trace_record(
-                        observation
-                    ),
+                    _routing_trace_record(observation),
                     sort_keys=True,
                 )
                 + "\n"
@@ -437,20 +354,12 @@ def _run(args: argparse.Namespace) -> int:
             output_directory=args.output,
             codec=session.codec,
             ffmpeg_binary=args.ffmpeg,
-            metadata_threshold_seconds=(
-                session.metadata_threshold_seconds
-            ),
-            transient_exclusion=(
-                session.transient_exclusion
-            ),
-            autonomous_boundaries=(
-                session.autonomous_boundaries
-            ),
+            metadata_threshold_seconds=(session.metadata_threshold_seconds),
+            transient_exclusion=(session.transient_exclusion),
+            autonomous_boundaries=(session.autonomous_boundaries),
             session_capture_directory=None,
         ),
-        stream_opener=lambda _url: (
-            open_replay_source(session)
-        ),
+        stream_opener=lambda _url: open_replay_source(session),
     )
 
     def on_started(
@@ -459,13 +368,8 @@ def _run(args: argparse.Namespace) -> int:
     ) -> None:
         print(f"replay codec: {codec}")
         print(f"replay icy-metaint: {metaint}")
-        print(
-            f"replay source: "
-            f"{session.stream_path}"
-        )
-        print(
-            f"replay output: {args.output}"
-        )
+        print(f"replay source: {session.stream_path}")
+        print(f"replay output: {args.output}")
 
     def on_metadata(
         event: TimedMetadataEvent,
@@ -474,8 +378,7 @@ def _run(args: argparse.Namespace) -> int:
         replayed_events.append(record)
 
         print(
-            f"[{event.audio_time_seconds:10.3f}s] "
-            f"{event.title}",
+            f"[{event.audio_time_seconds:10.3f}s] {event.title}",
             flush=True,
         )
 
@@ -496,23 +399,16 @@ def _run(args: argparse.Namespace) -> int:
 
     if result.codec != session.codec:
         raise ReplaySessionError(
-            "replayed codec does not match manifest: "
-            f"{result.codec!r} != {session.codec!r}"
+            f"replayed codec does not match manifest: {result.codec!r} != {session.codec!r}"
         )
 
     if result.metaint != session.metaint:
         raise ReplaySessionError(
-            "replayed metaint does not match manifest: "
-            f"{result.metaint!r} != {session.metaint!r}"
+            f"replayed metaint does not match manifest: {result.metaint!r} != {session.metaint!r}"
         )
 
-    print(
-        "replay metadata validation: PASS"
-    )
-    print(
-        f"replay metadata events: "
-        f"{len(replayed_events)}"
-    )
+    print("replay metadata validation: PASS")
+    print(f"replay metadata events: {len(replayed_events)}")
 
     return 0
 

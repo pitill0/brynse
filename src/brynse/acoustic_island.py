@@ -35,22 +35,19 @@ class AcousticIslandEvidence:
     observed_region: BoundedInsertRegionEvidence | None = None
 
     def __post_init__(self) -> None:
-        reset_pair = (
-            self.terminal_decay is not None
-            and self.source_reset is not None
-        )
+        reset_pair = self.terminal_decay is not None and self.source_reset is not None
 
         if self.observed_region is None and not reset_pair:
             raise ValueError(
-                'acoustic island requires an observed region or '
-                'terminal-decay/source-reset evidence'
+                "acoustic island requires an observed region or "
+                "terminal-decay/source-reset evidence"
             )
 
         if self.terminal_decay is None and self.source_reset is not None:
-            raise ValueError('source_reset requires terminal_decay')
+            raise ValueError("source_reset requires terminal_decay")
 
         if self.terminal_decay is not None and self.source_reset is None:
-            raise ValueError('terminal_decay requires source_reset')
+            raise ValueError("terminal_decay requires source_reset")
 
 
 class AcousticIslandDetector:
@@ -63,9 +60,9 @@ class AcousticIslandDetector:
         minimum_reset_ratio: float = DEFAULT_MINIMUM_RESET_RATIO,
     ) -> None:
         if search_horizon_seconds <= 0:
-            raise ValueError('search_horizon_seconds must be greater than zero')
+            raise ValueError("search_horizon_seconds must be greater than zero")
         if minimum_reset_ratio <= 1.0:
-            raise ValueError('minimum_reset_ratio must be greater than one')
+            raise ValueError("minimum_reset_ratio must be greater than one")
 
         self._search_horizon_seconds = search_horizon_seconds
         self._minimum_reset_ratio = minimum_reset_ratio
@@ -80,7 +77,7 @@ class AcousticIslandDetector:
     ) -> tuple[AcousticIslandEvidence, ...]:
         """Return at most one conservative acoustic-island observation."""
         if reference_time_seconds < 0:
-            raise ValueError('reference_time_seconds must be non-negative')
+            raise ValueError("reference_time_seconds must be non-negative")
 
         canonical_region = self._canonical_bracketing_region(
             reference_time_seconds=reference_time_seconds,
@@ -106,7 +103,7 @@ class AcousticIslandDetector:
 
         if correction is None:
             if canonical_region is None:
-                raise AssertionError('canonical region is required')
+                raise AssertionError("canonical region is required")
             return (
                 AcousticIslandEvidence(
                     incoming_handoff=canonical_region.right,
@@ -206,11 +203,14 @@ class AcousticIslandDetector:
         reference_time_seconds: float,
         fade: FadeRoutingEvidence,
         hypotheses: tuple[BoundaryHypothesis, ...],
-    ) -> tuple[
-        OutgoingFadeEvidence,
-        IncomingFadeEvidence,
-        BoundaryHypothesis,
-    ] | None:
+    ) -> (
+        tuple[
+            OutgoingFadeEvidence,
+            IncomingFadeEvidence,
+            BoundaryHypothesis,
+        ]
+        | None
+    ):
         """Observe a long island as a chain of locally supported edges.
 
         This path is deliberately narrower than ordinary terminal-reset
@@ -220,9 +220,7 @@ class AcousticIslandDetector:
         """
 
         supported = tuple(
-            hypothesis
-            for hypothesis in hypotheses
-            if self._is_supported_handoff(hypothesis)
+            hypothesis for hypothesis in hypotheses if self._is_supported_handoff(hypothesis)
         )
 
         candidates = []
@@ -251,9 +249,7 @@ class AcousticIslandDetector:
                     continue
 
                 later_handoffs = tuple(
-                    hypothesis
-                    for hypothesis in supported
-                    if hypothesis.time_seconds > reset
+                    hypothesis for hypothesis in supported if hypothesis.time_seconds > reset
                 )
 
                 for handoff in later_handoffs:
@@ -266,20 +262,14 @@ class AcousticIslandDetector:
                         continue
 
                     if (
-                        abs(
-                            handoff.time_seconds
-                            - reference_time_seconds
-                        )
+                        abs(handoff.time_seconds - reference_time_seconds)
                         > self._search_horizon_seconds
                     ):
                         continue
 
                     candidates.append(
                         (
-                            abs(
-                                handoff.time_seconds
-                                - reference_time_seconds
-                            ),
+                            abs(handoff.time_seconds - reference_time_seconds),
                             reset_gap,
                             island_duration,
                             outgoing,
@@ -302,9 +292,7 @@ class AcousticIslandDetector:
         best = candidates[0]
 
         equally_near = tuple(
-            candidate
-            for candidate in candidates
-            if abs(candidate[0] - best[0]) < 1e-9
+            candidate for candidate in candidates if abs(candidate[0] - best[0]) < 1e-9
         )
 
         if len(equally_near) != 1:
@@ -321,9 +309,7 @@ class AcousticIslandDetector:
         canonical_region: BoundedInsertRegionEvidence | None,
     ) -> tuple[OutgoingFadeEvidence, IncomingFadeEvidence, BoundaryHypothesis] | None:
         supported = tuple(
-            hypothesis
-            for hypothesis in hypotheses
-            if self._is_supported_handoff(hypothesis)
+            hypothesis for hypothesis in hypotheses if self._is_supported_handoff(hypothesis)
         )
         candidates = []
 
@@ -337,9 +323,7 @@ class AcousticIslandDetector:
                 incoming
                 for incoming in fade.incoming_fades
                 if (
-                    outgoing.start_time_seconds
-                    <= incoming.start_time_seconds
-                    <= floor + grace
+                    outgoing.start_time_seconds <= incoming.start_time_seconds <= floor + grace
                     and incoming.start_time_seconds < reference_time_seconds
                     and self._is_source_reset(incoming)
                 )
@@ -351,7 +335,8 @@ class AcousticIslandDetector:
                 if self._unique_supported_owner(
                     time_seconds=incoming.start_time_seconds,
                     hypotheses=hypotheses,
-                ) is None
+                )
+                is None
             )
             if not unexplained:
                 continue
@@ -367,7 +352,8 @@ class AcousticIslandDetector:
                     and self._unique_supported_owner(
                         time_seconds=incoming.start_time_seconds,
                         hypotheses=hypotheses,
-                    ) is not None
+                    )
+                    is not None
                 )
                 for incoming in associated_resets
             )
@@ -383,9 +369,7 @@ class AcousticIslandDetector:
                     source_reset.established_time_seconds,
                 )
                 right_handoffs = tuple(
-                    hypothesis
-                    for hypothesis in supported
-                    if hypothesis.time_seconds > anchor
+                    hypothesis for hypothesis in supported if hypothesis.time_seconds > anchor
                 )
                 if not right_handoffs:
                     continue
@@ -394,9 +378,7 @@ class AcousticIslandDetector:
                     key=lambda hypothesis: hypothesis.time_seconds,
                 )
 
-            candidates.append(
-                (source_strength, outgoing, source_reset, incoming_handoff)
-            )
+            candidates.append((source_strength, outgoing, source_reset, incoming_handoff))
 
         if not candidates:
             return None

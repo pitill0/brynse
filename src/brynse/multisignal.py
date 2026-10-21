@@ -339,10 +339,7 @@ class MultiSignalTemporalResolver:
         # future than the selected incoming edge is into the past, the
         # two edges are not locally coherent.  Keep the acoustic boundary
         # instead of joining unrelated events across the window.
-        if (
-            incoming_lead >= 0.0
-            and outgoing_delay > incoming_lead
-        ):
+        if incoming_lead >= 0.0 and outgoing_delay > incoming_lead:
             return TemporalSplitDecision(
                 kind=TemporalSplitKind.HARD_CUT,
                 incoming_start_seconds=boundary,
@@ -485,21 +482,11 @@ class AcousticMultiSignalCandidateBuilder:
         required_start = candidate_time - 2.0 * max_scale
         required_end = candidate_time + 2.0 * max_scale
 
-        first = round(
-            (required_start - window.start_time_seconds)
-            * MULTISIGNAL_SAMPLE_RATE
-        )
+        first = round((required_start - window.start_time_seconds) * MULTISIGNAL_SAMPLE_RATE)
 
-        last = round(
-            (required_end - window.start_time_seconds)
-            * MULTISIGNAL_SAMPLE_RATE
-        )
+        last = round((required_end - window.start_time_seconds) * MULTISIGNAL_SAMPLE_RATE)
 
-        return (
-            first >= 0
-            and last <= len(samples)
-            and last > first
-        )
+        return first >= 0 and last <= len(samples) and last > first
 
     def _regime_ratio(
         self,
@@ -674,13 +661,10 @@ class AcousticMultiSignalCandidateBuilder:
 
             local_evidence_by_time[candidate_time] = evidence
 
-            if (
-                self._regime_ratio_fn is None
-                and not self._has_complete_regime_context(
-                    candidate_time=candidate_time,
-                    samples=samples16,
-                    window=window,
-                )
+            if self._regime_ratio_fn is None and not self._has_complete_regime_context(
+                candidate_time=candidate_time,
+                samples=samples16,
+                window=window,
             ):
                 continue
 

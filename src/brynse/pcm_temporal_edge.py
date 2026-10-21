@@ -27,9 +27,7 @@ class PcmTemporalSearchBounds:
 
     def __post_init__(self) -> None:
         if self.start_time_seconds > self.end_time_seconds:
-            raise ValueError(
-                "PCM temporal search start must not exceed end"
-            )
+            raise ValueError("PCM temporal search start must not exceed end")
 
 
 @dataclass(frozen=True)
@@ -43,10 +41,7 @@ class PcmVerifiedTemporalEdge:
 
     @property
     def delta_seconds(self) -> float:
-        return (
-            self.verified_time_seconds
-            - self.provisional_time_seconds
-        )
+        return self.verified_time_seconds - self.provisional_time_seconds
 
 
 class PcmTemporalEdgeVerifier:
@@ -62,28 +57,20 @@ class PcmTemporalEdgeVerifier:
         minimum_signal_rms: float = 0.005,
     ) -> None:
         if search_radius_seconds <= 0:
-            raise ValueError(
-                "search_radius_seconds must be greater than zero"
-            )
+            raise ValueError("search_radius_seconds must be greater than zero")
 
         if step_seconds <= 0:
-            raise ValueError(
-                "step_seconds must be greater than zero"
-            )
+            raise ValueError("step_seconds must be greater than zero")
 
         for name, value in (
             ("preserve_energy_change", preserve_energy_change),
             ("minimum_energy_change", minimum_energy_change),
         ):
             if not 0.0 <= value <= 1.0:
-                raise ValueError(
-                    f"{name} must be between zero and one"
-                )
+                raise ValueError(f"{name} must be between zero and one")
 
         if minimum_signal_rms < 0:
-            raise ValueError(
-                "minimum_signal_rms must be non-negative"
-            )
+            raise ValueError("minimum_signal_rms must be non-negative")
 
         self._search_radius_seconds = search_radius_seconds
         self._step_seconds = step_seconds
@@ -105,9 +92,7 @@ class PcmTemporalEdgeVerifier:
 
         for candidate in candidates:
             key = round(candidate.time_seconds, 9)
-            grouped.setdefault(key, {})[
-                candidate.horizon_seconds
-            ] = candidate
+            grouped.setdefault(key, {})[candidate.horizon_seconds] = candidate
 
         return grouped
 
@@ -117,10 +102,13 @@ class PcmTemporalEdgeVerifier:
             float,
             PcmDirectionalBoundaryEvidence,
         ],
-    ) -> tuple[
-        PcmDirectionalBoundaryEvidence,
-        PcmDirectionalBoundaryEvidence,
-    ] | None:
+    ) -> (
+        tuple[
+            PcmDirectionalBoundaryEvidence,
+            PcmDirectionalBoundaryEvidence,
+        ]
+        | None
+    ):
         short = horizons.get(0.25)
         medium = horizons.get(0.5)
 
@@ -180,9 +168,7 @@ class PcmTemporalEdgeVerifier:
         """Verify one edge inside Specialist-owned or legacy local bounds."""
 
         if provisional_time_seconds < absolute_start_time_seconds:
-            raise ValueError(
-                "provisional edge precedes decoded PCM"
-            )
+            raise ValueError("provisional edge precedes decoded PCM")
 
         timeline = PcmFeatureTimeline.from_pcm(
             pcm=pcm,
@@ -201,10 +187,7 @@ class PcmTemporalEdgeVerifier:
             (
                 pair
                 for horizons in provisional_grouped.values()
-                if (
-                    pair := self._coherent_pair(horizons)
-                )
-                is not None
+                if (pair := self._coherent_pair(horizons)) is not None
             ),
             None,
         )
@@ -212,8 +195,7 @@ class PcmTemporalEdgeVerifier:
         if (
             search_bounds is None
             and provisional_pair is not None
-            and self._energy_support(provisional_pair)
-            >= self._preserve_energy_change
+            and self._energy_support(provisional_pair) >= self._preserve_energy_change
         ):
             short, medium = provisional_pair
 
@@ -227,27 +209,13 @@ class PcmTemporalEdgeVerifier:
         if search_bounds is None:
             start_seconds = max(
                 absolute_start_time_seconds,
-                provisional_time_seconds
-                - self._search_radius_seconds,
+                provisional_time_seconds - self._search_radius_seconds,
             )
-            end_seconds = (
-                provisional_time_seconds
-                + self._search_radius_seconds
-            )
+            end_seconds = provisional_time_seconds + self._search_radius_seconds
         else:
-            bytes_per_frame = (
-                pcm.channels
-                * pcm.sample_width_bytes
-            )
-            duration_seconds = (
-                len(pcm.data)
-                / bytes_per_frame
-                / pcm.sample_rate
-            )
-            absolute_end_time_seconds = (
-                absolute_start_time_seconds
-                + duration_seconds
-            )
+            bytes_per_frame = pcm.channels * pcm.sample_width_bytes
+            duration_seconds = len(pcm.data) / bytes_per_frame / pcm.sample_rate
+            absolute_end_time_seconds = absolute_start_time_seconds + duration_seconds
 
             start_seconds = max(
                 absolute_start_time_seconds,
@@ -279,9 +247,7 @@ class PcmTemporalEdgeVerifier:
             ]
         ] = []
 
-        for time_seconds, horizons in self._by_time(
-            candidates
-        ).items():
+        for time_seconds, horizons in self._by_time(candidates).items():
             pair = self._coherent_pair(horizons)
 
             if pair is None:
@@ -298,10 +264,7 @@ class PcmTemporalEdgeVerifier:
                 (
                     energy_support,
                     spectral_support,
-                    -abs(
-                        time_seconds
-                        - provisional_time_seconds
-                    ),
+                    -abs(time_seconds - provisional_time_seconds),
                     time_seconds,
                     pair[0],
                     pair[1],

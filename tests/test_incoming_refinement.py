@@ -80,7 +80,6 @@ def test_incoming_refiner_does_not_modify_non_hard_cut_decision() -> None:
     assert refined == decision
 
 
-
 def _analysis(
     time_seconds: float,
     confidence: BoundaryConfidence,

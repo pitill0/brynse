@@ -47,21 +47,13 @@ class FadeSpecialist:
     ) -> TransitionSpecialistResult:
         """Resolve one fade transition, then verify owned edges against PCM."""
 
-        cls = (
-            type(self)
-            if isinstance(self, FadeSpecialist)
-            else FadeSpecialist
-        )
+        cls = type(self) if isinstance(self, FadeSpecialist) else FadeSpecialist
 
         result = cls._resolve_geometry(
             observation=observation,
         )
 
-        verifier = (
-            self._temporal_edge_verifier
-            if isinstance(self, FadeSpecialist)
-            else None
-        )
+        verifier = self._temporal_edge_verifier if isinstance(self, FadeSpecialist) else None
 
         if result.temporal is None or verifier is None:
             return result
@@ -98,24 +90,17 @@ class FadeSpecialist:
                 )
 
         fade_to_floor = (
-            None
-            if observation.semantic_roles is None
-            else observation.semantic_roles.fade_to_floor
+            None if observation.semantic_roles is None else observation.semantic_roles.fade_to_floor
         )
 
-        if (
-            fade_to_floor is not None
-            and fade_to_floor.incoming_handoff is None
-        ):
+        if fade_to_floor is not None and fade_to_floor.incoming_handoff is None:
             outgoing_extra.extend(
                 (
                     fade_to_floor.outgoing.start_time_seconds,
                     fade_to_floor.outgoing.floor_time_seconds,
                 )
             )
-            incoming_extra.append(
-                observation.routing.reference_time_seconds
-            )
+            incoming_extra.append(observation.routing.reference_time_seconds)
 
         if not outgoing_extra and not incoming_extra:
             shared = (
@@ -126,8 +111,7 @@ class FadeSpecialist:
             incoming_extra.extend(shared)
 
         outgoing_only_fade_to_floor = (
-            fade_to_floor is not None
-            and fade_to_floor.incoming_handoff is None
+            fade_to_floor is not None and fade_to_floor.incoming_handoff is None
         )
 
         verified = _verify_owned_temporal_decision(
@@ -206,13 +190,9 @@ class FadeSpecialist:
             outgoing_fade = fade_to_floor.outgoing
             incoming_handoff = fade_to_floor.incoming_handoff
 
-            specialist_outgoing = (
-                outgoing_fade.floor_time_seconds
-            )
+            specialist_outgoing = outgoing_fade.floor_time_seconds
             specialist_incoming = (
-                reference
-                if incoming_handoff is None
-                else incoming_handoff.time_seconds
+                reference if incoming_handoff is None else incoming_handoff.time_seconds
             )
 
             if specialist_outgoing < specialist_incoming:
@@ -221,10 +201,7 @@ class FadeSpecialist:
                         outgoing_selection=OutgoingFadeSelection(
                             fade=outgoing_fade,
                             hypothesis=incoming_handoff,
-                            support_distance_seconds=abs(
-                                specialist_outgoing
-                                - specialist_incoming
-                            ),
+                            support_distance_seconds=abs(specialist_outgoing - specialist_incoming),
                         ),
                         incoming_selection=None,
                     )
@@ -232,12 +209,8 @@ class FadeSpecialist:
                 return TransitionSpecialistResult(
                     temporal=TemporalSplitDecision(
                         kind=TemporalSplitKind.EXCLUSION,
-                        outgoing_end_seconds=(
-                            specialist_outgoing
-                        ),
-                        incoming_start_seconds=(
-                            specialist_incoming
-                        ),
+                        outgoing_end_seconds=(specialist_outgoing),
+                        incoming_start_seconds=(specialist_incoming),
                     ),
                     diagnostics=diagnostics,
                 )
@@ -258,12 +231,8 @@ class FadeSpecialist:
 
             if len(reconciled_geometries) == 1:
                 geometry = reconciled_geometries[0]
-                specialist_outgoing = (
-                    geometry.outgoing.floor_time_seconds
-                )
-                specialist_incoming = (
-                    geometry.incoming.start_time_seconds
-                )
+                specialist_outgoing = geometry.outgoing.floor_time_seconds
+                specialist_incoming = geometry.incoming.start_time_seconds
 
                 if specialist_incoming == specialist_outgoing:
                     kind = TemporalSplitKind.HARD_CUT
@@ -302,10 +271,7 @@ class FadeSpecialist:
         incoming_lead = reference - boundary
         outgoing_delay = outgoing.time_seconds - reference
 
-        if (
-            incoming_lead >= 0.0
-            and outgoing_delay > incoming_lead
-        ):
+        if incoming_lead >= 0.0 and outgoing_delay > incoming_lead:
             return TransitionSpecialistResult(
                 temporal=TemporalSplitDecision(
                     kind=TemporalSplitKind.HARD_CUT,
@@ -320,16 +286,9 @@ class FadeSpecialist:
         # reproduce the old unilateral outgoing clamp: only replace the
         # conservative temporal pair when the two specialist-supported
         # boundaries form a valid overlap.
-        if (
-            outgoing_selection is not None
-            and incoming_selection is not None
-        ):
-            specialist_incoming = (
-                incoming_selection.hypothesis.time_seconds
-            )
-            specialist_outgoing = (
-                outgoing_selection.hypothesis.time_seconds
-            )
+        if outgoing_selection is not None and incoming_selection is not None:
+            specialist_incoming = incoming_selection.hypothesis.time_seconds
+            specialist_outgoing = outgoing_selection.hypothesis.time_seconds
 
             if specialist_incoming < specialist_outgoing:
                 return TransitionSpecialistResult(

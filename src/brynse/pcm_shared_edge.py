@@ -29,10 +29,7 @@ class PcmVerifiedSharedEdge:
 
     @property
     def delta_seconds(self) -> float:
-        return (
-            self.verified_time_seconds
-            - self.provisional_time_seconds
-        )
+        return self.verified_time_seconds - self.provisional_time_seconds
 
 
 class PcmSharedEdgeVerifier:
@@ -52,24 +49,16 @@ class PcmSharedEdgeVerifier:
         minimum_post_rms: float = 1e-4,
     ) -> None:
         if search_before_seconds <= 0:
-            raise ValueError(
-                "search_before_seconds must be greater than zero"
-            )
+            raise ValueError("search_before_seconds must be greater than zero")
 
         if step_seconds <= 0:
-            raise ValueError(
-                "step_seconds must be greater than zero"
-            )
+            raise ValueError("step_seconds must be greater than zero")
 
         if not 0.0 <= minimum_energy_change <= 1.0:
-            raise ValueError(
-                "minimum_energy_change must be between zero and one"
-            )
+            raise ValueError("minimum_energy_change must be between zero and one")
 
         if minimum_post_rms < 0:
-            raise ValueError(
-                "minimum_post_rms must be non-negative"
-            )
+            raise ValueError("minimum_post_rms must be non-negative")
 
         self._search_before_seconds = search_before_seconds
         self._step_seconds = step_seconds
@@ -86,9 +75,7 @@ class PcmSharedEdgeVerifier:
         """Return an earlier PCM-verified edge, or abstain."""
 
         if provisional_time_seconds < absolute_start_time_seconds:
-            raise ValueError(
-                "provisional edge precedes decoded PCM"
-            )
+            raise ValueError("provisional edge precedes decoded PCM")
 
         timeline = PcmFeatureTimeline.from_pcm(
             pcm=pcm,
@@ -114,9 +101,7 @@ class PcmSharedEdgeVerifier:
 
         for candidate in candidates:
             key = round(candidate.time_seconds, 9)
-            by_time.setdefault(key, {})[
-                candidate.horizon_seconds
-            ] = candidate
+            by_time.setdefault(key, {})[candidate.horizon_seconds] = candidate
 
         viable: list[
             tuple[
@@ -147,10 +132,7 @@ class PcmSharedEdgeVerifier:
             ):
                 continue
 
-            if (
-                short.post_rms < self._minimum_post_rms
-                or medium.post_rms < self._minimum_post_rms
-            ):
+            if short.post_rms < self._minimum_post_rms or medium.post_rms < self._minimum_post_rms:
                 continue
 
             energy_support = min(

@@ -256,12 +256,9 @@ def test_interstitial_roles_accept_outgoing_only_fade_to_floor():
         incoming_handoff=incoming,
     )
 
-    enriched = (
-        DefaultTransitionRouter
-        .enrich_interstitial_roles_with_fade_to_floor(
-            roles=roles,
-            context=context,
-        )
+    enriched = DefaultTransitionRouter.enrich_interstitial_roles_with_fade_to_floor(
+        roles=roles,
+        context=context,
     )
 
     assert enriched is not None

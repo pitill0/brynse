@@ -114,9 +114,7 @@ def test_interstitial_shared_handoff_uses_routed_fade_hard_cut_geometry() -> Non
 
     class IncomingPipeline:
         def refine(self, **kwargs):
-            raise AssertionError(
-                "shared routed handoff must resolve before rediscovery"
-            )
+            raise AssertionError("shared routed handoff must resolve before rediscovery")
 
     base = _observation(boundary=95.0)
     observation = replace(
@@ -1855,11 +1853,7 @@ def test_bounded_insert_phase2_jazzy_chuck_phase_aware_left_edge() -> None:
         right=right,
     )
 
-    proposal = (
-        BoundedInsertSpecialist.propose_symmetric_phase_aware(
-            region
-        )
-    )
+    proposal = BoundedInsertSpecialist.propose_symmetric_phase_aware(region)
 
     assert proposal == TemporalSplitDecision(
         kind=TemporalSplitKind.EXCLUSION,
@@ -1889,11 +1883,7 @@ def test_bounded_insert_phase2_symmetric_keeps_earlier_support() -> None:
         right=right,
     )
 
-    proposal = (
-        BoundedInsertSpecialist.propose_symmetric_phase_aware(
-            region
-        )
-    )
+    proposal = BoundedInsertSpecialist.propose_symmetric_phase_aware(region)
 
     assert proposal == TemporalSplitDecision(
         kind=TemporalSplitKind.EXCLUSION,
@@ -1951,19 +1941,17 @@ def test_bounded_insert_phase2_earl_dj_expands_outer_extent() -> None:
         right=outer_right,
     )
 
-    proposal = (
-        BoundedInsertSpecialist.propose_asymmetric_outer_extent(
-            asymmetric_region=asymmetric,
-            symmetric_regions=(symmetric,),
-            hypotheses=(
-                predecessor,
-                internal_a,
-                internal_b,
-                anchor,
-                complementary,
-                outer_right,
-            ),
-        )
+    proposal = BoundedInsertSpecialist.propose_asymmetric_outer_extent(
+        asymmetric_region=asymmetric,
+        symmetric_regions=(symmetric,),
+        hypotheses=(
+            predecessor,
+            internal_a,
+            internal_b,
+            anchor,
+            complementary,
+            outer_right,
+        ),
     )
 
     assert proposal == TemporalSplitDecision(
@@ -2021,18 +2009,16 @@ def test_bounded_insert_phase2_outer_extent_rejects_intervening_supported_edge()
         right=right,
     )
 
-    proposal = (
-        BoundedInsertSpecialist.propose_asymmetric_outer_extent(
-            asymmetric_region=asymmetric,
-            symmetric_regions=(symmetric,),
-            hypotheses=(
-                predecessor,
-                intervening,
-                anchor,
-                complementary,
-                right,
-            ),
-        )
+    proposal = BoundedInsertSpecialist.propose_asymmetric_outer_extent(
+        asymmetric_region=asymmetric,
+        symmetric_regions=(symmetric,),
+        hypotheses=(
+            predecessor,
+            intervening,
+            anchor,
+            complementary,
+            right,
+        ),
     )
 
     # The nearest supported predecessor is the intervening edge,
@@ -2108,18 +2094,16 @@ def test_bounded_insert_phase2_outer_extent_rejects_nonstructural_interior() -> 
         right=right,
     )
 
-    proposal = (
-        BoundedInsertSpecialist.propose_asymmetric_outer_extent(
-            asymmetric_region=asymmetric,
-            symmetric_regions=(symmetric,),
-            hypotheses=(
-                predecessor,
-                basin_only,
-                anchor,
-                complementary,
-                right,
-            ),
-        )
+    proposal = BoundedInsertSpecialist.propose_asymmetric_outer_extent(
+        asymmetric_region=asymmetric,
+        symmetric_regions=(symmetric,),
+        hypotheses=(
+            predecessor,
+            basin_only,
+            anchor,
+            complementary,
+            right,
+        ),
     )
 
     assert proposal is None
@@ -2512,22 +2496,16 @@ def test_routed_resolver_consumes_route_provenance_without_reclassification() ->
             self.route_calls.append(context)
             return TransitionRoute(
                 kind=TransitionKind.BOUNDED_INSERT,
-                bounded_insert_ownership=(
-                    BoundedInsertOwnership.ASYMMETRIC
-                ),
+                bounded_insert_ownership=(BoundedInsertOwnership.ASYMMETRIC),
             )
 
         def classify(self, *, context):
             self.classify_calls.append(context)
-            raise AssertionError(
-                "route-aware resolver must not call classify()"
-            )
+            raise AssertionError("route-aware resolver must not call classify()")
 
         def bounded_insert_ownership(self, *, context):
             self.ownership_calls.append(context)
-            raise AssertionError(
-                "route already carries bounded-insert provenance"
-            )
+            raise AssertionError("route already carries bounded-insert provenance")
 
     class Specialist:
         def __init__(self):
@@ -2568,10 +2546,7 @@ def test_routed_resolver_consumes_route_provenance_without_reclassification() ->
 
     assert routed is not None
     assert routed is not original
-    assert (
-        routed.bounded_insert_ownership
-        is BoundedInsertOwnership.ASYMMETRIC
-    )
+    assert routed.bounded_insert_ownership is BoundedInsertOwnership.ASYMMETRIC
 
     assert routed.routing is original.routing
     assert routed.selected is original.selected
@@ -2649,10 +2624,7 @@ def test_routed_resolver_passes_bounded_insert_routing_provenance() -> None:
 
     assert routed is not None
     assert routed is not original
-    assert (
-        routed.bounded_insert_ownership
-        is BoundedInsertOwnership.ASYMMETRIC
-    )
+    assert routed.bounded_insert_ownership is BoundedInsertOwnership.ASYMMETRIC
     assert routed.bounded_insert_assessment is provenance
     assert routed.routing is original.routing
     assert routed.selected is original.selected
@@ -2708,10 +2680,7 @@ def test_routed_resolver_passes_bounded_insert_ownership_provenance() -> None:
 
     assert routed is not None
     assert routed is not original
-    assert (
-        routed.bounded_insert_ownership
-        is BoundedInsertOwnership.ASYMMETRIC
-    )
+    assert routed.bounded_insert_ownership is BoundedInsertOwnership.ASYMMETRIC
 
     assert routed.routing is original.routing
     assert routed.selected is original.selected
@@ -3495,7 +3464,6 @@ def test_phase3_interstitial_does_not_invent_exclusion_without_enclosing_pair() 
     )
 
 
-
 def test_phase3_hard_cut_preserves_selected_when_reference_has_left_basin() -> None:
     from dataclasses import replace
     from types import SimpleNamespace
@@ -3600,7 +3568,6 @@ def test_phase3_interstitial_recovery_rejects_distant_supported_edge() -> None:
     )
 
 
-
 def test_phase3_interstitial_preserves_outgoing_when_right_edge_is_closer() -> None:
     from dataclasses import replace
     from types import SimpleNamespace
@@ -3664,7 +3631,6 @@ def test_phase3_interstitial_preserves_outgoing_when_right_edge_is_closer() -> N
         outgoing_end_seconds=100.0,
         incoming_start_seconds=102.5,
     )
-
 
 
 def test_phase4_hard_cut_uses_unique_basin_fully_between_selected_and_reference() -> None:
@@ -3746,7 +3712,6 @@ def test_phase4_hard_cut_does_not_choose_between_multiple_enclosed_basins() -> N
     )
 
 
-
 def test_phase4_interstitial_uses_start_of_dominant_incoming_basin() -> None:
     from dataclasses import replace
     from types import SimpleNamespace
@@ -3818,9 +3783,6 @@ def test_phase4_interstitial_uses_start_of_dominant_incoming_basin() -> None:
         outgoing_end_seconds=99.0,
         incoming_start_seconds=101.0,
     )
-
-
-
 
 
 def test_phase4_interstitial_uses_minimum_when_peak_is_at_recovery() -> None:
@@ -3899,7 +3861,6 @@ def test_phase4_interstitial_uses_minimum_when_peak_is_at_recovery() -> None:
     )
 
 
-
 def test_phase4_interstitial_preserves_exclusion_when_incoming_is_not_context_peak() -> None:
     from dataclasses import replace
     from types import SimpleNamespace
@@ -3972,7 +3933,6 @@ def test_phase4_interstitial_preserves_exclusion_when_incoming_is_not_context_pe
     )
 
 
-
 def test_phase4_interstitial_preserves_exclusion_before_incoming_basin_proposal() -> None:
     from dataclasses import replace
     from types import SimpleNamespace
@@ -4030,7 +3990,6 @@ def test_phase4_interstitial_preserves_exclusion_before_incoming_basin_proposal(
         outgoing_end_seconds=95.0,
         incoming_start_seconds=101.0,
     )
-
 
 
 def test_phase4_asymmetric_fallback_uses_trailing_basin_proposal() -> None:
@@ -4097,9 +4056,7 @@ def test_phase4_asymmetric_fallback_uses_trailing_basin_proposal() -> None:
                 primary,
                 complementary,
             ),
-            bounded_insert_asymmetric_regions=(
-                asymmetric,
-            ),
+            bounded_insert_asymmetric_regions=(asymmetric,),
         ),
         bounded_insert_ownership=BoundedInsertOwnership.ASYMMETRIC,
     )
@@ -4179,9 +4136,7 @@ def test_phase4_asymmetric_fallback_preserves_recovery_when_basin_leads() -> Non
                 primary,
                 complementary,
             ),
-            bounded_insert_asymmetric_regions=(
-                asymmetric,
-            ),
+            bounded_insert_asymmetric_regions=(asymmetric,),
         ),
         bounded_insert_ownership=BoundedInsertOwnership.ASYMMETRIC,
     )
@@ -4195,8 +4150,6 @@ def test_phase4_asymmetric_fallback_preserves_recovery_when_basin_leads() -> Non
         outgoing_end_seconds=104.0,
         incoming_start_seconds=119.0,
     )
-
-
 
 
 def test_phase4_kinkajous_symmetric_ownership_excludes_terminal_insert() -> None:
@@ -4257,7 +4210,6 @@ def test_phase4_kinkajous_symmetric_ownership_excludes_terminal_insert() -> None
         outgoing_end_seconds=2832.6468367310245,
         incoming_start_seconds=2849.421836731024,
     )
-
 
 
 def test_phase4_symmetric_uses_later_basin_containing_reference() -> None:
@@ -4444,7 +4396,6 @@ def test_phase4_symmetric_preserves_support_when_reference_misses_later_basin() 
         outgoing_end_seconds=100.0,
         incoming_start_seconds=110.0,
     )
-
 
 
 # ---------------------------------------------------------------------------
@@ -4758,7 +4709,6 @@ def test_phase4e_bounded_insert_fade_blocks_asymmetric_outer_extent() -> None:
     )
 
 
-
 def test_phase4e_hard_cut_keeps_basin_only_reference_when_selected_is_inside_same_basin() -> None:
     from dataclasses import replace
     from types import SimpleNamespace
@@ -4803,7 +4753,6 @@ def test_phase4e_hard_cut_keeps_basin_only_reference_when_selected_is_inside_sam
         outgoing_end_seconds=204.800,
         incoming_start_seconds=204.800,
     )
-
 
 
 # ---------------------------------------------------------------------------
@@ -4877,9 +4826,7 @@ def _phase4f_asymmetric_observation(
         complementary=complementary,
     )
 
-    base = _asymmetric_specialist_observation(
-        region
-    )
+    base = _asymmetric_specialist_observation(region)
 
     return replace(
         base,
@@ -4888,12 +4835,8 @@ def _phase4f_asymmetric_observation(
             fade=FadeRoutingEvidence(
                 incoming_fades=(
                     IncomingFadeEvidence(
-                        start_time_seconds=(
-                            incoming_start_seconds
-                        ),
-                        established_time_seconds=(
-                            incoming_established_seconds
-                        ),
+                        start_time_seconds=(incoming_start_seconds),
+                        established_time_seconds=(incoming_established_seconds),
                         start_rms=100.0,
                         established_rms=500.0,
                         ascent_ratio=5.0,
@@ -4903,9 +4846,7 @@ def _phase4f_asymmetric_observation(
                 ),
             ),
         ),
-        bounded_insert_ownership=(
-            BoundedInsertOwnership.ASYMMETRIC
-        ),
+        bounded_insert_ownership=(BoundedInsertOwnership.ASYMMETRIC),
     )
 
 
@@ -5362,9 +5303,7 @@ def _phase4i_mark_observation(
         time_seconds=102.4,
         basin_start_seconds=101.5,
         basin_recovery_seconds=102.2,
-        structural_strength=(
-            0.9 if left_peak else 0.4
-        ),
+        structural_strength=(0.9 if left_peak else 0.4),
     )
 
     interior = _phase2_structural_only(
@@ -5426,9 +5365,7 @@ def _phase4i_mark_observation(
             fade=fade,
             bounded_insert_regions=(region,),
         ),
-        bounded_insert_ownership=(
-            BoundedInsertOwnership.SYMMETRIC
-        ),
+        bounded_insert_ownership=(BoundedInsertOwnership.SYMMETRIC),
     )
 
 
@@ -5701,7 +5638,6 @@ def test_bounded_insert_partial_roles_exclude_complete_edge_envelopes() -> None:
     )
 
 
-
 def test_interstitial_routed_edge_geometry_precedes_legacy_rediscovery() -> None:
     from dataclasses import replace
     from types import SimpleNamespace
@@ -5711,8 +5647,7 @@ def test_interstitial_routed_edge_geometry_precedes_legacy_rediscovery() -> None
     class IncomingPipeline:
         def refine(self, **kwargs):
             raise AssertionError(
-                "routed Interstitial edge geometry must resolve "
-                "before legacy rediscovery"
+                "routed Interstitial edge geometry must resolve before legacy rediscovery"
             )
 
     base = _observation(boundary=121.5)
@@ -5741,7 +5676,6 @@ def test_interstitial_routed_edge_geometry_precedes_legacy_rediscovery() -> None
     )
 
 
-
 def test_pcm_verification_respects_outgoing_semantic_ceiling() -> None:
     from dataclasses import replace
     from types import SimpleNamespace
@@ -5755,11 +5689,7 @@ def test_pcm_verification_respects_outgoing_semantic_ceiling() -> None:
             provisional = kwargs["provisional_time_seconds"]
 
             return SimpleNamespace(
-                verified_time_seconds=(
-                    105.0
-                    if provisional == 100.0
-                    else provisional
-                ),
+                verified_time_seconds=(105.0 if provisional == 100.0 else provisional),
             )
 
     base = _observation(boundary=105.0)
@@ -5806,9 +5736,7 @@ def test_pcm_verification_can_preserve_incoming_edge() -> None:
         def verify(self, **kwargs):
             self.calls.append(kwargs)
             return SimpleNamespace(
-                verified_time_seconds=(
-                    kwargs["provisional_time_seconds"] - 1.0
-                ),
+                verified_time_seconds=(kwargs["provisional_time_seconds"] - 1.0),
             )
 
     base = _observation(boundary=110.0)
@@ -5862,8 +5790,7 @@ def test_interstitial_mixed_roles_resolve_routed_extents() -> None:
     class IncomingPipeline:
         def refine(self, **kwargs):
             raise AssertionError(
-                "mixed routed Interstitial topology must resolve "
-                "before legacy rediscovery"
+                "mixed routed Interstitial topology must resolve before legacy rediscovery"
             )
 
     incoming_handoff = SimpleNamespace(
@@ -5911,9 +5838,7 @@ def test_interstitial_acoustic_island_refines_owned_region_left_edge() -> None:
 
     class IncomingPipeline:
         def refine(self, **kwargs):
-            raise AssertionError(
-                "owned Acoustic Island must resolve before legacy rediscovery"
-            )
+            raise AssertionError("owned Acoustic Island must resolve before legacy rediscovery")
 
     region = SimpleNamespace(
         left=SimpleNamespace(time_seconds=586.803),
@@ -6021,9 +5946,7 @@ def test_bounded_insert_acoustic_island_refines_owned_left_edge() -> None:
         window=None,
         pcm8=None,
         pcm16=None,
-        bounded_insert_ownership=(
-            BoundedInsertOwnership.SYMMETRIC
-        ),
+        bounded_insert_ownership=(BoundedInsertOwnership.SYMMETRIC),
         semantic_roles=TransitionSemanticRoles(
             inserted_region=region,
             incoming_handoff=right,
@@ -6105,7 +6028,6 @@ def test_acoustic_island_left_edge_does_not_replace_better_existing_edge() -> No
     )
 
     assert result is None
-
 
 
 def test_ambiguous_specialist_pcm_verifies_earlier_shared_edge() -> None:
@@ -6193,7 +6115,6 @@ def test_ambiguous_specialist_preserves_reference_when_pcm_abstains() -> None:
     )
 
 
-
 def test_interstitial_pcm_verifies_exclusion_edges_independently() -> None:
     from dataclasses import replace
     from types import SimpleNamespace
@@ -6253,10 +6174,7 @@ def test_interstitial_pcm_verifies_exclusion_edges_independently() -> None:
         incoming_start_seconds=103.2,
     )
 
-    assert [
-        call["provisional_time_seconds"]
-        for call in verifier.calls
-    ] == [100.0, 105.0]
+    assert [call["provisional_time_seconds"] for call in verifier.calls] == [100.0, 105.0]
 
 
 def test_interstitial_pcm_preserves_exclusion_when_verified_edges_cross() -> None:
@@ -6278,11 +6196,7 @@ def test_interstitial_pcm_preserves_exclusion_when_verified_edges_cross() -> Non
             provisional = kwargs["provisional_time_seconds"]
 
             return SimpleNamespace(
-                verified_time_seconds=(
-                    104.0
-                    if provisional == 100.0
-                    else 103.0
-                ),
+                verified_time_seconds=(104.0 if provisional == 100.0 else 103.0),
             )
 
     base = _observation(boundary=102.0)
@@ -6349,7 +6263,6 @@ def test_interstitial_pcm_abstention_preserves_existing_exclusion() -> None:
     )
 
 
-
 def test_interstitial_reset_pair_only_acoustic_island_becomes_pcm_verified_exclusion() -> None:
     from dataclasses import replace
     from types import SimpleNamespace
@@ -6381,8 +6294,7 @@ def test_interstitial_reset_pair_only_acoustic_island_becomes_pcm_verified_exclu
     class IncomingPipeline:
         def refine(self, **kwargs):
             raise AssertionError(
-                "reset-pair-only Acoustic Island must resolve "
-                "before legacy incoming rediscovery"
+                "reset-pair-only Acoustic Island must resolve before legacy incoming rediscovery"
             )
 
     class TemporalEdgeVerifier:
@@ -6430,10 +6342,7 @@ def test_interstitial_reset_pair_only_acoustic_island_becomes_pcm_verified_exclu
         incoming_start_seconds=108.8,
     )
 
-    assert [
-        call["provisional_time_seconds"]
-        for call in verifier.calls
-    ] == [100.0, 110.0]
+    assert [call["provisional_time_seconds"] for call in verifier.calls] == [100.0, 110.0]
 
 
 def test_interstitial_region_backed_acoustic_island_does_not_use_reset_pair_only_path() -> None:
@@ -6476,8 +6385,7 @@ def test_interstitial_region_backed_acoustic_island_does_not_use_reset_pair_only
     class IncomingPipeline:
         def refine(self, **kwargs):
             raise AssertionError(
-                "region-backed Acoustic Island must preserve "
-                "its existing specialist path"
+                "region-backed Acoustic Island must preserve its existing specialist path"
             )
 
     base = _observation(boundary=105.0)
@@ -6495,7 +6403,6 @@ def test_interstitial_region_backed_acoustic_island_does_not_use_reset_pair_only
 
     assert result.temporal is not None
     assert result.temporal.kind is TemporalSplitKind.EXCLUSION
-
 
 
 def test_hard_cut_pcm_authority_uses_explicit_bounds() -> None:
@@ -6560,16 +6467,10 @@ def test_interstitial_pcm_authority_runs_once_per_final_edge() -> None:
         def verify(self, **kwargs):
             self.calls.append(kwargs)
 
-            provisional = kwargs[
-                "provisional_time_seconds"
-            ]
+            provisional = kwargs["provisional_time_seconds"]
 
             return SimpleNamespace(
-                verified_time_seconds=(
-                    96.0
-                    if provisional == 100.0
-                    else 116.0
-                ),
+                verified_time_seconds=(96.0 if provisional == 100.0 else 116.0),
             )
 
     verifier = Verifier()
@@ -6609,16 +6510,10 @@ def test_bounded_insert_pcm_authority_preserves_exclusion_contract() -> None:
 
     class Verifier:
         def verify(self, **kwargs):
-            provisional = kwargs[
-                "provisional_time_seconds"
-            ]
+            provisional = kwargs["provisional_time_seconds"]
 
             return SimpleNamespace(
-                verified_time_seconds=(
-                    112.0
-                    if provisional == 100.0
-                    else 108.0
-                ),
+                verified_time_seconds=(112.0 if provisional == 100.0 else 108.0),
             )
 
     base = _observation(boundary=105.0)
@@ -6659,16 +6554,10 @@ def test_crossfade_pcm_authority_preserves_crossfade_contract() -> None:
 
     class Verifier:
         def verify(self, **kwargs):
-            provisional = kwargs[
-                "provisional_time_seconds"
-            ]
+            provisional = kwargs["provisional_time_seconds"]
 
             return SimpleNamespace(
-                verified_time_seconds=(
-                    101.0
-                    if provisional == 110.0
-                    else 112.0
-                ),
+                verified_time_seconds=(101.0 if provisional == 110.0 else 112.0),
             )
 
     base = _observation(boundary=105.0)
@@ -6748,10 +6637,7 @@ def test_pcm_owned_handoff_bounds_include_constituent_proposals() -> None:
     assert max(times) == 101.25
 
 
-
-
-def test_interstitial_region_backed_pcm_extends_outgoing_domain_when_left_structure_precedes_basin(
-) -> None:
+def test_interstitial_pcm_extends_outgoing_when_structure_precedes_basin() -> None:
     from dataclasses import replace
     from types import SimpleNamespace
 
@@ -6814,8 +6700,7 @@ def test_interstitial_region_backed_pcm_extends_outgoing_domain_when_left_struct
     class IncomingPipeline:
         def refine(self, **kwargs):
             raise AssertionError(
-                "region-backed Acoustic Island must resolve "
-                "before legacy incoming rediscovery"
+                "region-backed Acoustic Island must resolve before legacy incoming rediscovery"
             )
 
         analyze_hypotheses = None
@@ -6828,9 +6713,7 @@ def test_interstitial_region_backed_pcm_extends_outgoing_domain_when_left_struct
             self.calls.append(kwargs)
 
             return SimpleNamespace(
-                verified_time_seconds=(
-                    kwargs["provisional_time_seconds"]
-                ),
+                verified_time_seconds=(kwargs["provisional_time_seconds"]),
             )
 
     verifier = Verifier()
@@ -6919,8 +6802,7 @@ def test_interstitial_region_backed_pcm_partitions_edges_at_reference() -> None:
     class IncomingPipeline:
         def refine(self, **kwargs):
             raise AssertionError(
-                "region-backed Acoustic Island must resolve "
-                "before legacy incoming rediscovery"
+                "region-backed Acoustic Island must resolve before legacy incoming rediscovery"
             )
 
         analyze_hypotheses = None
@@ -6933,9 +6815,7 @@ def test_interstitial_region_backed_pcm_partitions_edges_at_reference() -> None:
             self.calls.append(kwargs)
 
             return SimpleNamespace(
-                verified_time_seconds=(
-                    kwargs["provisional_time_seconds"]
-                ),
+                verified_time_seconds=(kwargs["provisional_time_seconds"]),
             )
 
     verifier = Verifier()
@@ -6973,11 +6853,5 @@ def test_interstitial_region_backed_pcm_partitions_edges_at_reference() -> None:
     assert outgoing_bounds.end_time_seconds == 105.0
     assert incoming_bounds.start_time_seconds == 105.0
 
-    assert (
-        outgoing_bounds.start_time_seconds
-        < outgoing_bounds.end_time_seconds
-    )
-    assert (
-        incoming_bounds.start_time_seconds
-        < incoming_bounds.end_time_seconds
-    )
+    assert outgoing_bounds.start_time_seconds < outgoing_bounds.end_time_seconds
+    assert incoming_bounds.start_time_seconds < incoming_bounds.end_time_seconds

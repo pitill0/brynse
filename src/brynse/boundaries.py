@@ -98,10 +98,7 @@ class BoundaryHypothesis:
         for item in self.evidence:
             if item.proposal.source is not BoundaryProposalSource.BASIN:
                 continue
-            if (
-                item.basin_start_seconds is None
-                or item.basin_recovery_seconds is None
-            ):
+            if item.basin_start_seconds is None or item.basin_recovery_seconds is None:
                 continue
             return BasinGeometry(
                 start_seconds=item.basin_start_seconds,
