@@ -156,16 +156,16 @@ class PcmFeatureTimeline:
         if hop_samples < 1:
             raise ValueError("hop duration produces too few samples")
 
-        raw = np.frombuffer(pcm.data, dtype="<i2").astype(
+        raw: np.ndarray = np.frombuffer(pcm.data, dtype="<i2").astype(
             np.float64,
             copy=False,
         )
         samples = raw / 32768.0
 
         if samples.size < frame_samples:
-            empty_centers = np.empty(0, dtype=np.float64)
-            empty_rms_prefix = np.zeros(1, dtype=np.float64)
-            empty_spectral_prefix = np.zeros(
+            empty_centers: np.ndarray = np.empty(0, dtype=np.float64)
+            empty_rms_prefix: np.ndarray = np.zeros(1, dtype=np.float64)
+            empty_spectral_prefix: np.ndarray = np.zeros(
                 (1, len(_DEFAULT_BAND_EDGES_HZ) - 1),
                 dtype=np.float64,
             )

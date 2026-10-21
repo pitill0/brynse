@@ -5,6 +5,9 @@ from __future__ import annotations
 import statistics
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Protocol
+
+from brynse.models import DecodedPcm
 
 
 class BoundaryProposalSource(StrEnum):
@@ -168,14 +171,25 @@ class BoundaryReconciler:
         return tuple(hypotheses)
 
 
+class _BoundaryEvidenceDetector(Protocol):
+    """Structural contract for acoustic evidence providers."""
+
+    def detect_evidence(
+        self,
+        *,
+        pcm: DecodedPcm,
+        absolute_start_time_seconds: float = 0.0,
+    ) -> tuple[BoundaryEvidence, ...]: ...
+
+
 class AcousticBoundaryHypothesisBuilder:
     """Build reconciled acoustic hypotheses from independent detectors."""
 
     def __init__(
         self,
         *,
-        basin_detector,
-        structural_detector,
+        basin_detector: _BoundaryEvidenceDetector,
+        structural_detector: _BoundaryEvidenceDetector,
         reconciler: BoundaryReconciler | None = None,
     ) -> None:
         self._basin_detector = basin_detector
@@ -185,7 +199,7 @@ class AcousticBoundaryHypothesisBuilder:
     def build(
         self,
         *,
-        pcm,
+        pcm: DecodedPcm,
         absolute_start_time_seconds: float = 0.0,
     ) -> tuple[BoundaryHypothesis, ...]:
         evidence = (
