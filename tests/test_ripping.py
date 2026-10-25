@@ -2616,7 +2616,7 @@ def test_public_package_api_exports_expected_symbols() -> None:
 def test_public_package_api_version_matches_project_bootstrap() -> None:
     import brynse
 
-    assert brynse.__version__ == "0.1.0"
+    assert brynse.__version__ == "0.1.2"
 
 
 def test_encoded_track_writer_iterates_range_in_bounded_chunks() -> None:
