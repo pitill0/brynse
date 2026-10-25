@@ -7,6 +7,10 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
+from brynse.integrations.radio.metadata_order import (
+    ResolvedMetadataOrder,
+    filename_title,
+)
 from brynse.integrations.radio.ripping import RippingStreamIngestor
 from brynse.integrations.radio.session import SegmentTransition, TrackTransition
 from brynse.output import (
@@ -58,6 +62,7 @@ class SessionOutputWriter:
         range_planner: SegmentRangePlanner | None = None,
         output_service: SegmentOutputService | None = None,
         source: EncodedByteSource | None = None,
+        metadata_order: ResolvedMetadataOrder = "preserve",
     ) -> None:
         if codec not in {"mp3", "aac"}:
             raise ValueError("codec must be 'mp3' or 'aac'")
@@ -66,6 +71,7 @@ class SessionOutputWriter:
         self._source = source
         self._directory = directory
         self._codec = codec
+        self._metadata_order = metadata_order
         self._range_planner = range_planner or SegmentRangePlanner()
         self._output_service = output_service or create_safe_segment_output_service()
         self._current_start_offset: int | None = None
@@ -127,7 +133,12 @@ class SessionOutputWriter:
             source=self._source if self._source is not None else self._ingestor.ring_buffer,
             byte_range=plan.outgoing,
             directory=self._directory,
-            stem=safe_track_stem(transition.outgoing.label or "segment"),
+            stem=safe_track_stem(
+                filename_title(
+                    transition.outgoing.label or "segment",
+                    self._metadata_order,
+                )
+            ),
             codec=self._codec,
         )
 

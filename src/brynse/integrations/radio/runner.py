@@ -22,6 +22,10 @@ from brynse.incoming_refinement import (
 from brynse.integrations.radio.autonomous import AutonomousSegmentState
 from brynse.integrations.radio.capture import RadioSessionCapture
 from brynse.integrations.radio.metadata import MetadataSemanticTracker
+from brynse.integrations.radio.metadata_order import (
+    MetadataOrder,
+    resolve_metadata_order,
+)
 from brynse.integrations.radio.models import TimedMetadataEvent
 from brynse.integrations.radio.orchestrator import (
     BoundaryResolver,
@@ -75,6 +79,7 @@ class RippingRunConfig:
     ring_max_bytes: int = _DEFAULT_RING_MAX_BYTES
     autonomous_boundaries: bool = False
     session_capture_directory: Path | None = None
+    metadata_order: MetadataOrder = "auto"
 
 
 @dataclass(frozen=True)
@@ -207,6 +212,10 @@ class RippingRunner:
 
     def _validate_config(self) -> None:
         config = self._config
+        try:
+            resolve_metadata_order(config.url, config.metadata_order)
+        except ValueError as exc:
+            raise RippingRunError(str(exc)) from exc
         if config.metadata_threshold_seconds <= 0:
             raise RippingRunError("metadata threshold must be greater than zero")
         if not config.ffmpeg_binary.strip():
@@ -321,6 +330,7 @@ class RippingRunner:
                 directory=config.output_directory,
                 codec=codec,
                 source=spool,
+                metadata_order=resolve_metadata_order(config.url, config.metadata_order),
             )
             autonomous_promoter = (
                 AutonomousBoundaryPromoter() if config.autonomous_boundaries else None

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -434,3 +434,42 @@ def test_session_output_writer_rejects_boundary_at_or_before_open_segment(
         )
         is False
     )
+
+
+@pytest.mark.parametrize(
+    ("metadata_order", "expected_stem"),
+    [
+        ("title-artist", "Synthetic Artist - Synthetic A"),
+        ("preserve", "Synthetic A - Synthetic Artist"),
+    ],
+)
+def test_session_output_writer_applies_filename_order_only(
+    tmp_path: Path,
+    metadata_order: str,
+    expected_stem: str,
+) -> None:
+    original = "Synthetic A - Synthetic Artist"
+    transition = replace(
+        _transition(),
+        outgoing=_track(original, 1000, 10.0),
+    )
+    plan = SegmentWritePlan(
+        outgoing=SegmentByteRange(start_offset=1000, end_offset=5000),
+        incoming=SegmentByteRange(start_offset=5000, end_offset=10000),
+    )
+    output = _Output(tmp_path / f"{expected_stem}.mp3")
+    writer = SessionOutputWriter(
+        ingestor=_Ingestor(),
+        directory=tmp_path,
+        codec="mp3",
+        metadata_order=metadata_order,
+        range_planner=_Planner(plan),
+        output_service=output,
+    )
+
+    written = writer.write_transition(transition)
+
+    assert output.calls[0]["stem"] == expected_stem
+    assert written.transition.outgoing.title == original
+    assert written.transition is transition
+    assert written.path == output.path
