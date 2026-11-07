@@ -959,6 +959,37 @@ class InterstitialSpecialist:
         if result.temporal is None:
             return result
 
+        # A descriptive bounded region identifies two acoustic events,
+        # but does not establish ownership of the material between them.
+        # Without independent decay/reset support or bounded-insert
+        # ownership, keep the incoming audio from the ICY reference.
+        roles = observation.semantic_roles
+        island = roles.acoustic_island if roles is not None else None
+        region = island.observed_region if island is not None else None
+        reference = observation.routing.reference_time_seconds
+
+        if (
+            result.temporal.kind is TemporalSplitKind.EXCLUSION
+            and observation.bounded_insert_ownership is None
+            and roles is not None
+            and island is not None
+            and region is not None
+            and roles.inserted_region is region
+            and island.terminal_decay is None
+            and island.source_reset is None
+            and (
+                result.temporal.outgoing_end_seconds
+                < reference
+                < result.temporal.incoming_start_seconds
+            )
+        ):
+            conservative = TemporalSplitDecision(
+                kind=TemporalSplitKind.HARD_CUT,
+                outgoing_end_seconds=reference,
+                incoming_start_seconds=reference,
+            )
+            return replace(result, temporal=conservative)
+
         outgoing_extra_times: tuple[float, ...] = ()
         incoming_extra_times: tuple[float, ...] = ()
 
