@@ -93,11 +93,15 @@ class FfmpegAcousticDecoder:
         *,
         ffmpeg_binary: str = "ffmpeg",
         output_sample_rate: int = 8000,
+        timeout_seconds: float = 60.0,
     ) -> None:
         if output_sample_rate <= 0:
             raise ValueError("output_sample_rate must be greater than zero")
+        if not 0 < timeout_seconds <= 3600:
+            raise ValueError("timeout_seconds must be between 0 and 3600")
         self._ffmpeg_binary = ffmpeg_binary
         self._output_sample_rate = output_sample_rate
+        self._timeout_seconds = timeout_seconds
 
     @property
     def output_sample_rate(self) -> int:
@@ -135,9 +139,14 @@ class FfmpegAcousticDecoder:
                 input=window.data,
                 capture_output=True,
                 check=False,
+                timeout=self._timeout_seconds,
             )
         except FileNotFoundError as exc:
             raise AcousticDecodeError(f"FFmpeg binary not found: {self._ffmpeg_binary}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise AcousticDecodeError(
+                f"FFmpeg acoustic decode timed out after {self._timeout_seconds} seconds"
+            ) from exc
 
         if completed.returncode != 0:
             error = completed.stderr.decode("utf-8", errors="replace").strip()

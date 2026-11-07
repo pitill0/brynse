@@ -114,7 +114,10 @@ class IcyStreamParser:
         if not raw:
             return None
 
-        text = raw.decode("utf-8", errors="replace")
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("cp1252", errors="replace")
         title = _extract_stream_title(text)
         if title is None:
             return None
