@@ -3,17 +3,35 @@ name: Brynse CI
 on:
   push:
     branches:
+      - "**"
+  pull_request:
+    branches:
       - main
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: brynse-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality:
-    name: Python 3.12 quality gate
+    name: Python ${{ matrix.python-version }} quality gate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: "3.11"
+            constraints: "py311"
+          - python-version: "3.12"
+            constraints: "py312"
+          - python-version: "3.13"
+            constraints: "py313"
 
     steps:
       - name: Checkout
@@ -22,22 +40,26 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install FFmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y --no-install-recommends ffmpeg
 
-      - name: Install project and development dependencies
+      - name: Install Brynse and pinned quality tools
         run: |
-          python -m pip install --upgrade "pip>=26.2"
-          python -m pip install -e ".[dev]"
-          python -m pip install --upgrade \
-            "certifi>=2026.10.18" \
-            "filelock>=4.2.1" \
-            "msgpack>=1.2.3,<2"
+          python -m pip install -e . \
+            -r ci/requirements.txt \
+            -c ci/constraints-${{ matrix.constraints }}.txt
           python -m pip check
+
+      - name: Show validated revision
+        run: |
+          git rev-parse HEAD
+          python --version
+          ffmpeg -version | head -1
+          python -m pip freeze
 
       - name: Ruff format
         run: ruff format --check .
@@ -45,14 +67,35 @@ jobs:
       - name: Ruff lint
         run: ruff check .
 
-      - name: Tests
+      - name: Python compile
+        run: python -m compileall -q src tests
+
+      - name: Complete pytest suite
         run: python -m pytest -q
 
-      - name: Mypy
-        run: mypy --follow-imports=skip src/
+      - name: Mypy full import checking
+        run: |
+          mypy --no-incremental --show-error-codes \
+            --python-version "${{ matrix.python-version }}" src/
 
-      - name: Bandit
+      - name: Bandit security scan
         run: bandit -r src -c pyproject.toml
 
-      - name: Dependency audit
+      - name: Dependency vulnerability audit
         run: pip-audit --local
+
+      - name: Dependency consistency
+        run: python -m pip check
+
+      - name: Build wheel and sdist
+        run: python -m build
+
+      - name: Check distribution metadata
+        run: python -m twine check dist/*
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: brynse-dist-py${{ matrix.python-version }}
+          path: dist/
+          if-no-files-found: error

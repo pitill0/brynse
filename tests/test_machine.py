@@ -64,7 +64,6 @@ def test_segment_request_is_json_serializable() -> None:
 
 
 def test_segment_source_accepts_segment_request() -> None:
-
     from brynse.machine import SegmentRequest, SegmentResult, segment_source
 
     class FakeSource:
@@ -99,7 +98,6 @@ def test_segment_source_accepts_segment_request() -> None:
 
 
 def test_segment_source_rejects_legacy_parameters() -> None:
-
     from brynse.machine import segment_source
 
     class FakeSource:
@@ -150,7 +148,6 @@ def test_segment_result_is_json_serializable() -> None:
 
 
 def test_segment_source_returns_segment_result() -> None:
-
     from brynse.machine import (
         SegmentRequest,
         SegmentResult,
@@ -243,7 +240,6 @@ def test_machine_classifies_operational_errors(
 
 
 def test_run_segment_source_returns_structured_error() -> None:
-
     from brynse.machine import (
         MachineError,
         SegmentRequest,
@@ -278,7 +274,6 @@ def test_run_segment_source_returns_structured_error() -> None:
 
 
 def test_run_segment_source_returns_segment_result() -> None:
-
     from brynse.machine import (
         SegmentRequest,
         SegmentResult,
