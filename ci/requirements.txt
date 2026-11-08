@@ -1,0 +1,10 @@
+# Direct CI tooling pins.
+# Transitive resolution must be verified before PR acceptance.
+bandit==1.8.6
+build==1.3.0
+mypy==1.18.2
+pip-audit==2.9.0
+pytest==9.0.3
+ruff==0.14.3
+setuptools==84.1.0
+twine==6.2.0
