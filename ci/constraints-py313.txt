@@ -123,6 +123,8 @@ ruff==0.14.3
     # via -r /home/pitillo/projects/brynse-audit-ci-premerge/ci/requirements.txt
 secretstorage==3.5.0
     # via keyring
+setuptools==84.1.0
+    # via -r /home/pitillo/projects/brynse-audit-ci-premerge/ci/requirements.txt
 sortedcontainers==2.4.0
     # via cyclonedx-python-lib
 stevedore==5.9.1
