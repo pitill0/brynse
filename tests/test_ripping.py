@@ -2614,9 +2614,16 @@ def test_public_package_api_exports_expected_symbols() -> None:
 
 
 def test_public_package_api_version_matches_project_bootstrap() -> None:
+    import tomllib
+    from pathlib import Path
+
     import brynse
 
-    assert brynse.__version__ == "0.1.2"
+    project_file = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    with project_file.open("rb") as handle:
+        project_version = tomllib.load(handle)["project"]["version"]
+
+    assert brynse.__version__ == project_version
 
 
 def test_encoded_track_writer_iterates_range_in_bounded_chunks() -> None:
