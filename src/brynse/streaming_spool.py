@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
+import secrets
+import stat
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,6 +59,8 @@ class StreamingSpool:
         directory.mkdir(parents=True, exist_ok=True)
 
         self._directory = directory
+        self._session_id = secrets.token_hex(8)
+        self._directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
         self._storage_chunk_size = storage_chunk_size
         self._copy_chunk_size = copy_chunk_size
         self._max_retained_bytes = max_retained_bytes
@@ -67,7 +72,11 @@ class StreamingSpool:
         self._write_handle: BinaryIO | None = None
         self._write_path: Path | None = None
 
-        self._create_chunk()
+        try:
+            self._create_chunk()
+        except BaseException:
+            os.close(self._directory_fd)
+            raise
 
     @property
     def path(self) -> Path:
@@ -187,7 +196,8 @@ class StreamingSpool:
 
             length = local_end - local_start
 
-            with chunk.path.open("rb", buffering=0) as handle:
+            fd = os.open(chunk.path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=self._directory_fd)
+            with os.fdopen(fd, "rb", buffering=0) as handle:
                 handle.seek(local_start - chunk.start_offset)
                 data = handle.read(length)
 
@@ -227,13 +237,39 @@ class StreamingSpool:
             if self._write_path == chunk.path:
                 self._close_write_handle()
 
-            chunk.path.unlink(missing_ok=True)
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(chunk.path.name, dir_fd=self._directory_fd)
 
         if not self._chunks:
             self._create_chunk()
 
-    def close(self) -> None:
-        """Close and remove all transient spool chunks."""
+    @property
+    def recovery_paths(self) -> tuple[Path, ...]:
+        """Existing chunk paths containing unfinalized encoded stream data."""
+        # Linux procfs resolves the pinned directory even after it is renamed.
+        try:
+            current = Path(os.readlink(f"/proc/self/fd/{self._directory_fd}"))
+        except OSError:
+            current = self._directory
+        return tuple(current / chunk.path.name for chunk in self._chunks)
+
+    def sync_for_recovery(self) -> None:
+        """Durably persist retained chunks and their directory entries.
+
+        If this fails, callers must report that recovery durability is
+        unconfirmed; the chunks are left in place for manual salvage.
+        """
+        self._require_open()
+        if self._write_handle is not None:
+            self._write_handle.flush()
+        for chunk in self._chunks:
+            fd = os.open(chunk.path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=self._directory_fd)
+            with os.fdopen(fd, "rb") as handle:
+                os.fsync(handle.fileno())
+        os.fsync(self._directory_fd)
+
+    def close(self, *, preserve: bool = False) -> None:
+        """Close spool; retain chunks for recovery on publication failure."""
 
         if self._closed:
             return
@@ -241,10 +277,14 @@ class StreamingSpool:
         self._closed = True
         self._close_write_handle()
 
-        for chunk in self._chunks:
-            chunk.path.unlink(missing_ok=True)
-
-        self._chunks.clear()
+        try:
+            if not preserve:
+                for chunk in self._chunks:
+                    with contextlib.suppress(FileNotFoundError):
+                        os.unlink(chunk.path.name, dir_fd=self._directory_fd)
+        finally:
+            os.close(self._directory_fd)
+            self._chunks.clear()
 
     def _ensure_writable_chunk(self) -> _StorageChunk:
         chunk = self._chunks[-1]
@@ -258,12 +298,12 @@ class StreamingSpool:
         self._close_write_handle()
 
         fd, name = tempfile.mkstemp(
-            dir=self._directory,
-            prefix=".brynse-spool-",
+            dir=f"/proc/self/fd/{self._directory_fd}",
+            prefix=f".brynse-spool-{self._session_id}-{self._end_offset:016x}-",
             suffix=".chunk",
         )
 
-        path = Path(name)
+        path = self._directory / Path(name).name
         handle = os.fdopen(
             fd,
             "w+b",
@@ -293,3 +333,25 @@ class StreamingSpool:
     def _require_open(self) -> None:
         if self._closed:
             raise RuntimeError("streaming spool is closed")
+
+
+def inspect_retained_spool_chunks(directory: Path) -> tuple[Path, ...]:
+    """Inventory recorded chunks without following links or deleting anything."""
+    if not directory.is_dir():
+        return ()
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    try:
+        names = sorted(os.listdir(fd))
+        result = []
+        for name in names:
+            if not (name.startswith(".brynse-spool-") and name.endswith(".chunk")):
+                continue
+            try:
+                info = os.stat(name, dir_fd=fd, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            if stat.S_ISREG(info.st_mode):
+                result.append(directory / name)
+        return tuple(result)
+    finally:
+        os.close(fd)

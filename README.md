@@ -200,14 +200,80 @@ Repeated titles receive unique names such as `Artist - Track.mp3`,
 `Artist - Track-2.mp3`, and `Artist - Track-3.mp3`. This also applies to
 AAC recordings finalized as `.m4a` and to generic segment output.
 
-Publication occurs only after successful finalization. If finalization or
-publication fails, existing recordings are preserved and temporary output
-is cleaned up. Reported output paths refer to the actual published files.
+Publication occurs only after successful finalization. Existing recordings
+are never overwritten. If publication fails, completed audio may remain in
+private recovery/staging storage; do not delete these artifacts blindly. An
+uncertain directory `fsync` can mean that a completed track is already visible
+while its crash durability is not confirmed. See the recovery guide below.
 
 Codec detection can normally be left automatic by omitting `--codec`.
 
 See [`docs/examples/live-radio-track-ripping.md`](docs/examples/live-radio-track-ripping.md)
 for the complete workflow, behavior, and validation notes.
+
+## Recording storage requirements and recovery
+
+**Platform:** recording publication currently requires **Linux** with a mounted,
+accessible `/proc/self/fd`. This requirement applies to both `brynse-radio`
+and `brynse` when writing files. Linux kernels older than 6.10 are supported
+without elevated privileges: Brynse links its already-open file descriptor via
+`/proc/self/fd`, not privileged `AT_EMPTY_PATH`. Environments that restrict
+hardlinks, descriptor links, or directory writes are rejected during preflight.
+Do not assume recording publication works on other operating systems.
+
+**Filesystem:** the destination must support hardlinks, `fsync` on files and
+directories, and owner-only `.brynse-recovery/` (mode `0700`, owned by the
+running user, on the same filesystem as output). The output directory itself
+may be a symlink; the session checks the resolved target identity before
+reading and when publishing. A destination change or disappearing mount stops the session
+rather than silently redirecting recording output. Permissions and free space
+must remain valid for the duration of the session; preflight cannot guarantee
+that a NAS, mount, or ACL will not change later.
+
+**Completed file permissions:** on Linux, Brynse derives the conventional
+`0666 & ~umask` permission bits from the `Umask:` entry in `/proc/self/status`.
+If the umask cannot be read, it fails closed to mode `0600`. Private recovery
+storage remains mode `0700` regardless of the umask.
+
+**Recovery procedure:** when recording or final publication fails, first read
+Brynse's error and warning messages for the exact output, private recovery, or
+retained spool paths. Stop any writers using the same destination. A completed
+track may already exist even after a durability-related error; **never blindly
+retry or overwrite it**. Inspect `.brynse-recovery/` and any reported staging
+files before deciding whether to restore or remove anything. Brynse checks
+known published hardlinks during startup reconciliation and only cleans a
+recovery link after verifying the matching published inode. Unknown entries,
+quarantined files, incomplete spool chunks, and ambiguous links are retained
+for manual assessment: copy to a safe location before experimenting. Startup
+reconciliation is not a general-purpose audio repair facility. Never delete
+`.brynse-recovery/` wholesale to reclaim space.
+
+**Operational notes:** Avoid switching between root and non-root recording
+sessions for a shared output: the private recovery directory must be owned
+by the current user (or startup fails safely). Network-mounted directories
+may block during identity checks if the NAS becomes unresponsive; no timeout
+is guaranteed. Retained `.brynse-spool-*.chunk` artifacts are inventoried on
+startup and **never deleted automatically**. Preserve the error-log ordering
+of chunks for concatenation. New spool files have a session identifier and a
+hexadecimal starting-byte offset in their names; sort by offset **within the
+same session**, never across different sessions. Legacy random-named chunks
+must use the original error log for reliable ordering. Review retained data before manual removal.
+
+**CLI behavior:** `brynse-radio` and the `brynse` generic streaming CLI
+both perform output preflight and destination identity checks and retain
+unfinished spool chunks when a stream or storage error occurs. The generic
+CLI may return a CLI error after consuming stdin; it cannot replay consumed
+stdin, so retained chunks and the reported recovery paths are essential.
+The in-memory JSON-only mode (without an output directory) has no durable spool.
+
+**Durability limits:** a retained spool is synchronized before reported
+recovery where possible, but abrupt power loss, filesystem failure, or sudden
+storage removal can still lose the segment being recorded or leave durability
+uncertain. `fsync` confirmation is not a guarantee against physical media
+failure. A recording remaining readable from a second process does not by
+itself prove survival across a power cut. Preserve logs and recovery files for
+forensic inspection. Recovery artifacts can consume additional disk space after
+an interrupted cleanup, even when a published track exists.
 
 ## Generic streaming CLI
 

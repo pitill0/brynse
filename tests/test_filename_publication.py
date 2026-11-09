@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from brynse._filename import publish_unique
+from brynse._recoverable_publication import ensure_private_recovery_directory, publish_private_file
 
 
 def test_concurrent_publication_preserves_every_recording(
@@ -16,10 +16,10 @@ def test_concurrent_publication_preserves_every_recording(
     count = 20
 
     def publish(index: int) -> Path:
-        temporary = tmp_path / f".recording-{index}.tmp"
+        temporary = ensure_private_recovery_directory(tmp_path) / f".recording-{index}.tmp"
         temporary.write_bytes(f"recording-{index}".encode())
 
-        return publish_unique(
+        return publish_private_file(
             temp_path=temporary,
             directory=tmp_path,
             stem="Cadena SER",
@@ -33,7 +33,7 @@ def test_concurrent_publication_preserves_every_recording(
     assert {path.read_bytes() for path in paths} == {
         f"recording-{index}".encode() for index in range(count)
     }
-    assert not list(tmp_path.glob("*.tmp"))
+    assert not list((tmp_path / ".brynse-recovery").iterdir())
 
 
 def test_existing_recording_is_never_replaced(
@@ -42,10 +42,10 @@ def test_existing_recording_is_never_replaced(
     existing = tmp_path / "Cadena SER.mp3"
     existing.write_bytes(b"ORIGINAL")
 
-    temporary = tmp_path / ".incoming.tmp"
+    temporary = ensure_private_recovery_directory(tmp_path) / ".incoming.tmp"
     temporary.write_bytes(b"NEW")
 
-    result = publish_unique(
+    result = publish_private_file(
         temp_path=temporary,
         directory=tmp_path,
         stem="Cadena SER",
@@ -63,17 +63,17 @@ def test_publication_failure_preserves_original_and_temporary(
     existing = tmp_path / "Cadena SER.mp3"
     existing.write_bytes(b"ORIGINAL")
 
-    temporary = tmp_path / ".incoming.tmp"
+    temporary = ensure_private_recovery_directory(tmp_path) / ".incoming.tmp"
     temporary.write_bytes(b"NEW")
 
     with (
         patch(
-            "brynse._filename.os.link",
+            "brynse._recoverable_publication._link_fd",
             side_effect=OSError(errno.EPERM, "link forbidden"),
         ),
         pytest.raises(OSError) as captured,
     ):
-        publish_unique(
+        publish_private_file(
             temp_path=temporary,
             directory=tmp_path,
             stem="Cadena SER",
@@ -93,11 +93,11 @@ def test_publication_rejects_unsafe_stems(
     tmp_path: Path,
     stem: str,
 ) -> None:
-    temporary = tmp_path / ".incoming.tmp"
+    temporary = ensure_private_recovery_directory(tmp_path) / ".incoming.tmp"
     temporary.write_bytes(b"NEW")
 
     with pytest.raises(ValueError):
-        publish_unique(
+        publish_private_file(
             temp_path=temporary,
             directory=tmp_path,
             stem=stem,
@@ -113,11 +113,11 @@ def test_long_unicode_collisions_remain_distinct(
     paths = []
 
     for index in range(3):
-        temporary = tmp_path / f".unicode-{index}.tmp"
+        temporary = ensure_private_recovery_directory(tmp_path) / f".unicode-{index}.tmp"
         temporary.write_bytes(f"payload-{index}".encode())
 
         paths.append(
-            publish_unique(
+            publish_private_file(
                 temp_path=temporary,
                 directory=tmp_path,
                 stem="界" * 150,
@@ -137,10 +137,10 @@ def test_long_unicode_collisions_remain_distinct(
 def _publish_from_process(args: tuple[str, int]) -> str:
     directory_name, index = args
     directory = Path(directory_name)
-    temporary = directory / f".process-{index}.tmp"
+    temporary = ensure_private_recovery_directory(directory) / f".process-{index}.tmp"
     temporary.write_bytes(f"process-{index}".encode())
 
-    result = publish_unique(
+    result = publish_private_file(
         temp_path=temporary,
         directory=directory,
         stem="Radio Pública",
@@ -167,4 +167,4 @@ def test_multiprocess_publication(tmp_path: Path) -> None:
     assert {path.read_bytes() for path in paths} == {
         f"process-{index}".encode() for index in range(count)
     }
-    assert not list(tmp_path.glob("*.tmp"))
+    assert not list((tmp_path / ".brynse-recovery").iterdir())
