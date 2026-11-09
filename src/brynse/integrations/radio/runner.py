@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import http.client
+import logging
 import threading
 import urllib.error
 import urllib.parse
@@ -48,6 +49,8 @@ from brynse.orchestrator import (
 from brynse.shadow import ShadowBoundaryAnalysis
 from brynse.source import BinaryIOStreamSource, StreamSource
 from brynse.streaming_spool import create_safe_streaming_spool
+
+_LOG = logging.getLogger(__name__)
 
 _CHUNK_SIZE = 64 * 1024
 _DEFAULT_RING_MAX_BYTES = 16 * 1024 * 1024
@@ -270,13 +273,64 @@ class RippingRunner:
         """Run until EOF or stop() is requested."""
         self._validate_config()
         config = self._config
-        config.output_directory.mkdir(parents=True, exist_ok=True)
+        from brynse._recoverable_publication import (
+            _ACTIVE_OUTPUT_IDENTITY,
+            OutputDirectoryIdentity,
+            mkdir_durably,
+            preflight_publication_directory,
+            reconcile_recovery_directory,
+        )
+
+        try:
+            mkdir_durably(config.output_directory)
+            output_identity = OutputDirectoryIdentity.capture(config.output_directory)
+            check_token = _ACTIVE_OUTPUT_IDENTITY.set(output_identity)
+            try:
+                preflight_publication_directory(config.output_directory)
+                output_identity.verify()
+            finally:
+                _ACTIVE_OUTPUT_IDENTITY.reset(check_token)
+            reconciliation = reconcile_recovery_directory(config.output_directory)
+            retained = reconciliation.retained
+            if reconciliation.removed:
+                _LOG.info(
+                    "reconciled %d published recovery artifacts at %s",
+                    len(reconciliation.removed),
+                    config.output_directory / ".brynse-recovery",
+                )
+            if retained:
+                _LOG.warning(
+                    "%d retained recovery artifacts at %s; inspect before deleting: %s",
+                    len(retained),
+                    config.output_directory / ".brynse-recovery",
+                    ", ".join(retained[:10]),
+                )
+            from brynse.streaming_spool import inspect_retained_spool_chunks
+
+            retained_chunks = inspect_retained_spool_chunks(
+                output_identity.resolved / ".brynse-spool"
+            )
+            if retained_chunks:
+                _LOG.warning(
+                    "%d retained spool chunks at %s; inspect before deleting: %s",
+                    len(retained_chunks),
+                    output_identity.resolved / ".brynse-spool",
+                    ", ".join(str(p) for p in retained_chunks[:10]),
+                )
+        except (OSError, ValueError) as exc:
+            raise RippingRunError(
+                f"output storage incompatible at {config.output_directory}: {exc}; "
+                "check filesystem hardlink support, recovery directory ownership "
+                "and mode 0700 before recording"
+            ) from exc
         self._stop_event.clear()
 
         source = self._stream_opener(config.url)
         self._stream = source
+        identity_token = _ACTIVE_OUTPUT_IDENTITY.set(output_identity)
         spool = None
         session_capture = None
+        preserve_spool = False
 
         try:
             codec = resolve_codec(config.codec, source.metadata)
@@ -322,12 +376,13 @@ class RippingRunner:
                 acoustic_settle_seconds=_MULTISIGNAL_ACOUSTIC_RADIUS_SECONDS,
             )
             self._session = session
+            output_identity.verify()
             spool = create_safe_streaming_spool(
-                directory=config.output_directory / ".brynse-spool",
+                directory=output_identity.resolved / ".brynse-spool",
             )
             output_writer = SessionOutputWriter(
                 ingestor=ingestor,
-                directory=config.output_directory,
+                directory=output_identity.resolved,
                 codec=codec,
                 source=spool,
                 metadata_order=resolve_metadata_order(config.url, config.metadata_order),
@@ -345,6 +400,7 @@ class RippingRunner:
                 on_started(codec, metaint)
 
             while not self._stop_event.is_set():
+                output_identity.verify()
                 try:
                     chunk = source.read(_CHUNK_SIZE)
                 except Exception:
@@ -394,6 +450,7 @@ class RippingRunner:
                     ):
                         continue
 
+                    output_identity.verify()
                     written = output_writer.write_transition(transition)
 
                     materialized_start = output_writer.retained_start_offset
@@ -457,6 +514,7 @@ class RippingRunner:
                         if segment_transition is None:
                             continue
 
+                        output_identity.verify()
                         written_segment = output_writer.write_segment_transition(segment_transition)
 
                         retained_start_offset = output_writer.retained_start_offset
@@ -472,10 +530,55 @@ class RippingRunner:
                 stopped=self._stop_event.is_set(),
                 incomplete_track_title=self.current_track_title,
             )
+        except (OSError, RippingRunError) as exc:
+            from brynse._recoverable_publication import PublicationDurabilityError
+
+            # Preserve the spool instead of deleting the encoded recording on
+            # an output-identity failure or a storage-related runner error.
+            preserve_spool = True
+            durability = "confirmed"
+            if spool is not None:
+                try:
+                    spool.sync_for_recovery()
+                except OSError as sync_exc:
+                    durability = f"UNCONFIRMED ({sync_exc})"
+            paths = spool.recovery_paths if spool is not None else ()
+            reason = (
+                "publication durability unconfirmed"
+                if isinstance(exc, PublicationDurabilityError)
+                else "recording interrupted"
+            )
+            raise RippingRunError(
+                f"{reason}; retained encoded spool: {', '.join(map(str, paths))}; "
+                f"recovery durability: {durability}; {exc}"
+            ) from exc
+        except Exception as exc:
+            from brynse._recoverable_publication import PublicationDurabilityError
+            from brynse.output import SegmentFileWriteError
+
+            if not isinstance(exc, (SegmentFileWriteError, PublicationDurabilityError)):
+                raise
+            preserve_spool = True
+            durability = "confirmed"
+            if spool is not None:
+                try:
+                    spool.sync_for_recovery()
+                except OSError as sync_exc:
+                    durability = f"UNCONFIRMED ({sync_exc})"
+            paths = spool.recovery_paths if spool is not None else ()
+            path_list = ", ".join(map(str, paths))
+            raise RippingRunError(
+                f"recording publication failed; retained encoded spool: {path_list}; "
+                f"recovery durability: {durability}; {exc}"
+            ) from exc
         finally:
+            _ACTIVE_OUTPUT_IDENTITY.reset(identity_token)
             self._stream = None
             if spool is not None:
-                spool.close()
+                if preserve_spool:
+                    spool.close(preserve=True)
+                else:
+                    spool.close()
             if session_capture is not None:
                 with suppress(OSError):
                     session_capture.close()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
@@ -30,6 +31,7 @@ from brynse.streaming_sink import StreamingSegmentSink
 
 _STREAMING_RING_MAX_BYTES = 16 * 1024 * 1024
 _STREAMING_SETTLE_SECONDS = 8.0
+_LOG = logging.getLogger(__name__)
 
 
 class GenericCliError(RuntimeError):
@@ -186,6 +188,50 @@ def _run_generic_pipeline(
     if data is not None and chunks is not None:
         raise GenericCliError("provide either data or chunks, not both")
 
+    if output_directory is not None:
+        from brynse._recoverable_publication import (
+            OutputDirectoryIdentity,
+            mkdir_durably,
+            preflight_publication_directory,
+            reconcile_recovery_directory,
+        )
+
+        try:
+            mkdir_durably(output_directory)
+            identity = OutputDirectoryIdentity.capture(output_directory)
+            from brynse._recoverable_publication import _ACTIVE_OUTPUT_IDENTITY
+
+            check_token = _ACTIVE_OUTPUT_IDENTITY.set(identity)
+            try:
+                preflight_publication_directory(output_directory)
+                identity.verify()
+            finally:
+                _ACTIVE_OUTPUT_IDENTITY.reset(check_token)
+            report = reconcile_recovery_directory(output_directory)
+            if report.retained:
+                _LOG.warning(
+                    "%d recovery artifacts retained at %s: %s",
+                    len(report.retained),
+                    identity.resolved / ".brynse-recovery",
+                    ", ".join(report.retained[:10]),
+                )
+            output_directory = identity.resolved
+            if chunks is not None:
+                from brynse.streaming_spool import inspect_retained_spool_chunks
+
+                retained = inspect_retained_spool_chunks(output_directory)
+                if retained:
+                    _LOG.warning(
+                        "%d retained spool chunks at %s; inspect before deleting: %s",
+                        len(retained),
+                        output_directory,
+                        ", ".join(str(path) for path in retained[:10]),
+                    )
+        except (OSError, ValueError) as exc:
+            raise GenericCliError(
+                f"output storage incompatible at {output_directory}: {exc}"
+            ) from exc
+
     if data is not None:
         if not data:
             raise GenericCliError("input contains no encoded data")
@@ -247,6 +293,7 @@ def _run_generic_pipeline(
     segments: tuple[MaterializedSegment, ...] | None = None
 
     if output_directory is not None and chunks is not None:
+        identity.verify()
         spooling_ingestor = create_safe_spooling_ingestor(
             ingestor=ingestor,
             spool_directory=output_directory,
@@ -265,12 +312,16 @@ def _run_generic_pipeline(
             initial_start_source=spooling_ingestor,
         )
 
+        from brynse._recoverable_publication import _ACTIVE_OUTPUT_IDENTITY
+
+        identity_token = _ACTIVE_OUTPUT_IDENTITY.set(identity)
         bytes_ingested = 0
         completed: list[CandidateResolution] = []
         materialized: list[MaterializedSegment] = []
 
         try:
             for chunk in input_chunks:
+                identity.verify()
                 bytes_ingested += len(chunk)
 
                 for streaming_result in streaming_runner.feed(chunk):
@@ -313,8 +364,32 @@ def _run_generic_pipeline(
             tail = sink.finalize()
             if tail is not None:
                 materialized.append(tail)
-        finally:
+        except Exception as exc:
+            spool = spooling_ingestor.spool
+            paths = spool.recovery_paths
+            durability = "confirmed"
+            try:
+                spool.sync_for_recovery()
+            except OSError as sync_error:
+                durability = f"UNCONFIRMED ({sync_error})"
+            try:
+                from brynse._recoverable_publication import PublicationDurabilityError
+
+                if isinstance(exc, PublicationDurabilityError):
+                    reason = "published recording durability unconfirmed"
+                else:
+                    reason = "generic recording interrupted"
+                raise GenericCliError(
+                    f"{reason}; retained encoded spool: "
+                    f"{', '.join(str(path) for path in paths)}; "
+                    f"recovery durability: {durability}; {exc}"
+                ) from exc
+            finally:
+                spool.close(preserve=True)
+        else:
             spooling_ingestor.spool.close()
+        finally:
+            _ACTIVE_OUTPUT_IDENTITY.reset(identity_token)
 
         resolutions = tuple(completed)
         segments = tuple(materialized)

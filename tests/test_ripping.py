@@ -3860,7 +3860,7 @@ def test_safe_streaming_pipeline_close_releases_owned_spool(
 
     pipeline.close()
 
-    assert not spool_path.exists()
+    assert not list((tmp_path / "spool").glob(".brynse-spool-*.chunk"))
 
     # Cleanup must be idempotent.
     pipeline.close()
@@ -3890,7 +3890,7 @@ def test_safe_streaming_pipeline_context_manager_closes_owned_spool(
         spool_path = pipeline.spool.path
         assert spool_path.exists()
 
-    assert not spool_path.exists()
+    assert not list((tmp_path / "spool").glob(".brynse-spool-*.chunk"))
 
 
 def test_safe_streaming_pipeline_cleans_spool_when_construction_fails(

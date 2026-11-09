@@ -145,6 +145,13 @@ class SegmentFileWriter:
     ) -> Path:
         import os
         import tempfile
+        from contextlib import suppress
+
+        from brynse._recoverable_publication import (
+            PublicationDurabilityError,
+            ensure_private_recovery_directory,
+            publish_private_file,
+        )
 
         if not stem or not stem.strip():
             raise ValueError("stem must not be empty")
@@ -153,14 +160,16 @@ class SegmentFileWriter:
 
         extension = self.extension_for_codec(codec)
         directory.mkdir(parents=True, exist_ok=True)
-
         target = directory / f"{stem}{extension}"
         temp_path: Path | None = None
+        complete = False
 
         try:
+            directory = directory.resolve(strict=True)
+            private_dir = ensure_private_recovery_directory(directory)
             with tempfile.NamedTemporaryFile(
                 mode="wb",
-                dir=directory,
+                dir=private_dir,
                 prefix=".brynse-file-",
                 suffix=".tmp",
                 delete=False,
@@ -169,22 +178,24 @@ class SegmentFileWriter:
                 handle.write(data)
                 handle.flush()
                 os.fsync(handle.fileno())
+            complete = True
 
-            from brynse._filename import publish_unique
-
-            return publish_unique(
+            return publish_private_file(
                 temp_path=temp_path,
                 directory=directory,
                 stem=stem,
                 extension=extension,
             )
+        except PublicationDurabilityError:
+            raise
         except OSError as exc:
-            if temp_path is not None:
-                from contextlib import suppress
-
+            if temp_path is not None and not complete:
                 with suppress(OSError):
                     temp_path.unlink(missing_ok=True)
-            raise SegmentFileWriteError(f"failed to write segment file: {target}") from exc
+            raise SegmentFileWriteError(
+                f"failed to write segment file: {target}; "
+                f"completed staging: {temp_path if complete else 'not available'}; {exc}"
+            ) from exc
 
 
 class SegmentFinalizeError(RuntimeError):
@@ -925,9 +936,20 @@ class SegmentOutputService:
             import tempfile
             from contextlib import suppress
 
-            from brynse._filename import publish_unique
+            from brynse._recoverable_publication import (
+                PublicationDurabilityError,
+                ensure_private_recovery_directory,
+                publish_private_file,
+            )
 
             directory.mkdir(parents=True, exist_ok=True)
+            directory = directory.resolve(strict=True)
+            try:
+                private_dir = ensure_private_recovery_directory(directory)
+            except (OSError, ValueError) as exc:
+                raise SegmentFileWriteError(
+                    f"output storage unavailable at {directory}: {exc}"
+                ) from exc
 
             chunks = self._encoded_writer.iter_range(
                 source=source,
@@ -936,12 +958,13 @@ class SegmentOutputService:
             )
 
             fd, private_name = tempfile.mkstemp(
-                dir=directory,
+                dir=private_dir,
                 prefix=".brynse-stream-",
                 suffix=f".{output_codec}",
             )
             os.close(fd)
             private_path = Path(private_name)
+            complete = False
 
             try:
                 if (
@@ -969,18 +992,24 @@ class SegmentOutputService:
                 try:
                     with private_path.open("rb") as completed:
                         os.fsync(completed.fileno())
-
-                    return publish_unique(
+                    complete = True
+                    return publish_private_file(
                         temp_path=private_path,
                         directory=directory,
                         stem=stem,
                         extension=f".{output_codec}",
                     )
+                except PublicationDurabilityError:
+                    raise
                 except OSError as exc:
-                    raise SegmentFileWriteError("failed to publish finalized segment") from exc
+                    raise SegmentFileWriteError(
+                        f"failed to publish finalized segment; "
+                        f"completed staging: {private_path if complete else 'not available'}; {exc}"
+                    ) from exc
             finally:
-                with suppress(OSError):
-                    private_path.unlink(missing_ok=True)
+                if not complete:
+                    with suppress(OSError):
+                        private_path.unlink(missing_ok=True)
 
         raw = self._encoded_writer.write_range(
             source=source,
@@ -1028,6 +1057,12 @@ class SegmentOutputService:
         import tempfile
         from contextlib import suppress
 
+        from brynse._recoverable_publication import (
+            PublicationDurabilityError,
+            ensure_private_recovery_directory,
+            publish_private_file,
+        )
+
         if not stem or not stem.strip():
             raise ValueError("stem must not be empty")
         if not data:
@@ -1036,11 +1071,14 @@ class SegmentOutputService:
         directory.mkdir(parents=True, exist_ok=True)
         target = directory / f"{stem}.m4a"
         temp_path: Path | None = None
+        complete = False
 
         try:
+            directory = directory.resolve(strict=True)
+            private_dir = ensure_private_recovery_directory(directory)
             with tempfile.NamedTemporaryFile(
                 mode="wb",
-                dir=directory,
+                dir=private_dir,
                 prefix=".brynse-m4a-",
                 suffix=".tmp",
                 delete=False,
@@ -1049,17 +1087,21 @@ class SegmentOutputService:
                 handle.write(data)
                 handle.flush()
                 os.fsync(handle.fileno())
+            complete = True
 
-            from brynse._filename import publish_unique
-
-            return publish_unique(
+            return publish_private_file(
                 temp_path=temp_path,
                 directory=directory,
                 stem=stem,
                 extension=".m4a",
             )
+        except PublicationDurabilityError:
+            raise
         except OSError as exc:
-            if temp_path is not None:
+            if temp_path is not None and not complete:
                 with suppress(OSError):
                     temp_path.unlink(missing_ok=True)
-            raise SegmentFileWriteError(f"failed to write segment file: {target}") from exc
+            raise SegmentFileWriteError(
+                f"failed to write segment file: {target}; "
+                f"completed staging: {temp_path if complete else 'not available'}; {exc}"
+            ) from exc

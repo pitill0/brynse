@@ -376,3 +376,20 @@ def test_safe_streaming_spool_applies_runtime_disk_reserve(
         assert spool._min_free_bytes == 512 * 1024 * 1024
     finally:
         spool.close()
+
+
+def test_public_spool_path_survives_preserved_close_256(tmp_path):
+    """A retained spool must remain accessible via its public path."""
+    from brynse.streaming_spool import StreamingSpool
+
+    spool = StreamingSpool(directory=tmp_path)
+    spool.append(b"retained encoded audio")
+    public_path = spool.path
+
+    assert public_path.parent == tmp_path
+    assert public_path.exists()
+
+    spool.close(preserve=True)
+
+    assert public_path.exists()
+    assert public_path.read_bytes() == b"retained encoded audio"

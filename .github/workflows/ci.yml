@@ -70,6 +70,11 @@ jobs:
       - name: Python compile
         run: python -m compileall -q src tests
 
+      - name: Confirm unprivileged CI test execution
+        run: |
+          echo "CI effective uid=$(id -u)"
+          test "$(id -u)" -ne 0
+
       - name: Complete pytest suite
         run: python -m pytest -q
 

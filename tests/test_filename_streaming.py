@@ -130,6 +130,7 @@ def test_streaming_failure_preserves_existing_recording(
     codec: str,
     extension: str,
 ) -> None:
+    """Incomplete finalizer output is removed, never published."""
     existing = tmp_path / f"Cadena SER{extension}"
     existing.write_bytes(b"ORIGINAL")
 
@@ -143,7 +144,11 @@ def test_streaming_failure_preserves_existing_recording(
         _write(service, tmp_path, "Cadena SER", codec, b"NEW")
 
     assert existing.read_bytes() == b"ORIGINAL"
-    assert sorted(path.name for path in tmp_path.iterdir()) == [existing.name]
+    assert sorted(path.name for path in tmp_path.iterdir() if path.is_file()) == [existing.name]
+
+    private = tmp_path / ".brynse-recovery"
+    assert private.is_dir()
+    assert list(private.iterdir()) == []
 
 
 @pytest.mark.parametrize(
@@ -159,22 +164,30 @@ def test_streaming_publication_failure_cleans_up(
     codec: str,
     extension: str,
 ) -> None:
+    """A complete stream remains recoverable if final linking fails."""
     import errno
 
-    import brynse._filename as filename_module
+    import brynse._recoverable_publication as publication
     from brynse.output import SegmentFileWriteError
 
     existing = tmp_path / f"Cadena SER{extension}"
     existing.write_bytes(b"ORIGINAL")
 
-    def reject_publication(*, temp_path, directory, stem, extension):
-        raise OSError(errno.EPERM, "publication denied")
+    original_link = publication._link_fd
+    final_attempts = 0
 
-    monkeypatch.setattr(
-        filename_module,
-        "publish_unique",
-        reject_publication,
-    )
+    def deny_final_link(
+        source_fd: int,
+        directory_fd: int,
+        name: str,
+    ) -> None:
+        nonlocal final_attempts
+        if not name.startswith("recovery-"):
+            final_attempts += 1
+            raise OSError(errno.EPERM, "publication denied")
+        original_link(source_fd, directory_fd, name)
+
+    monkeypatch.setattr(publication, "_link_fd", deny_final_link)
 
     finalizer = _StreamingFinalizer()
     service = SegmentOutputService(
@@ -185,5 +198,14 @@ def test_streaming_publication_failure_cleans_up(
     with pytest.raises(SegmentFileWriteError, match="failed to publish"):
         _write(service, tmp_path, "Cadena SER", codec, b"NEW")
 
+    assert final_attempts == 1
     assert existing.read_bytes() == b"ORIGINAL"
-    assert sorted(path.name for path in tmp_path.iterdir()) == [existing.name]
+    assert sorted(path.name for path in tmp_path.iterdir() if path.is_file()) == [existing.name]
+
+    private = tmp_path / ".brynse-recovery"
+    staging = list(private.glob(".brynse-stream-*"))
+    backups = list(private.glob(f"recovery-*{extension}"))
+    assert len(staging) == 1
+    assert len(backups) == 1
+    assert staging[0].read_bytes() == b"NEW"
+    assert backups[0].read_bytes() == b"NEW"
