@@ -22,6 +22,7 @@ from brynse.incoming_refinement import (
 )
 from brynse.integrations.radio.autonomous import AutonomousSegmentState
 from brynse.integrations.radio.capture import RadioSessionCapture
+from brynse.integrations.radio.codec_probe import probe_stream_codec
 from brynse.integrations.radio.metadata import MetadataSemanticTracker
 from brynse.integrations.radio.metadata_order import (
     MetadataOrder,
@@ -333,8 +334,44 @@ class RippingRunner:
         preserve_spool = False
 
         try:
-            codec = resolve_codec(config.codec, source.metadata)
-            metaint = resolve_metaint(source.metadata)
+            prefetched_chunks: tuple[bytes, ...] = ()
+            try:
+                codec = resolve_codec(config.codec, source.metadata)
+            except RippingRunError as exc:
+                if config.codec != "auto" or "could not detect stream codec" not in str(exc):
+                    raise
+
+                metaint = resolve_metaint(source.metadata)
+                detected_codec, prefetched_chunks = probe_stream_codec(
+                    source,
+                    metaint=metaint,
+                    stop_event=self._stop_event,
+                )
+
+                if detected_codec is None:
+                    if self._stop_event.is_set():
+                        return RippingRunResult(
+                            codec="unknown",
+                            metaint=metaint,
+                            stopped=True,
+                            incomplete_track_title=None,
+                        )
+                    raise RippingRunError(
+                        "could not identify MP3 or AAC from a bounded "
+                        "sample of the ICY audio stream"
+                    ) from exc
+
+                codec = detected_codec
+            else:
+                metaint = resolve_metaint(source.metadata)
+
+            if self._stop_event.is_set():
+                return RippingRunResult(
+                    codec=codec,
+                    metaint=metaint,
+                    stopped=True,
+                    incomplete_track_title=None,
+                )
 
             if config.session_capture_directory is not None:
                 try:
@@ -396,13 +433,24 @@ class RippingRunner:
                 self._shadow_observer_factory(config.ffmpeg_binary) if shadow_enabled else None
             )
 
+            if self._stop_event.is_set():
+                return RippingRunResult(
+                    codec=codec,
+                    metaint=metaint,
+                    stopped=True,
+                    incomplete_track_title=None,
+                )
+
             if on_started is not None:
                 on_started(codec, metaint)
 
+            pending_chunks = iter(prefetched_chunks)
             while not self._stop_event.is_set():
                 output_identity.verify()
                 try:
-                    chunk = source.read(_CHUNK_SIZE)
+                    chunk = next(pending_chunks, None)
+                    if chunk is None:
+                        chunk = source.read(_CHUNK_SIZE)
                 except Exception:
                     if self._stop_event.is_set():
                         break
