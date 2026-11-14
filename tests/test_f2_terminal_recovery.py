@@ -82,7 +82,6 @@ def test_terminal_audio_survives_normal_runner_exit(
     assert recovered == FRAME
     assert hashlib.sha256(recovered).digest() == hashlib.sha256(FRAME).digest()
 
-
     terminal_records = list(output.glob("brynse-terminal-*.json"))
     assert len(terminal_records) == 1
     record = json.loads(terminal_records[0].read_text(encoding="utf-8"))

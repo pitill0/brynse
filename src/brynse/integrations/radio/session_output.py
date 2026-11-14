@@ -135,19 +135,14 @@ class SessionOutputWriter:
             ledger = PublicationCoverageLedger(start_offset=0)
             self._coverage_ledger = ledger
         if ledger.start_offset != 0:
-            raise CoverageError(
-                f"unaccounted initial head [0, {ledger.start_offset})"
-            )
+            raise CoverageError(f"unaccounted initial head [0, {ledger.start_offset})")
         if spool_start > ledger.covered_end:
-            raise CoverageError(
-                f"unaccounted discard [{ledger.covered_end}, {spool_start})"
-            )
+            raise CoverageError(f"unaccounted discard [{ledger.covered_end}, {spool_start})")
         if spool_end < ledger.covered_end:
             raise CoverageError("published coverage exceeds received source bytes")
 
-        if spool_end > ledger.covered_end:
-            if ledger.retained_tail is None:
-                ledger.declare_retained_tail(start=ledger.covered_end, end=spool_end)
+        if spool_end > ledger.covered_end and ledger.retained_tail is None:
+            ledger.declare_retained_tail(start=ledger.covered_end, end=spool_end)
         ledger.verify_complete(end_offset=spool_end)
         return ledger.retained_tail
 

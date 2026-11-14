@@ -151,8 +151,7 @@ def publish_terminal_provenance(
         "spool_start_offset": spool_start,
         "spool_end_offset": spool_end,
         "retained_tail": (
-            {"start_offset": tail.start, "end_offset": tail.end}
-            if tail is not None else None
+            {"start_offset": tail.start, "end_offset": tail.end} if tail is not None else None
         ),
         "spool_chunks": [p.name for p in spool_paths],
         "published": [
