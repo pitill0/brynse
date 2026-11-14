@@ -268,10 +268,11 @@ class SegmentByteRange:
 
 @dataclass(frozen=True)
 class SegmentWritePlan:
-    """Encoded-byte ranges for the outgoing and incoming segments."""
+    """Encoded-byte ranges for outgoing, incoming and unowned audio."""
 
     outgoing: SegmentByteRange
     incoming: SegmentByteRange
+    unowned: SegmentByteRange | None = None
 
 
 @dataclass(frozen=True)

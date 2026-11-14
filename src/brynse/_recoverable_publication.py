@@ -152,7 +152,7 @@ def publish_fd_recoverably(
         raise ValueError("stem must not be empty")
     if stem in {".", ".."} or any(c in stem for c in ("/", "\\", "\x00")):
         raise ValueError("unsafe output stem")
-    if extension not in {".mp3", ".aac", ".m4a"}:
+    if extension not in {".mp3", ".aac", ".m4a", ".json"}:
         raise ValueError("unsupported output extension")
 
     opened = os.fstat(source_fd)
@@ -305,7 +305,7 @@ def reconcile_recovery_directory(directory: Path) -> ReconciliationReport:
             recovery_entries = sorted(os.listdir(private_fd))
             reclaimable = (
                 r"(?:recovery-[0-9a-f]{32}|\.brynse-stream-[A-Za-z0-9_-]+)"
-                r"\.(?:mp3|aac|m4a)"
+                r"\.(?:mp3|aac|m4a|json)"
             )
             if not any(re.fullmatch(reclaimable, name) for name in recovery_entries):
                 return ReconciliationReport((), tuple(recovery_entries))
@@ -313,7 +313,7 @@ def reconcile_recovery_directory(directory: Path) -> ReconciliationReport:
             # Index only when a candidate can actually be reclaimed.
             published: dict[tuple[int, int], list[str]] = {}
             for name in os.listdir(output_fd):
-                if name.startswith(".") or not name.endswith((".mp3", ".aac", ".m4a")):
+                if name.startswith(".") or not name.endswith((".mp3", ".aac", ".m4a", ".json")):
                     continue
                 try:
                     candidate = os.stat(name, dir_fd=output_fd, follow_symlinks=False)
