@@ -25,6 +25,7 @@ class RecordingService:
     ) -> Path:
         path = directory / f"{stem}.mp3"
         if not (self.omit_unowned and stem.startswith("unowned-")):
+            path.write_bytes(b"simulated-published-audio")
             self.published.append((byte_range.start_offset, byte_range.end_offset))
         return path
 
@@ -72,9 +73,10 @@ def assert_contiguous_coverage(
     assert cursor == end, f"uncovered tail [{cursor}, {end})"
 
 
-def test_transition_has_contiguous_published_coverage() -> None:
+def test_transition_has_contiguous_published_coverage(tmp_path: Path) -> None:
     service = RecordingService()
     writer = make_writer(service)
+    writer._directory = tmp_path
 
     writer.write_segment_transition(transition())
 
@@ -86,18 +88,50 @@ def test_transition_has_contiguous_published_coverage() -> None:
     )
 
 
-def test_coverage_checker_detects_silently_omitted_unowned() -> None:
+def test_coverage_checker_detects_silently_omitted_unowned(tmp_path: Path) -> None:
     service = RecordingService(omit_unowned=True)
     writer = make_writer(service)
+    writer._directory = tmp_path
 
-    writer.write_segment_transition(transition())
+    from brynse.publication_coverage import CoverageError
+
+    with pytest.raises(CoverageError, match="missing|not published"):
+        writer.write_segment_transition(transition())
 
     assert service.published == [(100, 400)]
-    assert writer.retained_start_offset == 500
+    assert writer.retained_start_offset == 100
 
-    with pytest.raises(AssertionError, match="uncovered tail"):
-        assert_contiguous_coverage(
-            service.published,
-            start=100,
-            end=writer.retained_start_offset,
-        )
+
+def test_phantom_unowned_publication_is_rejected(tmp_path: Path) -> None:
+    """A returned pathname cannot prove that excluded audio was published."""
+    from brynse.publication_coverage import CoverageError
+
+    class PhantomUnownedService(RecordingService):
+        def write_segment(
+            self,
+            *,
+            byte_range,
+            stem: str,
+            directory: Path,
+            **kwargs,
+        ) -> Path:
+            path = directory / f"{stem}.mp3"
+
+            if stem.startswith("unowned-"):
+                # Mutation: return apparent success without creating audio.
+                return path
+
+            path.write_bytes(b"published-track")
+            self.published.append((byte_range.start_offset, byte_range.end_offset))
+            return path
+
+    service = PhantomUnownedService()
+    writer = make_writer(service)
+    writer._directory = tmp_path
+
+    with pytest.raises(CoverageError, match="not published|missing"):
+        writer.write_segment_transition(transition())
+
+    assert service.published == [(100, 400)]
+    assert writer.retained_start_offset == 100
+    assert not list(tmp_path.glob("unowned-*.mp3"))

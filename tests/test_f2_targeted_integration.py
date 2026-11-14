@@ -3,10 +3,13 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from brynse.integrations.radio.session import RippingSession
 from brynse.integrations.radio.session_output import SessionOutputWriter
 from brynse.models import SplitDecision, SplitKind, TemporalSplitKind
 from brynse.output import SegmentOutputService
+from brynse.publication_coverage import PublicationCoverageLedger
 
 
 class Source:
@@ -158,3 +161,33 @@ def test_hard_cut_emits_no_unowned_event(tmp_path: Path) -> None:
 
     writer.write_segment_transition(transition)
     assert events == []
+
+
+def test_real_audio_publication_survives_provenance_failure(tmp_path: Path) -> None:
+    """Both real outputs exist; a failed receipt cannot authorize discard."""
+    writer, source = make_writer(tmp_path, "mp3")
+    writer._coverage_ledger = PublicationCoverageLedger(start_offset=0)
+
+    def fail_receipt(_receipt: object) -> None:
+        raise OSError("injected durable receipt error")
+
+    writer._on_publication_confirmed = fail_receipt
+    transition = SimpleNamespace(
+        outgoing=SimpleNamespace(start_offset=0, label="Track A"),
+        boundary=SimpleNamespace(
+            split=SplitDecision(
+                kind=SplitKind.EXCLUSION,
+                outgoing_end=400,
+                incoming_start=500,
+            )
+        ),
+    )
+    with pytest.raises(OSError, match="injected durable receipt error"):
+        writer.write_segment_transition(transition)
+
+    assert writer.retained_start_offset is None
+    assert len(list(tmp_path.glob("unowned-*.mp3"))) == 1
+    assert (tmp_path / "Track A.mp3").read_bytes() == source.data[:400]
+    assert list(tmp_path.glob("unowned-*.mp3"))[0].read_bytes() == source.data[400:500]
+    assert writer.publication_coverage is not None
+    assert writer.publication_coverage.covered_end == 500

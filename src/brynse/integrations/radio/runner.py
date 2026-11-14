@@ -36,6 +36,7 @@ from brynse.integrations.radio.orchestrator import (
 from brynse.integrations.radio.ripping import RippingStreamIngestor
 from brynse.integrations.radio.session import RippingSession
 from brynse.integrations.radio.session_output import (
+    PublicationReceipt,
     SessionOutputWriter,
     WrittenSegment,
     WrittenTrack,
@@ -420,6 +421,28 @@ class RippingRunner:
             spool = create_safe_streaming_spool(
                 directory=output_identity.resolved / ".brynse-spool",
             )
+            # Persist proof of each publication before writer advancement.
+            # Never expose potential credentials from the station URL.
+            from hashlib import sha256
+            from uuid import uuid4
+
+            from brynse.publication_provenance import (
+                publish_provenance,
+                publish_terminal_provenance,
+            )
+
+            provenance_session_id = uuid4().hex
+            provenance_source_id = "sha256:" + sha256(config.url.encode("utf-8")).hexdigest()
+
+            def persist_publication(receipt: PublicationReceipt) -> None:
+                output_identity.verify()
+                publish_provenance(
+                    receipt=receipt,
+                    directory=output_identity.resolved,
+                    session_id=provenance_session_id,
+                    source_id=provenance_source_id,
+                )
+
             output_writer = SessionOutputWriter(
                 ingestor=ingestor,
                 directory=output_identity.resolved,
@@ -427,6 +450,8 @@ class RippingRunner:
                 source=spool,
                 metadata_order=resolve_metadata_order(config.url, config.metadata_order),
                 on_unowned_written=on_unowned_written,
+                on_publication_confirmed=persist_publication,
+                initial_offset=getattr(spool, "start_offset", 0),
             )
             autonomous_promoter = (
                 AutonomousBoundaryPromoter() if config.autonomous_boundaries else None
@@ -583,6 +608,33 @@ class RippingRunner:
             if getattr(spool, "retained_bytes", 0) > 0:
                 preserve_spool = True
                 spool.sync_for_recovery()
+
+            # Confirm the whole stream's byte disposition and persist the
+            # terminal record before reporting successful completion.
+            # Fake writers used by legacy runner tests may lack this API.
+            finalize_coverage = getattr(output_writer, "finalize_coverage", None)
+            if (
+                finalize_coverage is not None
+                and hasattr(spool, "start_offset")
+                and hasattr(spool, "end_offset")
+            ):
+                finalize_coverage(
+                    spool_start=spool.start_offset,
+                    spool_end=spool.end_offset,
+                )
+                coverage = output_writer.publication_coverage
+                if coverage is None:
+                    raise RippingRunError("missing terminal publication coverage")
+                output_identity.verify()
+                publish_terminal_provenance(
+                    ledger=coverage,
+                    directory=output_identity.resolved,
+                    session_id=provenance_session_id,
+                    source_id=provenance_source_id,
+                    spool_start=spool.start_offset,
+                    spool_end=spool.end_offset,
+                    spool_paths=spool.recovery_paths,
+                )
 
             return RippingRunResult(
                 codec=codec,

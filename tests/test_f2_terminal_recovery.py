@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -80,3 +81,16 @@ def test_terminal_audio_survives_normal_runner_exit(
     recovered = b"".join(path.read_bytes() for path in chunks)
     assert recovered == FRAME
     assert hashlib.sha256(recovered).digest() == hashlib.sha256(FRAME).digest()
+
+
+    terminal_records = list(output.glob("brynse-terminal-*.json"))
+    assert len(terminal_records) == 1
+    record = json.loads(terminal_records[0].read_text(encoding="utf-8"))
+    assert record["record_type"] == "terminal_coverage"
+    assert record["source_start_offset"] == 0
+    assert record["source_end_offset"] == len(FRAME)
+    assert record["spool_start_offset"] == 0
+    assert record["spool_end_offset"] == len(FRAME)
+    assert record["retained_tail"] == {"start_offset": 0, "end_offset": len(FRAME)}
+    assert record["published"] == []
+    assert record["spool_chunks"]

@@ -59,6 +59,9 @@ class _Output:
 
     def write_segment(self, **kwargs: object) -> Path:
         self.calls.append(kwargs)
+        # Materialize the fake publication: the ledger must not trust a
+        # pathname without a real regular output file.
+        self.path.write_bytes(b"test-output")
         return self.path
 
 
@@ -255,6 +258,7 @@ def test_session_output_writer_reuses_exclusion_incoming_start_for_next_track(
     exclusion_plan = SegmentWritePlan(
         outgoing=SegmentByteRange(start_offset=1000, end_offset=5000),
         incoming=SegmentByteRange(start_offset=6200, end_offset=10000),
+        unowned=SegmentByteRange(start_offset=5000, end_offset=6200),
     )
     next_plan = SegmentWritePlan(
         outgoing=SegmentByteRange(start_offset=6200, end_offset=9000),
