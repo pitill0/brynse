@@ -62,6 +62,14 @@ class SegmentRangePlanner:
                 start_offset=decision.incoming_start,
                 end_offset=next_end_offset,
             ),
+            unowned=(
+                SegmentByteRange(
+                    start_offset=decision.outgoing_end,
+                    end_offset=decision.incoming_start,
+                )
+                if decision.incoming_start > decision.outgoing_end
+                else None
+            ),
         )
 
 

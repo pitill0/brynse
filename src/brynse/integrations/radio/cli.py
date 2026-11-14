@@ -19,7 +19,11 @@ from brynse.integrations.radio.runner import (
     resolve_codec,
     resolve_metaint,
 )
-from brynse.integrations.radio.session_output import WrittenSegment, WrittenTrack
+from brynse.integrations.radio.session_output import (
+    WrittenSegment,
+    WrittenTrack,
+    WrittenUnownedRegion,
+)
 from brynse.orchestrator import TransitionRoutingObservation
 from brynse.pcm_boundary import PcmBoundaryObservation
 from brynse.shadow import ShadowBoundaryAnalysis
@@ -566,6 +570,17 @@ def _run_stream(args: argparse.Namespace) -> int:
             flush=True,
         )
 
+    unowned_count = 0
+
+    def print_unowned(written: WrittenUnownedRegion) -> None:
+        nonlocal unowned_count
+        unowned_count += 1
+        region = written.byte_range
+        print(
+            f"unowned preserved: {written.path} bytes=[{region.start_offset},{region.end_offset})",
+            flush=True,
+        )
+
     def print_written(written: WrittenTrack) -> None:
         print(f"written: {written.path}", flush=True)
 
@@ -642,6 +657,7 @@ def _run_stream(args: argparse.Namespace) -> int:
             on_started=print_started,
             on_metadata=print_metadata,
             on_track_written=print_written,
+            on_unowned_written=print_unowned,
             on_segment_written=print_segment_written,
             on_shadow_analysis=print_shadow,
             on_incoming_observation=print_incoming,
@@ -663,6 +679,7 @@ def _run_stream(args: argparse.Namespace) -> int:
 
     print(f"codec: {result.codec}")
     print(f"icy-metaint: {result.metaint}")
+    print(f"unowned regions preserved: {unowned_count}")
     return 0
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from brynse.integrations.radio.metadata_order import (
 )
 from brynse.integrations.radio.ripping import RippingStreamIngestor
 from brynse.integrations.radio.session import SegmentTransition, TrackTransition
+from brynse.models import SegmentByteRange
 from brynse.output import (
     EncodedByteSource,
     SegmentOutputService,
@@ -50,6 +52,15 @@ class WrittenTrack:
     path: Path
 
 
+@dataclass(frozen=True)
+class WrittenUnownedRegion:
+    """A published excluded interval, separate from normal tracks."""
+
+    transition: SegmentTransition
+    byte_range: SegmentByteRange
+    path: Path
+
+
 class SessionOutputWriter:
     """Convert resolved transitions into finalized outgoing track files."""
 
@@ -63,6 +74,7 @@ class SessionOutputWriter:
         output_service: SegmentOutputService | None = None,
         source: EncodedByteSource | None = None,
         metadata_order: ResolvedMetadataOrder = "preserve",
+        on_unowned_written: Callable[[WrittenUnownedRegion], None] | None = None,
     ) -> None:
         if codec not in {"mp3", "aac"}:
             raise ValueError("codec must be 'mp3' or 'aac'")
@@ -72,6 +84,7 @@ class SessionOutputWriter:
         self._directory = directory
         self._codec = codec
         self._metadata_order = metadata_order
+        self._on_unowned_written = on_unowned_written
         self._range_planner = range_planner or SegmentRangePlanner()
         self._output_service = output_service or create_safe_segment_output_service()
         self._current_start_offset: int | None = None
@@ -142,6 +155,25 @@ class SessionOutputWriter:
             codec=self._codec,
         )
 
+        if plan.unowned is not None:
+            unowned_path = self._output_service.write_segment(
+                source=self._source if self._source is not None else self._ingestor.ring_buffer,
+                byte_range=plan.unowned,
+                directory=self._directory,
+                stem=(f"unowned-{plan.unowned.start_offset:012d}-{plan.unowned.end_offset:012d}"),
+                codec=self._codec,
+            )
+            callback = getattr(self, "_on_unowned_written", None)
+            if callback is not None:
+                callback(
+                    WrittenUnownedRegion(
+                        transition=transition,
+                        byte_range=plan.unowned,
+                        path=unowned_path,
+                    )
+                )
+
+        # The runner may discard spool data only after both publications succeed.
         self._current_start_offset = plan.incoming.start_offset
 
         return WrittenSegment(

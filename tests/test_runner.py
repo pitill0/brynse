@@ -355,8 +355,12 @@ def test_runner_closes_spool_when_output_writer_construction_fails(
         def __init__(self) -> None:
             self.closed = False
 
-        def close(self) -> None:
+        def sync_for_recovery(self) -> None:
+            self.synced = True
+
+        def close(self, *, preserve: bool = False) -> None:
             self.closed = True
+            self.preserved = preserve
 
     class FakeSession:
         current_track = None
@@ -403,6 +407,9 @@ def test_runner_closes_spool_when_output_writer_construction_fails(
 
     assert spool.closed is True
 
+    assert spool.synced is True
+    assert spool.preserved is True
+
 
 def test_runner_closes_spool_when_append_fails(
     tmp_path: Path,
@@ -427,8 +434,12 @@ def test_runner_closes_spool_when_append_fails(
         def append(self, data: bytes) -> tuple[int, int]:
             raise RuntimeError("spool append failed")
 
-        def close(self) -> None:
+        def sync_for_recovery(self) -> None:
+            self.synced = True
+
+        def close(self, *, preserve: bool = False) -> None:
             self.closed = True
+            self.preserved = preserve
 
     class FakeIngestResult:
         audio = b"clean-audio"
@@ -485,6 +496,9 @@ def test_runner_closes_spool_when_append_fails(
         runner.run()
 
     assert spool.closed is True
+
+    assert spool.synced is True
+    assert spool.preserved is True
 
 
 def test_runner_rejects_stale_semantic_transition_before_write(
@@ -622,8 +636,12 @@ def test_runner_does_not_discard_spool_when_track_write_fails(
         def discard_before(self, offset: int) -> None:
             self.discarded.append(offset)
 
-        def close(self) -> None:
+        def sync_for_recovery(self) -> None:
+            self.synced = True
+
+        def close(self, *, preserve: bool = False) -> None:
             self.closed = True
+            self.preserved = preserve
 
     class FakeIngestResult:
         audio = b"clean-audio"
@@ -708,6 +726,9 @@ def test_runner_does_not_discard_spool_when_track_write_fails(
     assert spool.discarded == []
     assert spool.closed is True
 
+    assert spool.synced is True
+    assert spool.preserved is True
+
 
 def test_runner_closes_spool_when_discard_fails(
     tmp_path: Path,
@@ -735,8 +756,12 @@ def test_runner_closes_spool_when_discard_fails(
         def discard_before(self, offset: int) -> None:
             raise RuntimeError("spool discard failed")
 
-        def close(self) -> None:
+        def sync_for_recovery(self) -> None:
+            self.synced = True
+
+        def close(self, *, preserve: bool = False) -> None:
             self.closed = True
+            self.preserved = preserve
 
     class FakeIngestResult:
         audio = b"clean-audio"
@@ -823,6 +848,9 @@ def test_runner_closes_spool_when_discard_fails(
 
     assert written_callbacks == []
     assert spool.closed is True
+
+    assert spool.synced is True
+    assert spool.preserved is True
 
 
 def test_open_stream_uses_interoperable_icy_request_headers(
