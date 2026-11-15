@@ -182,9 +182,12 @@ class SessionOutputWriter:
 
         last_frame = frames[-1]
         next_end_offset = last_frame.offset + last_frame.length
+        ledger = getattr(self, "_coverage_ledger", None)
         previous_start_offset = (
             self._current_start_offset
             if self._current_start_offset is not None
+            else ledger.start_offset
+            if ledger is not None
             else transition.outgoing.start_offset
         )
 
@@ -194,7 +197,6 @@ class SessionOutputWriter:
             decision=transition.boundary.split,
         )
 
-        ledger = getattr(self, "_coverage_ledger", None)
         if ledger is None:
             ledger = PublicationCoverageLedger(start_offset=plan.outgoing.start_offset)
             self._coverage_ledger = ledger

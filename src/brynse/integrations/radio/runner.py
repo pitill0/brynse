@@ -10,7 +10,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import BinaryIO
 
@@ -34,7 +34,7 @@ from brynse.integrations.radio.orchestrator import (
     CandidateBoundaryResolver,
 )
 from brynse.integrations.radio.ripping import RippingStreamIngestor
-from brynse.integrations.radio.session import RippingSession
+from brynse.integrations.radio.session import RippingSession, TrackTransition
 from brynse.integrations.radio.session_output import (
     PublicationReceipt,
     SessionOutputWriter,
@@ -44,7 +44,13 @@ from brynse.integrations.radio.session_output import (
 )
 from brynse.integrations.radio.transient import ConservativeTransientExclusionPolicy
 from brynse.live_shadow import LiveShadowBoundaryObserver
-from brynse.models import Segment
+from brynse.models import (
+    Segment,
+    SplitDecision,
+    SplitKind,
+    TemporalSplitDecision,
+    TemporalSplitKind,
+)
 from brynse.orchestrator import (
     MultiSignalAcousticCandidateResolver,
     TransitionRoutingObservation,
@@ -107,6 +113,43 @@ StartedCallback = Callable[[str, int], None]
 ShadowCallback = Callable[[ShadowBoundaryAnalysis], None]
 RoutingObservationCallback = Callable[[TransitionRoutingObservation], None]
 ShadowObserverFactory = Callable[[str], LiveShadowBoundaryObserver]
+
+
+def _recover_stale_semantic_transition(
+    transition: TrackTransition,
+    *,
+    ingestor: RippingStreamIngestor,
+    output_writer: SessionOutputWriter,
+) -> TrackTransition | None:
+    """Publish a stale acoustic decision at the next valid semantic frame.
+
+    This explicit hard-cut fallback is less precise than a verified acoustic
+    boundary, but avoids silently assigning a short outgoing title to its
+    successor. The exact byte choice is recorded in the transition receipt.
+    """
+    frame = ingestor.timeline.frame_at_or_after_audio_offset(transition.incoming.start_offset)
+    if frame is None:
+        return None
+
+    offset = frame.offset
+    if not output_writer.can_write_transition(outgoing_end=offset, incoming_start=offset):
+        return None
+
+    semantic_time = frame.time_seconds
+    boundary = replace(
+        transition.boundary,
+        temporal=TemporalSplitDecision(
+            kind=TemporalSplitKind.HARD_CUT,
+            outgoing_end_seconds=semantic_time,
+            incoming_start_seconds=semantic_time,
+        ),
+        split=SplitDecision(
+            kind=SplitKind.HARD_CUT,
+            outgoing_end=offset,
+            incoming_start=offset,
+        ),
+    )
+    return replace(transition, boundary=boundary)
 
 
 def normalized_content_type(headers: Mapping[str, str]) -> str:
@@ -525,7 +568,36 @@ class RippingRunner:
                             incoming_start=incoming_start,
                         )
                     ):
-                        continue
+                        recovered = (
+                            _recover_stale_semantic_transition(
+                                transition,
+                                ingestor=ingestor,
+                                output_writer=output_writer,
+                            )
+                            if isinstance(transition, TrackTransition)
+                            else None
+                        )
+                        if recovered is None:
+                            _LOG.warning(
+                                "semantic transition not published: outgoing=%r incoming=%r "
+                                "outgoing_end=%r incoming_start=%r retained_start=%r",
+                                getattr(getattr(transition, "outgoing", None), "title", None),
+                                getattr(getattr(transition, "incoming", None), "title", None),
+                                outgoing_end,
+                                incoming_start,
+                                output_writer.retained_start_offset,
+                            )
+                            continue
+                        _LOG.warning(
+                            "semantic transition recovered as explicit hard cut: "
+                            "outgoing=%r incoming=%r rejected_outgoing_end=%r "
+                            "recovered_offset=%r",
+                            transition.outgoing.title,
+                            transition.incoming.title,
+                            outgoing_end,
+                            recovered.boundary.split.outgoing_end,
+                        )
+                        transition = recovered
 
                     output_identity.verify()
                     written = output_writer.write_transition(transition)
@@ -582,6 +654,13 @@ class RippingRunner:
                                 incoming_start=incoming_start,
                             )
                         ):
+                            _LOG.warning(
+                                "autonomous transition not published: "
+                                "outgoing_end=%r incoming_start=%r retained_start=%r",
+                                outgoing_end,
+                                incoming_start,
+                                output_writer.retained_start_offset,
+                            )
                             continue
 
                         segment_transition = autonomous_state.transition(

@@ -269,6 +269,13 @@ class IncrementalFrameTimeline:
                 break
         return None
 
+    def frame_at_or_after_audio_offset(self, offset: int) -> EncodedAudioFrame | None:
+        """Find the containing frame or the next frame after a non-audio gap."""
+        for frame in self._frames:
+            if frame.offset + frame.length > offset:
+                return frame
+        return None
+
     def discard_before(self, offset: int) -> None:
         """Discard completed frame records that cannot overlap ``offset``."""
 

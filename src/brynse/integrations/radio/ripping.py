@@ -41,7 +41,7 @@ class RippingStreamIngestor:
         timed: list[TimedMetadataEvent] = []
         still_pending: list[MetadataEvent] = []
         for event in self._pending_metadata:
-            frame = self._timeline.frame_for_audio_offset(event.audio_offset)
+            frame = self._timeline.frame_at_or_after_audio_offset(event.audio_offset)
             if frame is None:
                 still_pending.append(event)
                 continue
