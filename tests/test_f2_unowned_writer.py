@@ -79,6 +79,28 @@ def test_hard_cut_does_not_create_unowned_file(tmp_path: Path) -> None:
     assert writer.retained_start_offset == 400
 
 
+def test_radio_crossfade_publishes_mixture_once_as_unowned(tmp_path: Path) -> None:
+    service = RecordingOutputService()
+    writer = make_writer(service)
+    writer._directory = tmp_path
+    mixed = transition(500, 400)
+    mixed.boundary.split.kind = SplitKind.CROSSFADE
+
+    writer.write_segment_transition(mixed)
+
+    assert [call[1:] for call in service.calls] == [(100, 400), (400, 500)]
+    assert writer._coverage_ledger is not None
+    assert [
+        (entry.kind, entry.start, entry.end) for entry in writer._coverage_ledger.published
+    ] == [
+        ("track", 100, 400),
+        ("unowned", 400, 500),
+    ]
+    assert writer.retained_start_offset == 500
+    assert writer._coverage_ledger is not None
+    writer._coverage_ledger.verify_complete(end_offset=500)
+
+
 def test_unowned_failure_does_not_advance_retained_offset(tmp_path: Path) -> None:
     service = RecordingOutputService(fail_unowned=True)
     writer = make_writer(service)

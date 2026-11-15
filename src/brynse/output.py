@@ -35,6 +35,7 @@ class SegmentRangePlanner:
         previous_start_offset: int,
         next_end_offset: int,
         decision: SplitDecision,
+        crossfade_unowned: bool = False,
     ) -> SegmentWritePlan:
         if previous_start_offset < 0:
             raise ValueError("previous_start_offset must be non-negative")
@@ -52,6 +53,24 @@ class SegmentRangePlanner:
 
         if not (previous_start_offset <= decision.incoming_start < next_end_offset):
             raise ValueError("incoming_start lies outside the writable range")
+
+        if decision.kind is SplitKind.CROSSFADE and crossfade_unowned:
+            # Encoded bytes inside a crossfade contain *both* sources mixed.
+            # Retain them once, without assigning the mixture to either track.
+            return SegmentWritePlan(
+                outgoing=SegmentByteRange(
+                    start_offset=previous_start_offset,
+                    end_offset=decision.incoming_start,
+                ),
+                unowned=SegmentByteRange(
+                    start_offset=decision.incoming_start,
+                    end_offset=decision.outgoing_end,
+                ),
+                incoming=SegmentByteRange(
+                    start_offset=decision.outgoing_end,
+                    end_offset=next_end_offset,
+                ),
+            )
 
         return SegmentWritePlan(
             outgoing=SegmentByteRange(
@@ -888,6 +907,7 @@ class SegmentOutputService:
         stem: str,
         codec: str,
         chunk_size: int = 64 * 1024,
+        preserve_short_unowned: bool = False,
     ) -> Path:
         if chunk_size <= 0:
             raise ValueError("chunk_size must be greater than zero")
@@ -936,6 +956,21 @@ class SegmentOutputService:
             output_codec = "m4a"
         else:
             raise ValueError(f"unsupported codec for segment output: {codec}")
+
+        # A tiny exclusion may contain fewer than the two MP3 frames that
+        # FFmpeg requires for standalone remuxing. Keep the original encoded
+        # bytes as an explicitly unowned artifact, without a lossy retry.
+        if preserve_short_unowned and normalized == "mp3" and segment_bytes < 4096:
+            raw = self._encoded_writer.write_range(
+                source=source,
+                byte_range=byte_range,
+            )
+            return self._file_writer.write(
+                directory=directory,
+                stem=stem,
+                codec="mp3",
+                data=raw,
+            )
 
         finalize_stream = getattr(finalizer, "finalize_stream", None)
 

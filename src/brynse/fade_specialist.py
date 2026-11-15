@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
+from numpy.typing import NDArray
+
 from brynse.boundaries import BoundaryHypothesis
 from brynse.models import TemporalSplitDecision, TemporalSplitKind
+from brynse.pcm_shared_edge import PcmSharedEdgeVerifier
 from brynse.pcm_temporal_edge import PcmTemporalEdgeVerifier
 from brynse.transition_evidence import (
     IncomingFadeEvidence,
@@ -54,6 +58,14 @@ class FadeSpecialist:
         result = cls._resolve_geometry(
             observation=observation,
         )
+
+        if isinstance(self, FadeSpecialist):
+            corrected = self._reject_false_fade_exclusion(
+                observation=observation,
+                result=result,
+            )
+            if corrected is not None:
+                return corrected
 
         verifier = self._temporal_edge_verifier if isinstance(self, FadeSpecialist) else None
 
@@ -131,6 +143,60 @@ class FadeSpecialist:
 
         return TransitionSpecialistResult(
             temporal=verified,
+            diagnostics=result.diagnostics,
+        )
+
+    @staticmethod
+    def _reject_false_fade_exclusion(
+        *, observation: TransitionSpecialistInput, result: TransitionSpecialistResult
+    ) -> TransitionSpecialistResult | None:
+        """Recover a uniquely audible hard cut inside a spurious long fade gap.
+
+        A spectral change alone cannot override fade ownership: both sides must
+        contain sustained non-silent audio, and the candidate must sit well
+        inside the proposed exclusion. Genuine fade-to-silence gaps abstain.
+        """
+        decision = result.temporal
+        if (
+            decision is None
+            or decision.kind is not TemporalSplitKind.EXCLUSION
+            or decision.incoming_start_seconds - decision.outgoing_end_seconds < 4.0
+        ):
+            return None
+
+        pcm = observation.pcm16
+        if not hasattr(pcm, "sample_rate") or not hasattr(pcm, "data"):
+            return None
+        start = observation.window.start_time_seconds
+        candidate = PcmSharedEdgeVerifier._spectral_handoff(
+            pcm=pcm,
+            start_time=start,
+            reference_time=observation.routing.reference_time_seconds,
+        )
+        if (
+            candidate is None
+            or candidate - decision.outgoing_end_seconds < 1.0
+            or decision.incoming_start_seconds - candidate < 1.0
+        ):
+            return None
+
+        samples: NDArray[np.int16] = np.frombuffer(pcm.data, dtype="<i2")
+        rate = pcm.sample_rate
+        for left, right in ((candidate - 0.5, candidate), (candidate, candidate + 0.5)):
+            a = max(0, round((left - start) * rate))
+            b = min(len(samples), round((right - start) * rate))
+            if b - a < rate * 0.45:
+                return None
+            audio = samples[a:b].astype(np.float64) / 32768.0
+            if np.sqrt(np.mean(audio * audio)) < 0.01:
+                return None
+
+        return TransitionSpecialistResult(
+            temporal=TemporalSplitDecision(
+                kind=TemporalSplitKind.HARD_CUT,
+                outgoing_end_seconds=candidate,
+                incoming_start_seconds=candidate,
+            ),
             diagnostics=result.diagnostics,
         )
 

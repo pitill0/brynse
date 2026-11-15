@@ -47,6 +47,25 @@ def test_backward_compatible_plan_defaults_to_no_unowned() -> None:
     assert plan.unowned is None
 
 
+def test_crossfade_is_retained_once_when_explicitly_unowned() -> None:
+    decision = SimpleNamespace(
+        kind=SplitKind.CROSSFADE,
+        incoming_start=400,
+        outgoing_end=500,
+    )
+
+    plan = SegmentRangePlanner().plan(
+        previous_start_offset=100,
+        next_end_offset=1000,
+        decision=decision,
+        crossfade_unowned=True,
+    )
+
+    assert plan.outgoing == SegmentByteRange(100, 400)
+    assert plan.unowned == SegmentByteRange(400, 500)
+    assert plan.incoming == SegmentByteRange(500, 1000)
+
+
 def test_nonempty_unowned_range_is_required() -> None:
     with pytest.raises(ValueError):
         SegmentByteRange(400, 400)
