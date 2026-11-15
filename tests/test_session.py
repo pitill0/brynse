@@ -506,3 +506,74 @@ def test_session_defers_acoustic_boundary_until_settle_window_is_complete() -> N
 
     assert len(orchestrator.calls) == 1
     assert session.current_track == second
+
+
+def test_short_confirmed_track_is_not_overwritten_during_acoustic_settle() -> None:
+    """A 15-second title must be emitted before its successor despite a 24s settle."""
+    first = _track("Artist - A", 1000, 10.0)
+    short = _track("Artist - Promo", 2000, 20.0)
+    third = _track("Artist - C", 3000, 35.0)
+    fourth = _track("Artist - D", 4000, 65.0)
+    orchestrator = _Orchestrator([_boundary(short), _boundary(third), _boundary(fourth)])
+    ingestor = _Ingestor(
+        [
+            _ingest_event(t.title, t.start_offset, t.start_time_seconds)
+            for t in (first, short, third, fourth)
+        ]
+    )
+    session = RippingSession(
+        ingestor=ingestor,
+        metadata_tracker=_MetadataTracker(
+            [((), (track,)) for track in (first, short, third, fourth)]
+        ),
+        orchestrator=orchestrator,
+        acoustic_settle_seconds=24.0,
+    )
+
+    assert session.feed(b"a").transitions == ()
+    ingestor.timeline.frames = (_Frame(2500, 100, 24.0, 44100, 44100),)
+    assert session.feed(b"promo").transitions == ()
+    ingestor.timeline.frames = (_Frame(3500, 100, 39.0, 44100, 44100),)
+    promoted = session.feed(b"c")
+    assert [(item.outgoing, item.incoming) for item in promoted.transitions] == [
+        (first, short),
+    ]
+    assert session.current_track == short
+    ingestor.timeline.frames = (_Frame(6500, 100, 69.0, 44100, 44100),)
+    completed = session.feed(b"d")
+    assert [(item.outgoing, item.incoming) for item in completed.transitions] == [
+        (short, third),
+    ]
+    assert session.current_track == third
+    assert [call["track"] for call in orchestrator.calls] == [short, third]
+
+
+def test_unresolved_queued_title_is_not_discarded() -> None:
+    first = _track("Artist - A", 1000, 10.0)
+    short = _track("Artist - Promo", 2000, 20.0)
+    third = _track("Artist - C", 3000, 35.0)
+    orchestrator = _Orchestrator([None, _boundary(short), _boundary(third)])
+    ingestor = _Ingestor(
+        [
+            _ingest_event(t.title, t.start_offset, t.start_time_seconds)
+            for t in (first, short, third)
+        ]
+        + [_ingest_event(third.title, 4000, 65.0)]
+    )
+    session = RippingSession(
+        ingestor=ingestor,
+        metadata_tracker=_MetadataTracker(
+            [((), (track,)) for track in (first, short, third)] + [((), ())]
+        ),
+        orchestrator=orchestrator,
+        acoustic_settle_seconds=24.0,
+    )
+    assert session.feed(b"a").transitions == ()
+    assert session.feed(b"b").transitions == ()
+    assert session.feed(b"c").transitions == ()
+    ingestor.timeline.frames = (_Frame(6500, 100, 69.0, 44100, 44100),)
+    completed = session.feed(b"later")
+    assert [(item.outgoing, item.incoming) for item in completed.transitions] == [
+        (first, short),
+        (short, third),
+    ]

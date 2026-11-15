@@ -217,3 +217,20 @@ def test_real_writer_rejects_initial_gap_before_any_publication(tmp_path: Path) 
         writer.write_segment_transition(transition(400, 500))
     assert service.calls == []
     assert writer.retained_start_offset == 100
+
+
+def test_first_publication_includes_unowned_metadata_head(tmp_path: Path) -> None:
+    """The first delayed ICY title owns all prior received audio from zero."""
+    from brynse.publication_coverage import PublicationCoverageLedger
+
+    service = RecordingOutputService()
+    writer = make_writer(service)
+    writer._directory = tmp_path
+    writer._current_start_offset = None
+    writer._coverage_ledger = PublicationCoverageLedger(start_offset=0)
+
+    writer.write_segment_transition(transition(400, 400))
+
+    assert service.calls[0][1:] == (0, 400)
+    assert writer.retained_start_offset == 400
+    writer._coverage_ledger.verify_complete(end_offset=400)

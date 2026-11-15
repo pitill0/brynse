@@ -541,6 +541,33 @@ def test_ripping_stream_ingestor_delays_boundary_metadata_until_next_frame_arriv
     assert second_result.timed_metadata_events[0].audio_time_seconds == pytest.approx(1024 / 44100)
 
 
+def test_metadata_inside_non_audio_gap_resolves_to_next_frame() -> None:
+    from brynse.integrations.radio.ripping import RippingStreamIngestor
+
+    frame = _adts_frame(frame_length=900)
+    gap = b"ID3" + b"\x00" * 597
+    ingestor = RippingStreamIngestor(
+        metaint=len(frame) + 100,
+        codec="aac",
+        ring_max_bytes=10000,
+    )
+    raw = (
+        frame
+        + gap[:100]
+        + _icy_block("StreamTitle='After gap';")
+        + gap[100:]
+        + frame[:500]
+        + b"\x00"  # Next ICY metadata interval is empty.
+        + frame[500:]
+    )
+    result = ingestor.feed(raw)
+
+    assert len(result.timed_metadata_events) == 1
+    event = result.timed_metadata_events[0]
+    assert event.audio_offset == 1000  # Original ICY byte offset is unchanged.
+    assert event.audio_time_seconds == pytest.approx(1024 / 44100)
+
+
 def test_ripping_stream_ingestor_prunes_frame_records_with_ring_buffer() -> None:
     from brynse.integrations.radio.ripping import RippingStreamIngestor
 

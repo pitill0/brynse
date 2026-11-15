@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,6 +21,55 @@ def _stream_source(stream: object, metadata: dict[str, str]) -> BinaryIOStreamSo
         stream,  # type: ignore[arg-type]
         metadata=metadata,
     )
+
+
+def test_stale_semantic_boundary_uses_next_frame_and_preserves_title() -> None:
+    from brynse.integrations.radio.models import TrackCandidate
+    from brynse.integrations.radio.orchestrator import BoundaryResolution
+    from brynse.integrations.radio.runner import _recover_stale_semantic_transition
+    from brynse.integrations.radio.session import TrackTransition
+    from brynse.models import SplitDecision, SplitKind, TemporalSplitDecision, TemporalSplitKind
+
+    previous = TrackCandidate("Station - Promo", 1000, 15.0, 1100, 16.0)
+    incoming = TrackCandidate("Artist - C", 2000, 30.0, 2100, 31.0)
+    transition = TrackTransition(
+        outgoing=previous,
+        incoming=incoming,
+        boundary=BoundaryResolution(
+            track=incoming,
+            match=None,
+            relation=None,
+            temporal=TemporalSplitDecision(
+                kind=TemporalSplitKind.EXCLUSION,
+                outgoing_end_seconds=14.0,
+                incoming_start_seconds=28.0,
+            ),
+            split=SplitDecision(
+                kind=SplitKind.EXCLUSION,
+                outgoing_end=900,
+                incoming_start=1800,
+            ),
+        ),
+    )
+    frame = SimpleNamespace(offset=2020, time_seconds=30.25)
+    timeline = SimpleNamespace(frame_at_or_after_audio_offset=lambda offset: frame)
+    ingestor = SimpleNamespace(timeline=timeline)
+    writer = SimpleNamespace(
+        can_write_transition=lambda *, outgoing_end, incoming_start: (
+            outgoing_end > 1000 and incoming_start > 1000
+        )
+    )
+
+    recovered = _recover_stale_semantic_transition(
+        transition, ingestor=ingestor, output_writer=writer
+    )
+
+    assert recovered is not None
+    assert recovered.outgoing == previous
+    assert recovered.incoming == incoming
+    assert recovered.boundary.split.outgoing_end == 2020
+    assert recovered.boundary.split.incoming_start == 2020
+    assert recovered.boundary.temporal.outgoing_end_seconds == 30.25
 
 
 def test_runner_rejects_non_positive_ring(tmp_path: Path) -> None:
@@ -1336,6 +1386,7 @@ def test_runner_materializes_promoted_autonomous_segment_and_advances_spool(
 def test_runner_ignores_promoted_autonomous_boundary_that_does_not_advance_output(
     tmp_path: Path,
     monkeypatch,
+    caplog,
     incoming_start: int,
 ) -> None:
     import brynse.integrations.radio.runner as runner_module
@@ -1493,6 +1544,8 @@ def test_runner_ignores_promoted_autonomous_boundary_that_does_not_advance_outpu
     assert result.stopped is False
     assert len(FakeOutputWriter.instances) == 1
     assert FakeOutputWriter.instances[0].segment_writes == []
+    assert "autonomous transition not published" in caplog.text
+    assert f"incoming_start={incoming_start}" in caplog.text
 
 
 # --- semantic/autonomous materialization ordering ---

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -86,7 +87,7 @@ class RippingSession:
         self._split_aligner = split_aligner or TemporalSplitAligner()
         self._acoustic_settle_seconds = acoustic_settle_seconds
         self._current_track: TrackCandidate | None = None
-        self._pending_track: TrackCandidate | None = None
+        self._pending_tracks: deque[TrackCandidate] = deque()
         self._pending_exclusion: MetadataSemanticDecision | None = None
 
     @property
@@ -139,42 +140,43 @@ class RippingSession:
             boundary=boundary,
         )
 
-    def _resolve_ready_pending_track(
-        self,
-    ) -> TrackTransition | None:
-        track = self._pending_track
-        if track is None:
-            return None
-
-        if not self._pending_track_is_ready(track):
-            return None
-
-        self._pending_track = None
-        return self._resolve_track_boundary(track)
+    def _resolve_ready_pending_tracks(self) -> tuple[TrackTransition, ...]:
+        """Resolve queued titles in order; a following title closes a short one."""
+        transitions: list[TrackTransition] = []
+        while self._pending_tracks:
+            track = self._pending_tracks[0]
+            if len(self._pending_tracks) == 1 and not self._pending_track_is_ready(track):
+                break
+            transition = self._resolve_track_boundary(track)
+            if transition is None:
+                # An unresolved boundary must remain available for another attempt.
+                break
+            self._pending_tracks.popleft()
+            transitions.append(transition)
+        return tuple(transitions)
 
     def _handle_confirmed_track(
         self,
         track: TrackCandidate,
-    ) -> TrackTransition | None:
+    ) -> tuple[TrackTransition, ...]:
         previous = self._current_track
         if previous is None:
             self._current_track = track
-            return None
+            return ()
 
         boundary = self._resolve_pending_exclusion(track)
         if boundary is not None:
             self._current_track = track
-            return TrackTransition(
-                outgoing=previous,
-                incoming=track,
-                boundary=boundary,
+            return (
+                TrackTransition(
+                    outgoing=previous,
+                    incoming=track,
+                    boundary=boundary,
+                ),
             )
 
-        if not self._pending_track_is_ready(track):
-            self._pending_track = track
-            return None
-
-        return self._resolve_track_boundary(track)
+        self._pending_tracks.append(track)
+        return self._resolve_ready_pending_tracks()
 
     def _resolve_pending_exclusion(
         self,
@@ -236,9 +238,7 @@ class RippingSession:
 
         transitions: list[TrackTransition] = []
         for track in tracks:
-            transition = self._handle_confirmed_track(track)
-            if transition is not None:
-                transitions.append(transition)
+            transitions.extend(self._handle_confirmed_track(track))
 
         return tracks, tuple(transitions)
 
@@ -256,17 +256,14 @@ class RippingSession:
             self._remember_exclusion_candidates(decisions)
 
             for track in tracks:
-                transition = self._handle_confirmed_track(track)
-                if transition is not None:
-                    transitions.append(transition)
+                transitions.extend(self._handle_confirmed_track(track))
 
         durable_tracks, durable_transitions = self._confirm_current_tracks()
         confirmed_tracks.extend(durable_tracks)
         transitions.extend(durable_transitions)
 
-        pending_transition = self._resolve_ready_pending_track()
-        if pending_transition is not None:
-            transitions.append(pending_transition)
+        if not confirmed_tracks:
+            transitions.extend(self._resolve_ready_pending_tracks())
 
         return SessionFeedResult(
             ingest=ingest,
