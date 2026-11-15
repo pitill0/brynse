@@ -34,6 +34,7 @@ from brynse.models import (
     AcousticBoundaryCandidate,
     BoundaryCandidate,
     BoundaryRelationResult,
+    DecodedPcm,
     SplitDecision,
     TemporalSplitDecision,
     TemporalSplitKind,
@@ -49,6 +50,7 @@ from brynse.pcm_boundary import (
     PcmBoundaryVerifier,
 )
 from brynse.pcm_shared_edge import PcmSharedEdgeVerifier
+from brynse.pcm_silence_gap import PcmSilenceGapVerifier
 from brynse.pcm_temporal_edge import PcmTemporalEdgeVerifier
 from brynse.transition_evidence import (
     FadeRoutingEvidence,
@@ -430,6 +432,18 @@ class MultiSignalAcousticCandidateResolver:
 
         if temporal is None:
             return None
+
+        # A bounded quiet region with independently audible flanks has
+        # stronger evidence than a provisional metadata-aligned cut.  Keep
+        # the exact intervening encoded bytes explicitly unowned.
+        if isinstance(pcm16, DecodedPcm):
+            verified_gap = PcmSilenceGapVerifier().verify(
+                pcm=pcm16,
+                absolute_start_time_seconds=window.start_time_seconds,
+                reference_time_seconds=candidate.time_seconds,
+            )
+            if verified_gap is not None:
+                temporal = verified_gap
 
         pcm_boundary_scan: tuple[PcmBoundaryObservation, ...] = ()
 

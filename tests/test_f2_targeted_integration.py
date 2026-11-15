@@ -7,7 +7,7 @@ import pytest
 
 from brynse.integrations.radio.session import RippingSession
 from brynse.integrations.radio.session_output import SessionOutputWriter
-from brynse.models import SplitDecision, SplitKind, TemporalSplitKind
+from brynse.models import SegmentByteRange, SplitDecision, SplitKind, TemporalSplitKind
 from brynse.output import SegmentOutputService
 from brynse.publication_coverage import PublicationCoverageLedger
 
@@ -32,6 +32,28 @@ class StreamingFinalizer:
         with output_path.open("wb") as handle:
             for chunk in chunks:
                 handle.write(chunk)
+
+
+def test_short_unowned_mp3_preserves_raw_bytes_without_finalization(tmp_path: Path) -> None:
+    """A one-frame exclusion must survive even when FFmpeg cannot remux it."""
+
+    class RejectingFinalizer:
+        def finalize_stream(self, **kwargs):
+            raise AssertionError("short unowned audio must bypass MP3 finalization")
+
+    source = Source()
+    service = SegmentOutputService(mp3_finalizer=RejectingFinalizer())
+    result = service.write_segment(
+        source=source,
+        byte_range=SegmentByteRange(start_offset=400, end_offset=500),
+        directory=tmp_path,
+        stem="unowned-000000000400-000000000500",
+        codec="mp3",
+        preserve_short_unowned=True,
+    )
+
+    assert result.suffix == ".mp3"
+    assert result.read_bytes() == source.data[400:500]
 
 
 def make_writer(tmp_path: Path, codec: str) -> tuple[SessionOutputWriter, Source]:

@@ -14,7 +14,7 @@ from brynse.integrations.radio.metadata_order import (
 )
 from brynse.integrations.radio.ripping import RippingStreamIngestor
 from brynse.integrations.radio.session import SegmentTransition, TrackTransition
-from brynse.models import SegmentByteRange
+from brynse.models import SegmentByteRange, SplitKind
 from brynse.output import (
     EncodedByteSource,
     SegmentOutputService,
@@ -191,10 +191,16 @@ class SessionOutputWriter:
             else transition.outgoing.start_offset
         )
 
+        crossfade_options = (
+            {"crossfade_unowned": True}
+            if transition.boundary.split.kind is SplitKind.CROSSFADE
+            else {}
+        )
         plan = self._range_planner.plan(
             previous_start_offset=previous_start_offset,
             next_end_offset=next_end_offset,
             decision=transition.boundary.split,
+            **crossfade_options,
         )
 
         if ledger is None:
@@ -240,6 +246,7 @@ class SessionOutputWriter:
                 directory=self._directory,
                 stem=(f"unowned-{plan.unowned.start_offset:012d}-{plan.unowned.end_offset:012d}"),
                 codec=self._codec,
+                preserve_short_unowned=True,
             )
             ledger.record_published(
                 kind="unowned",
