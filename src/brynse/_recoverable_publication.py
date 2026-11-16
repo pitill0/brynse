@@ -152,7 +152,7 @@ def publish_fd_recoverably(
         raise ValueError("stem must not be empty")
     if stem in {".", ".."} or any(c in stem for c in ("/", "\\", "\x00")):
         raise ValueError("unsafe output stem")
-    if extension not in {".mp3", ".aac", ".m4a", ".json"}:
+    if extension not in {".mp3", ".aac", ".m4a", ".json", ".bin"}:
         raise ValueError("unsupported output extension")
 
     opened = os.fstat(source_fd)

@@ -88,6 +88,13 @@ class CandidateResolution:
 
 
 @dataclass(frozen=True)
+class RoutedCandidateResolution(CandidateResolution):
+    """Generic resolution enriched with routing decision provenance."""
+
+    decision_origin: str | None = None
+
+
+@dataclass(frozen=True)
 class TransitionRoutingObservation:
     """Shadow comparison between router ownership and the final temporal decision."""
 
@@ -433,6 +440,8 @@ class MultiSignalAcousticCandidateResolver:
         if temporal is None:
             return None
 
+        decision_origin = f"router:{routing_kind.value}"
+
         # A bounded quiet region with independently audible flanks has
         # stronger evidence than a provisional metadata-aligned cut.  Keep
         # the exact intervening encoded bytes explicitly unowned.
@@ -444,6 +453,7 @@ class MultiSignalAcousticCandidateResolver:
             )
             if verified_gap is not None:
                 temporal = verified_gap
+                decision_origin = "pcm_silence_verifier"
 
         pcm_boundary_scan: tuple[PcmBoundaryObservation, ...] = ()
 
@@ -577,10 +587,11 @@ class MultiSignalAcousticCandidateResolver:
             timeline=timeline,
         )
 
-        return CandidateResolution(
+        return RoutedCandidateResolution(
             candidate=candidate,
             temporal=temporal,
             split=split,
+            decision_origin=decision_origin,
         )
 
 

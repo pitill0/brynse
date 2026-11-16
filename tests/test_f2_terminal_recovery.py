@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from brynse.integrations.radio.runner import RippingRunConfig, RippingRunner
+from brynse.integrations.radio.runner import RippingRunConfig, RippingRunError, RippingRunner
 from brynse.source import BinaryIOStreamSource
 
 # Valid MP3 frame used by existing runner tests.
@@ -74,13 +74,18 @@ def test_terminal_audio_survives_normal_runner_exit(
     published = tuple(output.glob("*.mp3"))
     assert not published, "No resolved track should be published"
 
-    spool_dir = output / ".brynse-spool"
-    chunks = sorted(p for p in spool_dir.iterdir() if p.is_file() and p.name.endswith(".chunk"))
-    assert chunks, f"{termination}: pending MP3 was deleted by normal runner cleanup"
+    # The exact encoded tail is now durably published as recoverable audio.
+    # No incomplete song is presented as a finalized MP3 track.
+    terminal_audio = list(output.glob("brynse-terminal-audio-*.bin"))
+    assert len(terminal_audio) == 1
 
-    recovered = b"".join(path.read_bytes() for path in chunks)
+    recovered = terminal_audio[0].read_bytes()
     assert recovered == FRAME
     assert hashlib.sha256(recovered).digest() == hashlib.sha256(FRAME).digest()
+
+    spool_dir = output / ".brynse-spool"
+    chunks = list(spool_dir.glob("*.chunk"))
+    assert not chunks, "confirmed terminal publication must release spool chunks"
 
     terminal_records = list(output.glob("brynse-terminal-*.json"))
     assert len(terminal_records) == 1
@@ -90,6 +95,71 @@ def test_terminal_audio_survives_normal_runner_exit(
     assert record["source_end_offset"] == len(FRAME)
     assert record["spool_start_offset"] == 0
     assert record["spool_end_offset"] == len(FRAME)
-    assert record["retained_tail"] == {"start_offset": 0, "end_offset": len(FRAME)}
-    assert record["published"] == []
+    assert record["retained_tail"] is None
+    assert len(record["published"]) == 1
+    published_tail = record["published"][0]
+    assert published_tail["kind"] == "unowned"
+    assert published_tail["start_offset"] == 0
+    assert published_tail["end_offset"] == len(FRAME)
+    assert published_tail["file"] == terminal_audio[0].name
     assert record["spool_chunks"]
+
+
+def test_terminal_audio_publication_failure_preserves_spool(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed terminal publication must never discard encoded source audio."""
+    import brynse.publication_provenance as provenance
+
+    class Stream:
+        def __init__(self) -> None:
+            self.chunks = [FRAME + b"\\x00", b""]
+
+        def read(self, size: int = -1) -> bytes:
+            return self.chunks.pop(0)
+
+        def close(self) -> None:
+            pass
+
+    def fail_publication(**kwargs: object) -> Path:
+        raise OSError("injected terminal audio publication failure")
+
+    monkeypatch.setattr(
+        provenance,
+        "publish_terminal_audio",
+        fail_publication,
+    )
+
+    output = tmp_path / "failed-terminal-publication"
+
+    runner = RippingRunner(
+        RippingRunConfig(
+            url="https://example.invalid/f2-terminal-failure",
+            output_directory=output,
+            codec="mp3",
+        ),
+        stream_opener=lambda url: BinaryIOStreamSource(
+            Stream(),
+            metadata={
+                "Content-Type": "audio/mpeg",
+                "icy-metaint": str(FRAME_LENGTH),
+            },
+        ),
+    )
+
+    with pytest.raises(
+        RippingRunError,
+        match="injected terminal audio publication failure",
+    ):
+        runner.run()
+
+    chunks = sorted((output / ".brynse-spool").glob("*.chunk"))
+    assert chunks, "source audio was discarded after publication failure"
+
+    recovered = b"".join(chunk.read_bytes() for chunk in chunks)
+    assert recovered == FRAME
+    assert hashlib.sha256(recovered).digest() == hashlib.sha256(FRAME).digest()
+
+    assert not list(output.glob("brynse-terminal-audio-*.bin"))
+    assert not list(output.glob("brynse-terminal-*.json"))

@@ -20,6 +20,7 @@ from brynse.orchestrator import (
     AcousticCandidateResolution,
     CandidateResolver,
     DefaultCandidateResolver,
+    RoutedCandidateResolution,
 )
 
 
@@ -32,6 +33,7 @@ class BoundaryResolution:
     relation: BoundaryRelationResult | None
     temporal: TemporalSplitDecision
     split: SplitDecision
+    decision_origin: str | None = None
 
 
 class BoundaryResolver(Protocol):
@@ -76,6 +78,11 @@ class RippingOrchestrator(DefaultCandidateResolver):
             relation=resolved.relation,
             temporal=resolved.temporal,
             split=resolved.split,
+            decision_origin=(
+                resolved.decision_origin
+                if isinstance(resolved, RoutedCandidateResolution)
+                else None
+            ),
         )
 
 
@@ -117,4 +124,9 @@ class CandidateBoundaryResolver:
             relation=relation,
             temporal=resolved.temporal,
             split=resolved.split,
+            decision_origin=(
+                resolved.decision_origin
+                if isinstance(resolved, RoutedCandidateResolution)
+                else None
+            ),
         )

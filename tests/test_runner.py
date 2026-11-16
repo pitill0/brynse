@@ -23,6 +23,21 @@ def _stream_source(stream: object, metadata: dict[str, str]) -> BinaryIOStreamSo
     )
 
 
+@pytest.fixture
+def stub_terminal_publication(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate runner decisions from terminal publication integration.
+
+    Terminal durability and coverage are tested separately with real storage.
+    """
+    import brynse.integrations.radio.runner as runner_module
+
+    monkeypatch.setattr(
+        runner_module,
+        "_finalize_terminal_publication",
+        lambda **kwargs: None,
+    )
+
+
 def test_stale_semantic_boundary_uses_next_frame_and_preserves_title() -> None:
     from brynse.integrations.radio.models import TrackCandidate
     from brynse.integrations.radio.orchestrator import BoundaryResolution
@@ -209,6 +224,7 @@ def test_runner_shadow_callback_is_parallel_and_optional(tmp_path: Path) -> None
     assert stream.closed is True
 
 
+@pytest.mark.usefixtures("stub_terminal_publication")
 def test_runner_retains_clean_audio_in_safe_streaming_spool(
     tmp_path: Path,
     monkeypatch,
@@ -277,6 +293,7 @@ def test_runner_retains_clean_audio_in_safe_streaming_spool(
     assert spool.closed is True
 
 
+@pytest.mark.usefixtures("stub_terminal_publication")
 def test_runner_discards_spool_before_next_retained_track_offset(
     tmp_path: Path,
     monkeypatch,
@@ -551,6 +568,7 @@ def test_runner_closes_spool_when_append_fails(
     assert spool.preserved is True
 
 
+@pytest.mark.usefixtures("stub_terminal_publication")
 def test_runner_rejects_stale_semantic_transition_before_write(
     tmp_path: Path,
     monkeypatch,
@@ -1179,6 +1197,7 @@ def test_runner_creates_shadow_observer_when_autonomous_boundaries_are_enabled(
     assert "ring_buffer" in observer.calls[0]
 
 
+@pytest.mark.usefixtures("stub_terminal_publication")
 def test_runner_materializes_promoted_autonomous_segment_and_advances_spool(
     tmp_path: Path,
     monkeypatch,
@@ -1383,6 +1402,7 @@ def test_runner_materializes_promoted_autonomous_segment_and_advances_spool(
 
 
 @pytest.mark.parametrize("incoming_start", [4000, 5000])
+@pytest.mark.usefixtures("stub_terminal_publication")
 def test_runner_ignores_promoted_autonomous_boundary_that_does_not_advance_output(
     tmp_path: Path,
     monkeypatch,
@@ -1551,6 +1571,7 @@ def test_runner_ignores_promoted_autonomous_boundary_that_does_not_advance_outpu
 # --- semantic/autonomous materialization ordering ---
 
 
+@pytest.mark.usefixtures("stub_terminal_publication")
 def test_runner_materializes_semantic_transition_before_autonomous_promotion(
     tmp_path: Path,
     monkeypatch,

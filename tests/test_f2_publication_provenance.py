@@ -25,6 +25,7 @@ def _receipt(tmp_path: Path) -> PublicationReceipt:
             incoming=SimpleNamespace(label="Song B"),
             boundary=SimpleNamespace(
                 split=SimpleNamespace(kind="exclusion"),
+                decision_origin="router:interstitial",
                 temporal=SimpleNamespace(
                     kind="exclusion",
                     outgoing_end_seconds=10.0,
@@ -68,6 +69,7 @@ def test_persistent_receipt_contains_exact_source_ranges(
     }
     assert record["incoming_start_offset"] == 500
     assert record["decision_kind"] == "exclusion"
+    assert record["decision_origin"] == "router:interstitial"
     assert record["outgoing_end_seconds"] == 10.0
     assert record["incoming_start_seconds"] == 12.0
 

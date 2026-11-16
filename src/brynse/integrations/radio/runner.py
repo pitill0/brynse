@@ -57,7 +57,7 @@ from brynse.orchestrator import (
 )
 from brynse.shadow import ShadowBoundaryAnalysis
 from brynse.source import BinaryIOStreamSource, StreamSource
-from brynse.streaming_spool import create_safe_streaming_spool
+from brynse.streaming_spool import StreamingSpool, create_safe_streaming_spool
 
 _LOG = logging.getLogger(__name__)
 
@@ -72,6 +72,49 @@ _CONTENT_TYPE_CODECS = {
 
 _MULTISIGNAL_ACOUSTIC_RADIUS_SECONDS = 24.0
 _AUTONOMOUS_MIN_OPEN_SECONDS = 8.0
+
+
+def _finalize_terminal_publication(
+    *,
+    output_writer: SessionOutputWriter,
+    spool: StreamingSpool,
+    directory: Path,
+    session_id: str,
+    source_id: str,
+    verify_output_identity: Callable[[], None],
+) -> Path:
+    """Verify complete source coverage and durably publish terminal provenance.
+
+    Missing or invalid coverage is a hard failure. The caller retains the spool
+    when this operation fails.
+    """
+    from brynse.publication_provenance import publish_terminal_provenance
+
+    verify_output_identity()
+    output_writer.publish_terminal_tail(
+        directory=directory,
+        session_id=session_id,
+        spool_start=spool.start_offset,
+        spool_end=spool.end_offset,
+    )
+    output_writer.finalize_coverage(
+        spool_start=spool.start_offset,
+        spool_end=spool.end_offset,
+    )
+    coverage = output_writer.publication_coverage
+    if coverage is None:
+        raise RippingRunError("missing terminal publication coverage")
+
+    verify_output_identity()
+    return publish_terminal_provenance(
+        ledger=coverage,
+        directory=directory,
+        session_id=session_id,
+        source_id=source_id,
+        spool_start=spool.start_offset,
+        spool_end=spool.end_offset,
+        spool_paths=spool.recovery_paths,
+    )
 
 
 class RippingRunError(RuntimeError):
@@ -469,10 +512,7 @@ class RippingRunner:
             from hashlib import sha256
             from uuid import uuid4
 
-            from brynse.publication_provenance import (
-                publish_provenance,
-                publish_terminal_provenance,
-            )
+            from brynse.publication_provenance import publish_provenance
 
             provenance_session_id = uuid4().hex
             provenance_source_id = "sha256:" + sha256(config.url.encode("utf-8")).hexdigest()
@@ -690,30 +730,19 @@ class RippingRunner:
 
             # Confirm the whole stream's byte disposition and persist the
             # terminal record before reporting successful completion.
-            # Fake writers used by legacy runner tests may lack this API.
-            finalize_coverage = getattr(output_writer, "finalize_coverage", None)
-            if (
-                finalize_coverage is not None
-                and hasattr(spool, "start_offset")
-                and hasattr(spool, "end_offset")
-            ):
-                finalize_coverage(
-                    spool_start=spool.start_offset,
-                    spool_end=spool.end_offset,
-                )
-                coverage = output_writer.publication_coverage
-                if coverage is None:
-                    raise RippingRunError("missing terminal publication coverage")
-                output_identity.verify()
-                publish_terminal_provenance(
-                    ledger=coverage,
-                    directory=output_identity.resolved,
-                    session_id=provenance_session_id,
-                    source_id=provenance_source_id,
-                    spool_start=spool.start_offset,
-                    spool_end=spool.end_offset,
-                    spool_paths=spool.recovery_paths,
-                )
+            # Terminal coverage is mandatory for every successful run.
+            # Missing coverage must fail closed and preserve recovery data.
+            _finalize_terminal_publication(
+                output_writer=output_writer,
+                spool=spool,
+                directory=output_identity.resolved,
+                session_id=provenance_session_id,
+                source_id=provenance_source_id,
+                verify_output_identity=output_identity.verify,
+            )
+            # The tail and terminal ledger are durably published.
+            # Normal completion may now release the temporary spool.
+            preserve_spool = False
 
             return RippingRunResult(
                 codec=codec,
