@@ -26,7 +26,7 @@ from brynse.pcm_temporal_edge import (
     PcmVerifiedTemporalEdge,
 )
 from brynse.shadow import ShadowBoundaryAnalysis
-from brynse.transition_evidence import FadeRoutingEvidence
+from brynse.transition_evidence import FadeRoutingEvidence, OutgoingFadeEvidence
 from brynse.transition_router import (
     BoundedInsertOwnership,
     BoundedInsertRoutingProvenance,
@@ -968,8 +968,23 @@ class InterstitialSpecialist:
         region = island.observed_region if island is not None else None
         reference = observation.routing.reference_time_seconds
 
+        # A nearby silent outgoing floor independently supports excluding
+        # the interstitial audio; absent fade evidence keeps the conservative cut.
+        silence_supported = any(
+            isinstance(fade, OutgoingFadeEvidence)
+            and fade.floor_rms == 0.0
+            and fade.floor_time_seconds < reference
+            and abs(fade.floor_time_seconds - result.temporal.outgoing_end_seconds) <= 1.5
+            for fade in getattr(
+                getattr(observation.routing, "fade", None),
+                "outgoing_fades",
+                (),
+            )
+        )
+
         if (
             result.temporal.kind is TemporalSplitKind.EXCLUSION
+            and not silence_supported
             and observation.bounded_insert_ownership is None
             and roles is not None
             and island is not None

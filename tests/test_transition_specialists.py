@@ -28,6 +28,82 @@ def _observation(*, boundary: float = 100.0):
     )
 
 
+def test_interstitial_silent_floor_support_is_local_and_independent() -> None:
+    """Only a genuine nearby outgoing silence preserves provisional exclusion."""
+    from dataclasses import replace
+
+    from brynse.transition_evidence import FadeRoutingEvidence, OutgoingFadeEvidence
+
+    provisional = TemporalSplitDecision(
+        kind=TemporalSplitKind.EXCLUSION,
+        outgoing_end_seconds=100.0,
+        incoming_start_seconds=106.0,
+    )
+    conservative = TemporalSplitDecision(
+        kind=TemporalSplitKind.HARD_CUT,
+        outgoing_end_seconds=102.0,
+        incoming_start_seconds=102.0,
+    )
+
+    region = SimpleNamespace(
+        left=SimpleNamespace(time_seconds=100.0),
+        right=SimpleNamespace(time_seconds=106.0),
+    )
+    island = SimpleNamespace(
+        observed_region=region,
+        terminal_decay=None,
+        source_reset=None,
+        incoming_handoff=region.right,
+    )
+    roles = SimpleNamespace(
+        acoustic_island=island,
+        inserted_region=region,
+        outgoing_handoff=None,
+        incoming_handoff=None,
+    )
+
+    class FixedGeometryInterstitial(InterstitialSpecialist):
+        def _resolve_geometry(self, *, observation):
+            return TransitionSpecialistResult(temporal=provisional)
+
+    specialist = FixedGeometryInterstitial(incoming_pipeline=object())
+    base = _observation(boundary=100.0)
+
+    scenarios = (
+        ("A: nearby digital silence", 0.0, 99.15, provisional),
+        ("B: nonzero floor", 824.0, 99.15, conservative),
+        ("distant silence", 0.0, 97.0, conservative),
+        ("silence after reference", 0.0, 102.5, conservative),
+        ("no fade evidence", None, None, conservative),
+    )
+
+    for label, floor_rms, floor_time, expected in scenarios:
+        fades = ()
+        if floor_rms is not None and floor_time is not None:
+            fades = (
+                OutgoingFadeEvidence(
+                    start_time_seconds=floor_time - 1.0,
+                    floor_time_seconds=floor_time,
+                    rise_time_seconds=None,
+                    start_rms=1000.0,
+                    floor_rms=floor_rms,
+                    descent_ratio=10.0,
+                    descent_consistency=0.9,
+                ),
+            )
+
+        observation = replace(
+            base,
+            routing=replace(
+                base.routing,
+                fade=FadeRoutingEvidence(outgoing_fades=fades),
+            ),
+            semantic_roles=roles,
+        )
+        actual = specialist.resolve(observation=observation).temporal
+        assert actual == expected, label
+
+
 def test_hard_cut_specialist_owns_both_edges() -> None:
     result = HardCutSpecialist().resolve(
         observation=_observation(boundary=98.5),
