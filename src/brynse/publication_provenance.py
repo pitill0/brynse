@@ -11,6 +11,7 @@ from brynse._recoverable_publication import (
     publish_private_file,
 )
 from brynse.integrations.radio.session_output import PublicationReceipt
+from brynse.output import EncodedByteSource
 from brynse.publication_coverage import PublicationCoverageLedger
 
 
@@ -59,6 +60,7 @@ def publish_provenance(
         "session_id": session_id,
         "source_id": source_id,
         "decision_kind": _value(split, "kind"),
+        "decision_origin": getattr(boundary, "decision_origin", None),
         "temporal_kind": (_value(temporal, "kind") if temporal is not None else None),
         "outgoing_end_seconds": (
             getattr(temporal, "outgoing_end_seconds", None) if temporal is not None else None
@@ -88,6 +90,54 @@ def publish_provenance(
     end = unowned.end_offset if unowned is not None else outgoing.end_offset
     stem = f"brynse-provenance-{session_id}-{outgoing.start_offset:012d}-{end:012d}"
     return _publish_record(directory=directory, stem=stem, record=record)
+
+
+def publish_terminal_audio(
+    *,
+    source: EncodedByteSource,
+    directory: Path,
+    session_id: str,
+    start_offset: int,
+    end_offset: int,
+) -> Path:
+    """Durably publish the exact encoded tail as recoverable source audio.
+
+    This is not a finalized song. Failed publications retain their private
+    staging artifact and leave the original streaming spool untouched.
+    """
+    if re.fullmatch(r"[0-9a-f]{32}", session_id) is None:
+        raise ValueError("session_id must be a lowercase UUID hex string")
+    if start_offset < 0 or end_offset <= start_offset:
+        raise ValueError("terminal audio range must be positive")
+
+    private_dir = ensure_private_recovery_directory(directory)
+    fd, temporary = tempfile.mkstemp(
+        prefix=".brynse-terminal-audio-",
+        suffix=".bin",
+        dir=private_dir,
+    )
+    temporary_path = Path(temporary)
+
+    with os.fdopen(fd, "wb") as handle:
+        cursor = start_offset
+        while cursor < end_offset:
+            chunk_end = min(cursor + 64 * 1024, end_offset)
+            chunk = source.read(cursor, chunk_end)
+            if len(chunk) != chunk_end - cursor:
+                raise OSError("incomplete terminal audio source read")
+            handle.write(chunk)
+            cursor = chunk_end
+
+        handle.flush()
+        os.fsync(handle.fileno())
+
+    stem = f"brynse-terminal-audio-{session_id}-{start_offset:012d}-{end_offset:012d}"
+    return publish_private_file(
+        temp_path=temporary_path,
+        directory=directory,
+        stem=stem,
+        extension=".bin",
+    )
 
 
 def _publish_record(*, directory: Path, stem: str, record: dict[str, object]) -> Path:

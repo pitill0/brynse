@@ -43,6 +43,9 @@ def make_writer(service: RecordingService) -> SessionOutputWriter:
     writer._range_planner = SegmentRangePlanner()
     writer._output_service = service
     writer._current_start_offset = 100
+    writer._coverage_ledger = None
+    writer._on_publication_confirmed = None
+    writer._pending_overlap_start = None
     return writer
 
 

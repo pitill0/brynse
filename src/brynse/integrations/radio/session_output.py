@@ -119,7 +119,49 @@ class SessionOutputWriter:
     @property
     def publication_coverage(self) -> PublicationCoverageLedger | None:
         """Inspect source-byte dispositions without mutating the ledger."""
-        return getattr(self, "_coverage_ledger", None)
+        return self._coverage_ledger
+
+    def publish_terminal_tail(
+        self,
+        *,
+        directory: Path,
+        session_id: str,
+        spool_start: int,
+        spool_end: int,
+    ) -> Path | None:
+        """Publish unpublished terminal bytes before declaring complete coverage."""
+        from brynse.publication_provenance import publish_terminal_audio
+
+        ledger = self._coverage_ledger
+        if ledger is None:
+            ledger = PublicationCoverageLedger(start_offset=0)
+            self._coverage_ledger = ledger
+
+        start = ledger.covered_end
+        if start > spool_end:
+            raise CoverageError("published coverage exceeds received source bytes")
+        if start < spool_start:
+            raise CoverageError(f"unaccounted discard [{start}, {spool_start})")
+        if start == spool_end:
+            return None
+
+        if self._source is None:
+            raise CoverageError("terminal audio source is unavailable")
+
+        path = publish_terminal_audio(
+            source=self._source,
+            directory=directory,
+            session_id=session_id,
+            start_offset=start,
+            end_offset=spool_end,
+        )
+        ledger.record_published(
+            kind="unowned",
+            start=start,
+            end=spool_end,
+            path=path,
+        )
+        return path
 
     def finalize_coverage(self, *, spool_start: int, spool_end: int) -> RetainedTail | None:
         """Account for the complete session, including the unfinalized spool tail.
@@ -130,7 +172,7 @@ class SessionOutputWriter:
         if not 0 <= spool_start <= spool_end:
             raise ValueError("invalid retained spool offsets")
 
-        ledger = getattr(self, "_coverage_ledger", None)
+        ledger = self._coverage_ledger
         if ledger is None:
             ledger = PublicationCoverageLedger(start_offset=0)
             self._coverage_ledger = ledger
@@ -182,7 +224,7 @@ class SessionOutputWriter:
 
         last_frame = frames[-1]
         next_end_offset = last_frame.offset + last_frame.length
-        ledger = getattr(self, "_coverage_ledger", None)
+        ledger = self._coverage_ledger
         previous_start_offset = (
             self._current_start_offset
             if self._current_start_offset is not None
@@ -273,7 +315,7 @@ class SessionOutputWriter:
             )
 
         # A provenance failure must never authorize spool discard.
-        receipt_callback = getattr(self, "_on_publication_confirmed", None)
+        receipt_callback = self._on_publication_confirmed
         if receipt_callback is not None:
             receipt_callback(
                 PublicationReceipt(
